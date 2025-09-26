@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Blob Track — Video/Webcam Overlay</title>
+  <title>Blob Track — Video/Webcam Overlay + Export</title>
   <style>
     :root{
-      --bg:#0b0d10;--panel:#11151a;--ink:#e6edf3;--muted:#9fb0c0;--acc:#3bd3a7;--warn:#ff9b57;
+      --bg:#0b0d10;--panel:#11151a;--ink:#e6edf3;--muted:#9fb0c0;--acc:#3bd3a7;--warn:#ff9b57;--orange:#ff8c00;
     }
     html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji"}
     .app{display:grid;grid-template-columns:300px 1fr;grid-template-rows:auto 1fr;gap:10px;height:100%;}
@@ -37,7 +37,7 @@
 <body>
   <div class="app">
     <header>
-      <h1>Blob Track — Video/Webcam Overlay <span class="small">(vanilla JS)</span></h1>
+      <h1>Blob Track — Video/Webcam Overlay <span class="small">(export-enabled)</span></h1>
       <div class="row">
         <button id="useWebcam" class="btn primary">Use Webcam</button>
         <button id="stop" class="btn warn">Stop</button>
@@ -71,7 +71,7 @@
           <h3>Overlay</h3>
           <div class="row"><label><input id="showBoxes" type="checkbox" checked> Show boxes</label></div>
           <div class="row"><label><input id="showCentroids" type="checkbox" checked> Show centroids</label></div>
-          <div class="row"><label><input id="showContours" type="checkbox" checked> Show contours</label></div>
+          <div class="row"><label><input id="showContours" type="checkbox" checked> Show contours (orange)</label></div>
           <div class="row"><label><input id="trails" type="checkbox"> Trails (short)</label></div>
           <div class="row"><label>Box padding (px)</label><input id="pad" type="range" min="0" max="30" step="1" value="4"><span class="badgel" id="padVal">4</span></div>
         </div>
@@ -85,13 +85,18 @@
         <div class="group">
           <h3>Export</h3>
           <div class="row"><button id="snap" class="btn">Snapshot PNG</button></div>
+          <div class="row">
+            <button id="recStart" class="btn primary">Start Rec</button>
+            <button id="recStop" class="btn warn">Stop & Save</button>
+          </div>
+          <div class="row"><span class="badgel" id="recStatus">Recorder: idle</span></div>
         </div>
       </div>
     </aside>
 
     <main>
       <canvas id="out"></canvas>
-      <div class="legend">Legend: <b>green</b> box, <b>cyan</b> centroid, <b>magenta</b> contour</div>
+      <div class="legend">Legend: <b>green</b> boxes, <b>cyan</b> centroids, <b style="color:var(--orange)">orange</b> contours</div>
       <footer id="stats">—</footer>
     </main>
   </div>
@@ -118,7 +123,8 @@
     th: el('th'), minA: el('minA'), maxA: el('maxA'),
     showBoxes: el('showBoxes'), showCentroids: el('showCentroids'), showContours: el('showContours'), trails: el('trails'), pad: el('pad'),
     toggle: el('toggle'), seek: el('seek'), seekBtn: el('seekBtn'), snap: el('snap'),
-    scaleVal: el('scaleVal'), blurVal: el('blurVal'), alphaVal: el('alphaVal'), thVal: el('thVal'), minAVal: el('minAVal'), maxAVal: el('maxAVal'), padVal: el('padVal')
+    scaleVal: el('scaleVal'), blurVal: el('blurVal'), alphaVal: el('alphaVal'), thVal: el('thVal'), minAVal: el('minAVal'), maxAVal: el('maxAVal'), padVal: el('padVal'),
+    recStart: el('recStart'), recStop: el('recStop'), recStatus: el('recStatus')
   };
   const upd = () => {
     ui.scaleVal.textContent = (+ui.scale.value).toFixed(2) + '×';
@@ -132,9 +138,35 @@
   ['scale','blur','alpha','th','minA','maxA','pad'].forEach(k=>ui[k].addEventListener('input', upd));
   upd();
 
+  // Recording state
+  let recorder = null;
+  let recordedChunks = [];
+  function startRecording(){
+    if(recorder && recorder.state === 'recording') return;
+    recordedChunks = [];
+    const stream = cnv.captureStream(30);
+    const opts = [{mimeType:'video/webm;codecs=vp9'},{mimeType:'video/webm;codecs=vp8'},{mimeType:'video/webm'}].find(o=>MediaRecorder.isTypeSupported(o.mimeType)) || {};
+    try{
+      recorder = new MediaRecorder(stream, opts);
+    }catch(e){ alert('MediaRecorder not supported in this browser.'); console.error(e); return; }
+    recorder.ondataavailable = e => { if(e.data.size>0) recordedChunks.push(e.data); };
+    recorder.onstop = ()=>{
+      const blob = new Blob(recordedChunks, { type: 'video/webm' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'blobtrack_export.webm'; a.click();
+      URL.revokeObjectURL(url);
+      ui.recStatus.textContent = 'Recorder: idle';
+    };
+    recorder.start();
+    ui.recStatus.textContent = 'Recorder: recording…';
+  }
+  function stopRecording(){ if(recorder && recorder.state !== 'inactive'){ recorder.stop(); } }
+
+  ui.recStart.addEventListener('click', startRecording);
+  ui.recStop.addEventListener('click', stopRecording);
+
   // State
   let stream = null;
-  let running = true;
   let bg = null; // Float32 background
   let lastTime = performance.now();
   let fps = 0, counter = 0;
@@ -189,18 +221,16 @@
   });
 
   function resize(){
-    // Display canvas: match video aspect within container
     const W = v.videoWidth, H = v.videoHeight;
     if(!W||!H) return;
     const dpr = Math.max(1, Math.min(2, window.devicePixelRatio||1));
     cnv.width = cnv.clientWidth * dpr;
     cnv.height = cnv.clientHeight * dpr;
-    ctx.setTransform(dpr,0,0,dpr,0,0); // scale for crisp text
-    // Processing canvas: downscale for speed
+    ctx.setTransform(dpr,0,0,dpr,0,0);
     const s = parseFloat(ui.scale.value);
     pcnv.width = Math.max(32, Math.round(W * s));
     pcnv.height = Math.max(32, Math.round(H * s));
-    bg = null; // force rebuild at new size
+    bg = null;
   }
   window.addEventListener('resize', resize);
 
@@ -211,7 +241,7 @@
     const win = (r*2+1);
     // horizontal
     for(let y=0;y<h;y++){
-      let acc=0; let yi=y*w; let head=yi, tail=yi;
+      let acc=0; let yi=y*w;
       for(let i=-r;i<=r;i++){ acc += buf[yi + Math.min(w-1, Math.max(0,i))]; }
       for(let x=0;x<w;x++){
         out[yi+x] = acc / win;
@@ -244,7 +274,6 @@
       for(let x=0;x<w;x++){
         const idx = y*w+x;
         if(mask[idx]===1 && labels[idx]===0){
-          // flood fill
           let top=0; stackX[top]=x; stackY[top]=y; top++;
           labels[idx]=cur;
           let minx=x,maxx=x,miny=y,maxy=y,area=0,cx=0,cy=0;
@@ -253,7 +282,6 @@
             top--; const px=stackX[top], py=stackY[top];
             const pidx=py*w+px; area++; cx+=px; cy+=py;
             if(px<minx)minx=px; if(px>maxx)maxx=px; if(py<miny)miny=py; if(py>maxy)maxy=py;
-            // naive 4-neighborhood
             const nbs=[[1,0],[-1,0],[0,1],[0,-1]];
             for(let i=0;i<4;i++){
               const nx=px+nbs[i][0], ny=py+nbs[i][1];
@@ -262,7 +290,6 @@
                 if(mask[nidx]===1 && labels[nidx]===0){ labels[nidx]=cur; stackX[top]=nx; stackY[top]=ny; top++; }
               }
             }
-            // edge test for contour: any neighbor off or 0
             if(px===0||py===0||px===w-1||py===h-1|| mask[pidx-1]===0||mask[pidx+1]===0||mask[pidx-w]===0||mask[pidx+w]===0){
               contour.push(px,py);
             }
@@ -284,7 +311,6 @@
     const data = img.data;
     const gray = new Float32Array(w*h);
     for(let i=0,j=0;i<data.length;i+=4,j++){
-      // perceptual luma
       gray[j] = (0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2]);
     }
     const blurR = parseInt(ui.blur.value,10);
@@ -292,7 +318,6 @@
 
     if(!bg || bg.length!==g2.length){ bg = new Float32Array(g2); }
     const a = parseFloat(ui.alpha.value);
-    // diff + bg update
     const diff = new Float32Array(g2.length);
     for(let i=0;i<g2.length;i++){
       const d = Math.abs(g2[i] - bg[i]);
@@ -306,14 +331,12 @@
 
     // connected components
     let comps = connectedComponents(mask,w,h);
-    // area filter
     const minA = parseInt(ui.minA.value,10);
     const maxA = parseInt(ui.maxA.value,10);
     comps = comps.filter(c=>c.area>=minA && c.area<=maxA);
 
     // draw overlay: base frame scaled to canvas
     const W = cnv.clientWidth, H = cnv.clientHeight;
-    // letterbox fit
     const vidW = v.videoWidth, vidH = v.videoHeight;
     const s = Math.min(W/vidW, H/vidH);
     const dw = Math.round(vidW*s), dh = Math.round(vidH*s);
@@ -327,13 +350,11 @@
     const sx = dw / w, sy = dh / h;
     const pad = parseInt(ui.pad.value,10);
 
-    // update trails (store last 30 centroids)
+    // update trails (store last ~0.9s centroids)
     if(ui.trails.checked){
       const now = Date.now();
-      comps.forEach(c=>{
-        trails.push({x:dx+c.cx*sx,y:dy+c.cy*sy,t:now});
-      });
-      const cutoff = now - 900; // ms
+      comps.forEach(c=>{ trails.push({x:dx+c.cx*sx,y:dy+c.cy*sy,t:now}); });
+      const cutoff = now - 900;
       trails = trails.filter(p=>p.t>=cutoff);
       ctx.save();
       ctx.strokeStyle = 'rgba(59,211,167,0.6)';
@@ -349,18 +370,19 @@
 
     // draw components
     ctx.save();
-    ctx.lineWidth = 2;
     comps.forEach(c=>{
       const x = dx + c.minx*sx - pad;
       const y = dy + c.miny*sy - pad;
       const w2 = (c.maxx-c.minx+1)*sx + pad*2;
       const h2 = (c.maxy-c.miny+1)*sy + pad*2;
-      if(ui.showBoxes.checked){ ctx.strokeStyle = '#3bd3a7'; ctx.strokeRect(x,y,w2,h2); }
+      if(ui.showBoxes.checked){ ctx.lineWidth = 2; ctx.strokeStyle = '#3bd3a7'; ctx.strokeRect(x,y,w2,h2); }
       if(ui.showCentroids.checked){
-        ctx.fillStyle = '#8af1ff'; ctx.beginPath(); ctx.arc(dx+c.cx*sx, dy+c.cy*sy, 4, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#8af1ff'; ctx.beginPath(); ctx.arc(dx+c.cx*sx, dy+c.cy*sy, 3.5, 0, Math.PI*2); ctx.fill();
       }
       if(ui.showContours.checked && c.contour.length>0){
-        ctx.strokeStyle = '#ff6ad5'; ctx.beginPath();
+        ctx.strokeStyle = '#ff8c00'; // orange
+        ctx.lineWidth = 1.25;        // slightly thinner than boxes
+        ctx.beginPath();
         for(let i=0;i<c.contour.length;i+=2){
           const px = dx + c.contour[i]*sx;
           const py = dy + c.contour[i+1]*sy;
@@ -379,9 +401,7 @@
     requestAnimationFrame(process);
   }
 
-  // Start render loop once anything plays
-  v.addEventListener('play', ()=>{ running=true; resize(); requestAnimationFrame(process); });
-  v.addEventListener('pause', ()=>{ running=false; });
+  v.addEventListener('play', ()=>{ resize(); requestAnimationFrame(process); });
 
   // If URL has ?src=...
   const u = new URL(location.href);

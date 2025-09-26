@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Blob Track — Video/Webcam Overlay</title>
+  <style>
+    :root{
+      --bg:#0b0d10;--panel:#11151a;--ink:#e6edf3;--muted:#9fb0c0;--acc:#3bd3a7;--warn:#ff9b57;
+    }
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji"}
+    .app{display:grid;grid-template-columns:300px 1fr;grid-template-rows:auto 1fr;gap:10px;height:100%;}
+    header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #1c232b;background:var(--panel)}
+    header h1{margin:0;font-size:16px;letter-spacing:.2px}
+    header .small{color:var(--muted);font-size:12px}
+    aside{background:var(--panel);padding:10px 12px;overflow:auto}
+    main{position:relative;background:#000;display:grid;place-items:center;}
+    #out{max-width:100%;max-height:100%;width:100%;height:100%;display:block;background:#000}
+    .controls{display:grid;gap:10px}
+    .row{display:flex;align-items:center;gap:8px}
+    .row label{flex:1;color:var(--muted)}
+    .row input[type="range"]{flex:2}
+    .btn{appearance:none;border:1px solid #25303a;background:#0f141a;color:var(--ink);padding:8px 10px;border-radius:10px;cursor:pointer}
+    .btn:active{transform:translateY(1px)}
+    .btn.primary{border-color:#22483f;background:#0d201b;color:#b7ffea}
+    .btn.warn{border-color:#553016;background:#20110a;color:#ffd6bd}
+    .group{border:1px solid #1f2831;border-radius:12px;padding:10px}
+    .group h3{margin:0 0 8px 0;font-size:13px;color:var(--muted);letter-spacing:.3px}
+    .badgel{font-variant-numeric:tabular-nums;color:var(--muted)}
+    .drop{border:1px dashed #2a3946;border-radius:10px;padding:10px;cursor:pointer;text-align:center;color:var(--muted)}
+    .drop.drag{background:#0d1620}
+    footer{position:absolute;inset:auto 10px 10px auto;background:#0008;color:#cde;padding:6px 8px;border-radius:8px;font:12px/1.2 ui-monospace,Consolas,Menlo,monospace}
+    .legend{position:absolute;left:10px;bottom:10px;background:#0008;padding:6px 8px;border-radius:8px;color:#cde;font-size:12px}
+    .legend b{color:#fff}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>Blob Track — Video/Webcam Overlay <span class="small">(vanilla JS)</span></h1>
+      <div class="row">
+        <button id="useWebcam" class="btn primary">Use Webcam</button>
+        <button id="stop" class="btn warn">Stop</button>
+      </div>
+    </header>
+
+    <aside>
+      <div class="controls">
+        <div id="drop" class="drop">Drop a video file here or <label style="color:#b7ffea;text-decoration:underline;cursor:pointer"><input id="file" type="file" accept="video/*" hidden />choose a file</label></div>
+
+        <div class="group">
+          <h3>Preprocess</h3>
+          <div class="row"><label>Scale (processing resolution)</label><input id="scale" type="range" min="0.2" max="1" step="0.05" value="0.4"><span class="badgel" id="scaleVal">0.40×</span></div>
+          <div class="row"><label>Blur radius (px)</label><input id="blur" type="range" min="0" max="6" step="1" value="2"><span class="badgel" id="blurVal">2</span></div>
+        </div>
+
+        <div class="group">
+          <h3>Background Model</h3>
+          <div class="row"><label>Learning rate α</label><input id="alpha" type="range" min="0" max="0.3" step="0.005" value="0.03"><span class="badgel" id="alphaVal">0.030</span></div>
+          <div class="row"><label>Reset background</label><button id="resetBg" class="btn">Reset</button></div>
+        </div>
+
+        <div class="group">
+          <h3>Threshold & Filter</h3>
+          <div class="row"><label>Threshold (0–255)</label><input id="th" type="range" min="1" max="255" step="1" value="30"><span class="badgel" id="thVal">30</span></div>
+          <div class="row"><label>Min blob area (px)</label><input id="minA" type="range" min="5" max="5000" step="5" value="300"><span class="badgel" id="minAVal">300</span></div>
+          <div class="row"><label>Max blob area (px)</label><input id="maxA" type="range" min="200" max="40000" step="100" value="20000"><span class="badgel" id="maxAVal">20000</span></div>
+        </div>
+
+        <div class="group">
+          <h3>Overlay</h3>
+          <div class="row"><label><input id="showBoxes" type="checkbox" checked> Show boxes</label></div>
+          <div class="row"><label><input id="showCentroids" type="checkbox" checked> Show centroids</label></div>
+          <div class="row"><label><input id="showContours" type="checkbox" checked> Show contours</label></div>
+          <div class="row"><label><input id="trails" type="checkbox"> Trails (short)</label></div>
+          <div class="row"><label>Box padding (px)</label><input id="pad" type="range" min="0" max="30" step="1" value="4"><span class="badgel" id="padVal">4</span></div>
+        </div>
+
+        <div class="group">
+          <h3>Playback</h3>
+          <div class="row"><label>Pause/Play</label><button id="toggle" class="btn">Pause</button></div>
+          <div class="row"><label>Seek (sec)</label><input id="seek" type="number" step="0.1" value="0"><button id="seekBtn" class="btn">Go</button></div>
+        </div>
+
+        <div class="group">
+          <h3>Export</h3>
+          <div class="row"><button id="snap" class="btn">Snapshot PNG</button></div>
+        </div>
+      </div>
+    </aside>
+
+    <main>
+      <canvas id="out"></canvas>
+      <div class="legend">Legend: <b>green</b> box, <b>cyan</b> centroid, <b>magenta</b> contour</div>
+      <footer id="stats">—</footer>
+    </main>
+  </div>
+
+  <!-- Hidden working elements -->
+  <video id="v" playsinline muted crossorigin="anonymous" style="display:none"></video>
+  <canvas id="proc" style="display:none"></canvas>
+
+<script>
+(function(){
+  // Elements
+  const v = document.getElementById('v');
+  const cnv = document.getElementById('out');
+  const ctx = cnv.getContext('2d');
+  const pcnv = document.getElementById('proc');
+  const pctx = pcnv.getContext('2d', { willReadFrequently: true });
+  const stats = document.getElementById('stats');
+
+  // UI
+  const el = id => document.getElementById(id);
+  const ui = {
+    useWebcam: el('useWebcam'), stop: el('stop'), file: el('file'), drop: el('drop'),
+    scale: el('scale'), blur: el('blur'), alpha: el('alpha'), resetBg: el('resetBg'),
+    th: el('th'), minA: el('minA'), maxA: el('maxA'),
+    showBoxes: el('showBoxes'), showCentroids: el('showCentroids'), showContours: el('showContours'), trails: el('trails'), pad: el('pad'),
+    toggle: el('toggle'), seek: el('seek'), seekBtn: el('seekBtn'), snap: el('snap'),
+    scaleVal: el('scaleVal'), blurVal: el('blurVal'), alphaVal: el('alphaVal'), thVal: el('thVal'), minAVal: el('minAVal'), maxAVal: el('maxAVal'), padVal: el('padVal')
+  };
+  const upd = () => {
+    ui.scaleVal.textContent = (+ui.scale.value).toFixed(2) + '×';
+    ui.blurVal.textContent = ui.blur.value;
+    ui.alphaVal.textContent = (+ui.alpha.value).toFixed(3);
+    ui.thVal.textContent = ui.th.value;
+    ui.minAVal.textContent = ui.minA.value;
+    ui.maxAVal.textContent = ui.maxA.value;
+    ui.padVal.textContent = ui.pad.value;
+  };
+  ['scale','blur','alpha','th','minA','maxA','pad'].forEach(k=>ui[k].addEventListener('input', upd));
+  upd();
+
+  // State
+  let stream = null;
+  let running = true;
+  let bg = null; // Float32 background
+  let lastTime = performance.now();
+  let fps = 0, counter = 0;
+  let trails = [];
+
+  function stopAll(){
+    if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
+    v.removeAttribute('srcObject');
+    v.pause();
+  }
+
+  // Load local file
+  ui.file.addEventListener('change', e => {
+    if(!e.target.files?.length) return;
+    const file = e.target.files[0];
+    stopAll();
+    v.src = URL.createObjectURL(file);
+    v.loop = true; v.muted = true; v.play();
+    v.onloadedmetadata = resize;
+  });
+
+  // Drag & drop
+  ;['dragenter','dragover'].forEach(ev=>ui.drop.addEventListener(ev, e=>{e.preventDefault(); ui.drop.classList.add('drag');}));
+  ;['dragleave','drop'].forEach(ev=>ui.drop.addEventListener(ev, e=>{e.preventDefault(); ui.drop.classList.remove('drag');}));
+  ui.drop.addEventListener('drop', e=>{
+    const file = e.dataTransfer.files?.[0];
+    if(file && file.type.startsWith('video/')){ ui.file.files = e.dataTransfer.files; ui.file.dispatchEvent(new Event('change')); }
+  });
+
+  // Webcam
+  ui.useWebcam.addEventListener('click', async ()=>{
+    try{
+      stopAll();
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode:'user' }, audio:false });
+      v.srcObject = stream; v.play();
+      v.onloadedmetadata = resize;
+    }catch(err){ alert('Camera permission denied or not available.'); console.error(err); }
+  });
+
+  ui.stop.addEventListener('click', ()=>{ stopAll(); });
+
+  ui.toggle.addEventListener('click', ()=>{ if(v.paused){ v.play(); ui.toggle.textContent='Pause'; } else { v.pause(); ui.toggle.textContent='Play'; } });
+  ui.seekBtn.addEventListener('click', ()=>{ const t = parseFloat(ui.seek.value||'0'); if(Number.isFinite(t)) v.currentTime = t; });
+
+  ui.resetBg.addEventListener('click', ()=>{ bg=null; });
+
+  ui.snap.addEventListener('click', ()=>{
+    const a = document.createElement('a');
+    a.download = 'blobtrack_'+Date.now()+'.png';
+    a.href = cnv.toDataURL('image/png');
+    a.click();
+  });
+
+  function resize(){
+    // Display canvas: match video aspect within container
+    const W = v.videoWidth, H = v.videoHeight;
+    if(!W||!H) return;
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio||1));
+    cnv.width = cnv.clientWidth * dpr;
+    cnv.height = cnv.clientHeight * dpr;
+    ctx.setTransform(dpr,0,0,dpr,0,0); // scale for crisp text
+    // Processing canvas: downscale for speed
+    const s = parseFloat(ui.scale.value);
+    pcnv.width = Math.max(32, Math.round(W * s));
+    pcnv.height = Math.max(32, Math.round(H * s));
+    bg = null; // force rebuild at new size
+  }
+  window.addEventListener('resize', resize);
+
+  // Simple box blur (integer radius) operating on grayscale Float32 buffer
+  function boxBlurGray(buf, w, h, r){
+    if(r<=0) return buf;
+    const out = new Float32Array(buf.length);
+    const win = (r*2+1);
+    // horizontal
+    for(let y=0;y<h;y++){
+      let acc=0; let yi=y*w; let head=yi, tail=yi;
+      for(let i=-r;i<=r;i++){ acc += buf[yi + Math.min(w-1, Math.max(0,i))]; }
+      for(let x=0;x<w;x++){
+        out[yi+x] = acc / win;
+        const add = Math.min(w-1, x+r+1), rem = Math.max(0, x-r);
+        acc += buf[yi+add] - buf[yi+rem];
+      }
+    }
+    // vertical
+    const out2 = new Float32Array(buf.length);
+    for(let x=0;x<w;x++){
+      let acc=0;
+      for(let i=-r;i<=r;i++){ acc += out[Math.min(h-1, Math.max(0,i))*w + x]; }
+      for(let y=0;y<h;y++){
+        out2[y*w+x] = acc / win;
+        const add = Math.min(h-1, y+r+1), rem = Math.max(0, y-r);
+        acc += out[add*w+x] - out[rem*w+x];
+      }
+    }
+    return out2;
+  }
+
+  // Connected Components (binary mask Uint8, 0/1) => components list
+  function connectedComponents(mask, w, h){
+    const labels = new Int32Array(w*h);
+    const comps = [];
+    let cur = 1;
+    const stackX = new Int32Array(w*h);
+    const stackY = new Int32Array(w*h);
+    for(let y=0;y<h;y++){
+      for(let x=0;x<w;x++){
+        const idx = y*w+x;
+        if(mask[idx]===1 && labels[idx]===0){
+          // flood fill
+          let top=0; stackX[top]=x; stackY[top]=y; top++;
+          labels[idx]=cur;
+          let minx=x,maxx=x,miny=y,maxy=y,area=0,cx=0,cy=0;
+          const contour=[];
+          while(top>0){
+            top--; const px=stackX[top], py=stackY[top];
+            const pidx=py*w+px; area++; cx+=px; cy+=py;
+            if(px<minx)minx=px; if(px>maxx)maxx=px; if(py<miny)miny=py; if(py>maxy)maxy=py;
+            // naive 4-neighborhood
+            const nbs=[[1,0],[-1,0],[0,1],[0,-1]];
+            for(let i=0;i<4;i++){
+              const nx=px+nbs[i][0], ny=py+nbs[i][1];
+              if(nx>=0&&ny>=0&&nx<w&&ny<h){
+                const nidx=ny*w+nx;
+                if(mask[nidx]===1 && labels[nidx]===0){ labels[nidx]=cur; stackX[top]=nx; stackY[top]=ny; top++; }
+              }
+            }
+            // edge test for contour: any neighbor off or 0
+            if(px===0||py===0||px===w-1||py===h-1|| mask[pidx-1]===0||mask[pidx+1]===0||mask[pidx-w]===0||mask[pidx+w]===0){
+              contour.push(px,py);
+            }
+          }
+          comps.push({ label:cur, minx,maxx,miny,maxy, area, cx:cx/area, cy:cy/area, contour });
+          cur++;
+        }
+      }
+    }
+    return comps;
+  }
+
+  function process(){
+    if(!v.videoWidth){ requestAnimationFrame(process); return; }
+    // draw into processing canvas at low res
+    pctx.drawImage(v, 0,0, pcnv.width, pcnv.height);
+    const {width:w,height:h} = pcnv;
+    const img = pctx.getImageData(0,0,w,h);
+    const data = img.data;
+    const gray = new Float32Array(w*h);
+    for(let i=0,j=0;i<data.length;i+=4,j++){
+      // perceptual luma
+      gray[j] = (0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2]);
+    }
+    const blurR = parseInt(ui.blur.value,10);
+    const g2 = boxBlurGray(gray,w,h,blurR);
+
+    if(!bg || bg.length!==g2.length){ bg = new Float32Array(g2); }
+    const a = parseFloat(ui.alpha.value);
+    // diff + bg update
+    const diff = new Float32Array(g2.length);
+    for(let i=0;i<g2.length;i++){
+      const d = Math.abs(g2[i] - bg[i]);
+      diff[i] = d;
+      bg[i] = bg[i]*(1-a) + g2[i]*a;
+    }
+    // threshold
+    const T = parseInt(ui.th.value,10);
+    const mask = new Uint8Array(g2.length);
+    for(let i=0;i<diff.length;i++){ mask[i] = diff[i] > T ? 1 : 0; }
+
+    // connected components
+    let comps = connectedComponents(mask,w,h);
+    // area filter
+    const minA = parseInt(ui.minA.value,10);
+    const maxA = parseInt(ui.maxA.value,10);
+    comps = comps.filter(c=>c.area>=minA && c.area<=maxA);
+
+    // draw overlay: base frame scaled to canvas
+    const W = cnv.clientWidth, H = cnv.clientHeight;
+    // letterbox fit
+    const vidW = v.videoWidth, vidH = v.videoHeight;
+    const s = Math.min(W/vidW, H/vidH);
+    const dw = Math.round(vidW*s), dh = Math.round(vidH*s);
+    const dx = (W-dw)>>1, dy = (H-dh)>>1;
+
+    if(!ui.trails.checked){ ctx.clearRect(0,0,W,H); }
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(v, dx, dy, dw, dh);
+
+    // scale from proc space to display space within letterbox area
+    const sx = dw / w, sy = dh / h;
+    const pad = parseInt(ui.pad.value,10);
+
+    // update trails (store last 30 centroids)
+    if(ui.trails.checked){
+      const now = Date.now();
+      comps.forEach(c=>{
+        trails.push({x:dx+c.cx*sx,y:dy+c.cy*sy,t:now});
+      });
+      const cutoff = now - 900; // ms
+      trails = trails.filter(p=>p.t>=cutoff);
+      ctx.save();
+      ctx.strokeStyle = 'rgba(59,211,167,0.6)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for(let i=1;i<trails.length;i++){
+        const a = trails[i-1], b = trails[i];
+        ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y);
+      }
+      ctx.stroke();
+      ctx.restore();
+    } else { trails.length=0; }
+
+    // draw components
+    ctx.save();
+    ctx.lineWidth = 2;
+    comps.forEach(c=>{
+      const x = dx + c.minx*sx - pad;
+      const y = dy + c.miny*sy - pad;
+      const w2 = (c.maxx-c.minx+1)*sx + pad*2;
+      const h2 = (c.maxy-c.miny+1)*sy + pad*2;
+      if(ui.showBoxes.checked){ ctx.strokeStyle = '#3bd3a7'; ctx.strokeRect(x,y,w2,h2); }
+      if(ui.showCentroids.checked){
+        ctx.fillStyle = '#8af1ff'; ctx.beginPath(); ctx.arc(dx+c.cx*sx, dy+c.cy*sy, 4, 0, Math.PI*2); ctx.fill();
+      }
+      if(ui.showContours.checked && c.contour.length>0){
+        ctx.strokeStyle = '#ff6ad5'; ctx.beginPath();
+        for(let i=0;i<c.contour.length;i+=2){
+          const px = dx + c.contour[i]*sx;
+          const py = dy + c.contour[i+1]*sy;
+          if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+        }
+        ctx.stroke();
+      }
+    });
+    ctx.restore();
+
+    // stats
+    const t = performance.now(); counter++;
+    if(t-lastTime>500){ fps = Math.round(counter * 1000 / (t-lastTime)); counter=0; lastTime=t; }
+    stats.textContent = `FPS ${fps} | blobs ${comps.length} | proc ${pcnv.width}×${pcnv.height}`;
+
+    requestAnimationFrame(process);
+  }
+
+  // Start render loop once anything plays
+  v.addEventListener('play', ()=>{ running=true; resize(); requestAnimationFrame(process); });
+  v.addEventListener('pause', ()=>{ running=false; });
+
+  // If URL has ?src=...
+  const u = new URL(location.href);
+  const src = u.searchParams.get('src');
+  if(src){ v.src = src; v.loop = true; v.muted = true; v.play(); }
+})();
+</script>
+</body>
+</html>

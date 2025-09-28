@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Wind-on-Wall — Invert-Blend + Residual Staining</title>
+<title>Wind-on-Wall — Invert-Blend + Residual Staining (Hi-Res)</title>
 <style>
-  :root{--bg:#0b0e12;--fg:#e6eeff;--mut:#8ea0ba}
+  :root{--bg:#0b0e12;--fg:#e6eeff;--mut:#90a1bb}
   html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:14px/1.35 system-ui,Segoe UI,Roboto,Helvetica,Arial}
   .wrap{display:grid;grid-template-columns:320px 1fr;gap:14px;height:100%}
   aside{padding:14px 12px 16px;border-right:1px solid #1a2233;overflow:auto}
@@ -19,30 +19,28 @@
   .row input[type="range"]{flex:2}
   .btn{appearance:none;border:1px solid #2a3754;background:#121826;color:#cfe1ff;border-radius:8px;padding:6px 10px;cursor:pointer}
   .btn:active{transform:translateY(1px)}
+  .kbd{font:12px ui-monospace;background:#121520;border:1px solid #1f2736;border-radius:6px;padding:1px 6px;color:#b8c7e8}
   .small{font-size:12px;color:#93a6c4}
-  .kbd{font:12px/1.2 ui-monospace,Menlo,Consolas;background:#121520;border:1px solid #1f2736;border-radius:6px;padding:1px 6px;color:#b8c7e8}
-  .stack{position:relative; height:100%}
-  .hud{position:absolute;top:10px;left:10px;background:rgba(0,0,0,.45);padding:6px 8px;border-radius:8px;font:12px ui-monospace}
+  .hud{position:absolute;top:10px;left:10px;background:rgba(0,0,0,.45);padding:6px 8px;border-radius:8px;font:12px ui-monospace;white-space:pre}
 </style>
 </head>
 <body>
 <div class="wrap">
   <aside>
-    <h1>Wind-on-Wall — Invert-Blend + Stain</h1>
+    <h1>Wind-on-Wall — Live</h1>
     <div class="row">
       <input id="file" type="file" accept="video/*">
-      <button id="webcam" class="btn">Use Webcam</button>
+      <button id="webcam" class="btn">Webcam</button>
       <button id="play" class="btn">Play/Pause</button>
     </div>
-    <div class="row small">Or URL param: <span class="kbd">?src=clip.mp4</span> (same-origin or CORS-enabled)</div>
+    <div class="row small">Or URL param: <span class="kbd">?src=clip.mp4</span> (same-origin or CORS)</div>
 
     <fieldset>
       <legend>Temporal window</legend>
       <div class="row"><label>Δt (seconds)</label><input id="dt" type="range" min="2" max="10" step="0.5" value="6"><span id="dtV">6.0</span></div>
       <div class="row"><label>Diff threshold</label><input id="thr" type="range" min="4" max="60" value="18"><span id="thrV">18</span></div>
-      <div class="row"><label>Blur (px)</label><input id="blur" type="range" min="0" max="3" value="1"><span id="blurV">1</span></div>
-      <div class="row"><label>Grey level</label><input id="grey" type="range" min="60" max="180" value="120"><span id="greyV">120</span></div>
-      <div class="row"><label>Analysis scale</label><input id="scale" type="range" min="0.4" max="1" step="0.05" value="0.7"><span id="scaleV">0.70</span></div>
+      <div class="row"><label>Blur (px)</label><input id="blur" type="range" min="0" max="3" value="0"><span id="blurV">0</span></div>
+      <div class="row"><label>Grey level</label><input id="grey" type="range" min="60" max="200" value="120"><span id="greyV">120</span></div>
     </fieldset>
 
     <fieldset>
@@ -56,22 +54,17 @@
     <fieldset>
       <legend>Export</legend>
       <div class="row">
-        <button id="shot" class="btn">Save PNG</button>
-        <button id="rec" class="btn">Start/Stop Rec</button>
+        <button id="shot" class="btn">Export PNG</button>
+        <button id="rec" class="btn">Start/Stop Video</button>
       </div>
       <div class="row small" id="dbg">buffer: 0 | fps —</div>
     </fieldset>
-
-    <div class="small">
-      This exactly computes: <span class="kbd">0.5×Current(t) + 0.5×Invert(Past(t−Δt))</span> on a change mask, else grey.  
-      Stain accumulates where the mask fires, fading by the decay factor each frame.
-    </div>
   </aside>
 
-  <main class="stack">
+  <main>
     <canvas id="view"></canvas>
     <canvas id="stain"></canvas>
-    <div class="hud" id="hud"></div>
+    <div id="hud" class="hud"></div>
   </main>
 </div>
 
@@ -91,9 +84,9 @@
   const hud = document.getElementById('hud');
   const dbg = document.getElementById('dbg');
 
-  const sliders = ["dt","thr","blur","grey","scale","decay","strength"];
-  const el = Object.fromEntries(sliders.map(id=>[id, document.getElementById(id)]));
-  const out = Object.fromEntries(sliders.map(id=>[id+"V", document.getElementById(id+"V")]));
+  const ids = ["dt","thr","blur","grey","decay","strength"];
+  const el  = Object.fromEntries(ids.map(id=>[id, document.getElementById(id)]));
+  const out = Object.fromEntries(ids.map(id=>[id+"V", document.getElementById(id+"V")]));
   const stainOn = document.getElementById('stainOn');
   const colorPick = document.getElementById('color');
 
@@ -102,13 +95,10 @@
     out.thrV.textContent = el.thr.value;
     out.blurV.textContent = el.blur.value;
     out.greyV.textContent = el.grey.value;
-    out.scaleV.textContent = (+el.scale.value).toFixed(2);
     out.decayV.textContent = (+el.decay.value).toFixed(3);
     out.strengthV.textContent = (+el.strength.value).toFixed(2);
   }
-  sliders.forEach(id=>el[id].addEventListener('input', sync));
-  stainOn.addEventListener('change', sync);
-  colorPick.addEventListener('input', sync);
+  [...ids.map(id=>el[id]), stainOn, colorPick].forEach(x=>x.addEventListener('input', sync));
   sync();
 
   // --- Video source ---
@@ -116,7 +106,6 @@
   vid.crossOrigin = "anonymous";
   vid.playsInline = true; vid.muted = true; vid.loop = true; vid.preload = "auto";
 
-  // load via ?src=
   const qs = new URLSearchParams(location.search);
   const src = qs.get('src'); if(src){ vid.src = src; }
 
@@ -129,41 +118,62 @@
   playBtn.addEventListener('click', ()=> vid.paused ? vid.play() : vid.pause());
 
   let mediaStream = null;
-  webcamBtn.addEventListener('click', async ()=>{
-    try{
-      mediaStream = await navigator.mediaDevices.getUserMedia({video:true, audio:false});
-      vid.srcObject = mediaStream;
-      vid.play();
-    }catch(e){ alert('Webcam failed: '+e.message); }
-  });
+  async function startWebcam(){
+    stopWebcam();
+    mediaStream = await navigator.mediaDevices.getUserMedia({video:true, audio:false});
+    vid.srcObject = mediaStream; await vid.play();
+  }
   function stopWebcam(){ if(mediaStream){ mediaStream.getTracks().forEach(t=>t.stop()); mediaStream=null; } }
+  webcamBtn.addEventListener('click', ()=> startWebcam().catch(e=>alert('Webcam failed: '+e.message)));
 
-  // --- Canvases & processing ---
+  // --- HiDPI resize ---
   function fit(){
-    const r = view.getBoundingClientRect();
-    [view, stain].forEach(c=>{ c.width = Math.max(2, r.width|0); c.height = Math.max(2, r.height|0); });
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const rect = view.getBoundingClientRect();
+    const w = Math.max(2, Math.round(rect.width  * dpr));
+    const h = Math.max(2, Math.round(rect.height * dpr));
+    [view, stain].forEach(c=>{ c.width = w; c.height = h; });
+    // also resize offscreens
+    proc.width = w; proc.height = h;
+    maskCanvas.width = w; maskCanvas.height = h;
   }
   new ResizeObserver(fit).observe(view);
 
+  // --- Processing buffers ---
   const proc = document.createElement('canvas');
   const pctx = proc.getContext('2d', {willReadFrequently:true});
+  const maskCanvas = document.createElement('canvas');
+  const maskCtx = maskCanvas.getContext('2d');
 
-  // ring buffer of past analysis frames
+  // ring buffer of past frames (full-res)
   const buf = []; const MAX_SEC = 14;
-  function pushFrame(img, t){
-    buf.push({t, data: new Uint8ClampedArray(img.data), w: img.width, h: img.height});
+  function pushFrame(imgData, t){ // store a copy
+    buf.push({t, data: new Uint8ClampedArray(imgData.data), w: imgData.width, h: imgData.height});
     const cutoff = t - (MAX_SEC + 2);
     while(buf.length && buf[0].t < cutoff) buf.shift();
   }
   function getPastFrame(delta){
     const target = vid.currentTime - delta;
-    for(let i=buf.length-1;i>=0;i--){
-      if(buf[i].t <= target) return buf[i];
-    }
+    for(let i=buf.length-1;i>=0;i--){ if(buf[i].t <= target) return buf[i]; }
     return buf[0] || null;
   }
 
-  // recording
+  // helpers: draw video with "contain" fit (no distortion)
+  function drawVideoContained(ctx, video, W, H, blurPx){
+    ctx.save();
+    ctx.clearRect(0,0,W,H);
+    if(blurPx>0) ctx.filter = `blur(${blurPx}px)`;
+    const vw = video.videoWidth || 0, vh = video.videoHeight || 0;
+    if(vw && vh){
+      const s = Math.min(W/vw, H/vh);
+      const dw = Math.round(vw*s), dh = Math.round(vh*s);
+      const dx = Math.floor((W - dw)/2), dy = Math.floor((H - dh)/2);
+      ctx.drawImage(video, dx, dy, dw, dh);
+    }
+    ctx.restore();
+  }
+
+  // --- Recording ---
   let recorder=null, chunks=[];
   recBtn.addEventListener('click', ()=>{
     if(recorder && recorder.state==='recording'){ recorder.stop(); return; }
@@ -182,16 +192,10 @@
   });
 
   shotBtn.addEventListener('click', ()=>{
-    // composite stain over view into a temp canvas
-    const out = document.createElement('canvas');
-    out.width = view.width; out.height = view.height;
-    const ox = out.getContext('2d');
-    ox.drawImage(view,0,0);
-    ox.globalCompositeOperation='multiply';
-    ox.drawImage(stain,0,0);
+    // view already contains composite with stain (multiply)
     const a = document.createElement('a');
     a.download = 'still_'+Date.now()+'.png';
-    a.href = out.toDataURL('image/png');
+    a.href = view.toDataURL('image/png');
     a.click();
   });
 
@@ -201,127 +205,103 @@
     requestAnimationFrame(tick);
     if(vid.readyState < 2) return;
 
-    // prepare analysis canvas
-    const s = +el.scale.value;
-    const aw = Math.max(160, Math.round(view.width * s));
-    const ah = Math.max(90,  Math.round(view.height* s));
-    if(proc.width!==aw || proc.height!==ah){ proc.width=aw; proc.height=ah; }
+    const W = view.width, H = view.height;
 
-    // draw current frame into analysis canvas
-    pctx.filter = (+el.blur.value>0) ? `blur(${el.blur.value}px)` : 'none';
-    pctx.drawImage(vid, 0,0, aw, ah);
-    const curr = pctx.getImageData(0,0,aw,ah);
+    // 1) draw current frame at full-res into proc
+    drawVideoContained(pctx, vid, W, H, +el.blur.value);
+    const curr = pctx.getImageData(0,0,W,H);
     pushFrame(curr, vid.currentTime);
 
+    // 2) fetch past frame at t-Δt
     const past = getPastFrame(+el.dt.value);
     if(!past) return;
-    const c = curr.data, p = past.data;
 
-    // build a small output + small change mask
-    const small = new ImageData(aw, ah);
-    const outd = small.data;
-    const thr = +el.thr.value;
-    const grey = +el.grey.value;
+    // 3) per-pixel compute: masked invert-blend; build mask for staining
+    const c = curr.data, p = past.data;
+    const out = vctx.createImageData(W,H);
+    const od = out.data;
+    const md = new Uint8ClampedArray(W*H); // binary mask 0/255
+    const thr = +el.thr.value, grey = +el.grey.value;
 
     let changedCount = 0;
-
-    for(let i=0;i<c.length;i+=4){
+    for(let i=0, j=0; i<c.length; i+=4, j++){
       const r=c[i], g=c[i+1], b=c[i+2];
       const pr=p[i], pg=p[i+1], pb=p[i+2];
 
-      // luminance diff
       const lc = r*0.2126 + g*0.7152 + b*0.0722;
       const lp = pr*0.2126 + pg*0.7152 + pb*0.0722;
       const d = Math.abs(lc - lp);
 
       if(d > thr){
-        changedCount++;
-        // EXACT AE-style masked invert-blend:
-        outd[i]   = (r + (255 - pr)) * 0.5;
-        outd[i+1] = (g + (255 - pg)) * 0.5;
-        outd[i+2] = (b + (255 - pb)) * 0.5;
-        outd[i+3] = 255;
+        changedCount++; md[j]=255;
+        od[i]   = (r + (255 - pr)) * 0.5;
+        od[i+1] = (g + (255 - pg)) * 0.5;
+        od[i+2] = (b + (255 - pb)) * 0.5;
+        od[i+3] = 255;
       } else {
-        outd[i]   = grey;
-        outd[i+1] = grey;
-        outd[i+2] = grey;
-        outd[i+3] = 255;
+        md[j]=0;
+        od[i]=od[i+1]=od[i+2]=grey; od[i+3]=255;
       }
     }
 
-    // render small → scale to view
-    vctx.clearRect(0,0,view.width,view.height);
-    // put small in temp canvas to scale
-    const tmp = document.createElement('canvas');
-    tmp.width = aw; tmp.height = ah;
-    tmp.getContext('2d').putImageData(small, 0, 0);
-    vctx.imageSmoothingEnabled = true;
-    vctx.drawImage(tmp, 0, 0, view.width, view.height);
+    // 4) paint output
+    vctx.putImageData(out, 0, 0);
 
-    // residual staining
+    // 5) residual staining
     if(stainOn.checked){
-      // 1) decay existing stain alpha (destination-out reduces alpha uniformly)
+      // decay existing stain uniformly
       const decay = +el.decay.value;
       sctx.globalCompositeOperation = 'destination-out';
       sctx.fillStyle = `rgba(0,0,0,${1-decay})`;
-      sctx.fillRect(0,0,stain.width,stain.height);
+      sctx.fillRect(0,0,W,H);
       sctx.globalCompositeOperation = 'source-over';
 
-      // 2) draw new stain where change mask fired
-      //    Build a small alpha mask (white where changed)
-      const maskSmall = new ImageData(aw, ah);
-      const md = maskSmall.data;
-      for(let i=0;i<c.length;i+=4){
-        const r1=outd[i], g1=outd[i+1], b1=outd[i+2];
-        // changed pixels are those not equal to grey (quick check via luminance)
-        const lum = r1*0.2126 + g1*0.7152 + b1*0.0722;
-        const isChanged = Math.abs(lum - grey) > 1.0; // since grey has flat luminance
-        const v = isChanged ? 255 : 0;
-        md[i]=md[i+1]=md[i+2]=v; md[i+3]=v;
+      // draw new stain where mask=1 (colorized)
+      // reuse maskCanvas
+      const mImg = maskCtx.createImageData(W,H);
+      const mdat = mImg.data;
+      for(let j=0, k=0; j<md.length; j++, k+=4){
+        const v = md[j];
+        mdat[k]=mdat[k+1]=mdat[k+2]=v; mdat[k+3]=v;
       }
-      // paint maskSmall to a temp, colorize, then stamp onto stain
-      const mC = document.createElement('canvas');
-      mC.width = aw; mC.height = ah;
-      const mX = mC.getContext('2d');
-      mX.putImageData(maskSmall,0,0);
+      maskCtx.putImageData(mImg, 0, 0);
 
+      // colorize mask on offscreen then add to stain
       const col = colorPick.value;
-      // scale mask up to view size on a colorizer canvas
-      const colC = document.createElement('canvas');
-      colC.width = view.width; colC.height = view.height;
-      const colX = colC.getContext('2d');
-      colX.drawImage(mC, 0,0, view.width, view.height);
-      colX.globalCompositeOperation = 'source-in';
-      colX.fillStyle = col;
-      colX.globalAlpha = +el.strength.value; // stain intensity
-      colX.fillRect(0,0,view.width, view.height);
-
-      // Stamp onto stain
-      sctx.globalCompositeOperation = 'source-over';
-      sctx.drawImage(colC, 0,0);
+      const colCtx = maskCtx; // reuse same context via composite ops
+      colCtx.globalCompositeOperation = 'source-in';
+      colCtx.fillStyle = col;
+      colCtx.globalAlpha = +el.strength.value;
+      colCtx.fillRect(0,0,W,H);
+      // draw onto stain
+      sctx.drawImage(maskCanvas, 0, 0);
+      // reset maskCtx state
+      colCtx.globalAlpha = 1;
+      colCtx.globalCompositeOperation = 'source-over';
     }
 
-    // composite stain over view (multiply) for display
+    // 6) composite stain over view (multiply)
     if(stainOn.checked){
       vctx.globalCompositeOperation = 'multiply';
       vctx.drawImage(stain,0,0);
       vctx.globalCompositeOperation = 'source-over';
     }
 
-    // HUD + debug
+    // HUD/debug
     const dt = now - lastT; lastT = now;
     const inst = dt>0 ? 1000/dt : 0; fpsEMA = fpsEMA? fpsEMA*0.9 + inst*0.1 : inst;
-    const totalPix = aw*ah;
+    const totalPix = W*H;
     const pct = 100 * (changedCount / totalPix);
-    hud.textContent = `Δt = ${(+el.dt.value).toFixed(1)} s\nchanged = ${pct.toFixed(1)}% | thr=${el.thr.value}`;
+    hud.textContent = `Δt = ${(+el.dt.value).toFixed(1)} s\nthr = ${el.thr.value}, blur = ${el.blur.value}, grey = ${el.grey.value}\nchanged = ${pct.toFixed(1)}%`;
     dbg.textContent = `buffer: ${buf.length} | fps ~ ${fpsEMA.toFixed(1)}`;
   }
   requestAnimationFrame(tick);
 
-  // start playback when ready
+  // start playback on load
   vid.addEventListener('loadeddata', ()=>{ vid.play().catch(()=>{}); });
 
 })();
 </script>
 </body>
 </html>
+

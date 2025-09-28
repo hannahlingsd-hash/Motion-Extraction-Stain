@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Wind-on-Wall — Ghost Lines + Stain (Hi-Res)</title>
+<title>Wind-on-Wall — Ghosts + Stain (Hi-Res)</title>
 <style>
   :root{--bg:#0b0e12;--fg:#e6eeff;--mut:#90a1bb}
   html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:14px/1.35 system-ui,Segoe UI,Roboto,Helvetica,Arial}
@@ -44,20 +44,17 @@
     </fieldset>
 
     <fieldset>
-      <legend>Ghosts (motion lines)</legend>
-      <div class="row"><label>Find edges (Sobel)</label><input id="gFind" type="checkbox" checked></div>
-      <div class="row"><label>Edge gain</label><input id="gGain" type="range" min="0.5" max="5" step="0.1" value="2"><span id="gGainV">2.0</span></div>
-      <div class="row"><label>Invert edges</label><input id="gInv" type="checkbox"></div>
-      <div class="row"><label>Line softness (px)</label><input id="gBlur" type="range" min="0" max="4" value="1"><span id="gBlurV">1</span></div>
+      <legend>Ghosts (motion layer)</legend>
+      <div class="row"><label>Opacity</label><input id="gAlpha" type="range" min="0.2" max="1" step="0.05" value="0.6"><span id="gAlphaV">0.60</span></div>
+      <div class="row"><label>Edge-only</label><input id="gEdge" type="checkbox" checked></div>
+      <div class="row"><label>Softness (px)</label><input id="gBlur" type="range" min="0" max="4" value="1"><span id="gBlurV">1</span></div>
       <div class="row"><label>Tint amount</label><input id="gTintAmt" type="range" min="0" max="1" step="0.05" value="0.5"><span id="gTintAmtV">0.50</span></div>
       <div class="row"><label>Tint color</label><input id="gTintCol" type="color" value="#a7d1ff"></div>
-      <div class="row"><label>Opacity</label><input id="gAlpha" type="range" min="0.2" max="1" step="0.05" value="0.65"><span id="gAlphaV">0.65</span></div>
       <div class="row"><label>Blend mode</label>
         <select id="gBlend">
           <option value="normal">Normal</option>
           <option value="screen" selected>Screen</option>
           <option value="lighter">Lighter</option>
-          <option value="multiply">Multiply</option>
         </select>
       </div>
     </fieldset>
@@ -92,7 +89,7 @@
 
 <script>
 (function(){
-  // ---------- Elements ----------
+  // --- Elements & UI ---
   const can = {
     ghost: document.getElementById('ghost'),
     stain: document.getElementById('stain'),
@@ -110,11 +107,10 @@
   const hud = document.getElementById('hud');
   const dbg = document.getElementById('dbg');
 
-  const ids = ["dt","thr","grey","preblur","gAlpha","gBlur","gTintAmt","gGain","decay","strength","expand"];
+  const ids = ["dt","thr","grey","preblur","gAlpha","gBlur","gTintAmt","decay","strength","expand"];
   const el  = Object.fromEntries(ids.map(id=>[id, document.getElementById(id)]));
   const out = Object.fromEntries(ids.map(id=>[id+"V", document.getElementById(id+"V")]));
-  const gFind   = document.getElementById('gFind');
-  const gInv    = document.getElementById('gInv');
+  const gEdge   = document.getElementById('gEdge');
   const gBlend  = document.getElementById('gBlend');
   const gTintCol= document.getElementById('gTintCol');
   const stainOn = document.getElementById('stainOn');
@@ -128,29 +124,20 @@
     out.gAlphaV.textContent = (+el.gAlpha.value).toFixed(2);
     out.gBlurV.textContent = el.gBlur.value;
     out.gTintAmtV.textContent = (+el.gTintAmt.value).toFixed(2);
-    out.gGainV.textContent = (+el.gGain.value).toFixed(1);
     out.decayV.textContent = (+el.decay.value).toFixed(3);
     out.strengthV.textContent = (+el.strength.value).toFixed(2);
     out.expandV.textContent = el.expand.value;
   }
-  [...ids.map(id=>el[id]), gFind, gInv, gBlend, gTintCol, stainOn, sColor].forEach(x=>x.addEventListener('input', sync));
+  [...ids.map(id=>el[id]), gEdge, gBlend, gTintCol, stainOn, sColor].forEach(x=>x.addEventListener('input', sync));
   sync();
 
-  // ---------- Video ----------
+  // --- Video source ---
   const vid = document.createElement('video');
   vid.crossOrigin = "anonymous";
   vid.playsInline = true; vid.muted = true; vid.loop = true; vid.preload = "auto";
 
   const qs = new URLSearchParams(location.search);
   const src = qs.get('src'); if(src){ vid.src = src; }
-
-  let mediaStream = null;
-  async function startWebcam(){
-    stopWebcam();
-    mediaStream = await navigator.mediaDevices.getUserMedia({video:true, audio:false});
-    vid.srcObject = mediaStream; await vid.play();
-  }
-  function stopWebcam(){ if(mediaStream){ mediaStream.getTracks().forEach(t=>t.stop()); mediaStream=null; } }
 
   file.addEventListener('change', e=>{
     const f = e.target.files[0]; if(!f) return;
@@ -159,9 +146,17 @@
     vid.play();
   });
   playBtn.addEventListener('click', ()=> vid.paused ? vid.play() : vid.pause());
+
+  let mediaStream = null;
+  async function startWebcam(){
+    stopWebcam();
+    mediaStream = await navigator.mediaDevices.getUserMedia({video:true, audio:false});
+    vid.srcObject = mediaStream; await vid.play();
+  }
+  function stopWebcam(){ if(mediaStream){ mediaStream.getTracks().forEach(t=>t.stop()); mediaStream=null; } }
   webcamBtn.addEventListener('click', ()=> startWebcam().catch(e=>alert('Webcam failed: '+e.message)));
 
-  // ---------- HiDPI sizing ----------
+  // --- HiDPI resize ---
   function fit(){
     const dpr = Math.max(1, window.devicePixelRatio || 1);
     const r = can.final.getBoundingClientRect();
@@ -174,7 +169,7 @@
   }
   new ResizeObserver(fit).observe(can.final);
 
-  // ---------- Offscreens ----------
+  // --- Processing buffers ---
   const proc = document.createElement('canvas');
   const pctx = proc.getContext('2d', {willReadFrequently:true});
   const maskCanvas = document.createElement('canvas');
@@ -182,7 +177,6 @@
   const colCanvas = document.createElement('canvas');
   const colCtx = colCanvas.getContext('2d');
 
-  // ring buffer full-res
   const buf = []; const MAX_SEC = 14;
   function pushFrame(img, t){
     buf.push({t, data: new Uint8ClampedArray(img.data), w: img.width, h: img.height});
@@ -208,12 +202,13 @@
     }
     ctx.restore();
   }
+
   function hexRGB(hex){
     const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
     return m ? [parseInt(m[1],16), parseInt(m[2],16), parseInt(m[3],16)] : [255,255,255];
   }
 
-  // ---------- Recording / PNG ----------
+  // --- Recording ---
   let recorder=null, chunks=[];
   recBtn.addEventListener('click', ()=>{
     if(recorder && recorder.state==='recording'){ recorder.stop(); return; }
@@ -230,6 +225,7 @@
     };
     recorder.start();
   });
+
   shotBtn.addEventListener('click', ()=>{
     const a = document.createElement('a');
     a.download = 'still_'+Date.now()+'.png';
@@ -237,7 +233,7 @@
     a.click();
   });
 
-  // ---------- Main loop ----------
+  // --- Main loop ---
   let lastT=0, fpsEMA=0;
   function tick(now){
     requestAnimationFrame(tick);
@@ -245,7 +241,7 @@
 
     const W = can.final.width, H = can.final.height;
 
-    // 1) draw current frame
+    // 1) draw current frame into analysis
     drawVideoContained(pctx, vid, W, H, +el.preblur.value);
     const curr = pctx.getImageData(0,0,W,H);
     pushFrame(curr, vid.currentTime);
@@ -254,20 +250,21 @@
     const past = getPastFrame(+el.dt.value);
     if(!past) return;
 
-    // 3) diff mask + AE invert-blend ghost base
+    // 3) build mask and ghost image
     const c = curr.data, p = past.data;
+    const ghostImg = gctx.createImageData(W,H);
+    const gd = ghostImg.data;
     const thr = +el.thr.value, grey = +el.grey.value;
     const tintAmt = +el.gTintAmt.value;
     const [tr,tg,tb] = hexRGB(gTintCol.value);
 
-    const ghostBase = gctx.createImageData(W,H);
-    const gb = ghostBase.data;
+    // first pass: mask + raw ghost color
     const mask = new Uint8ClampedArray(W*H);
     let changedCount=0;
-
     for(let i=0,j=0;i<c.length;i+=4,j++){
       const r=c[i], g=c[i+1], b=c[i+2];
       const pr=p[i], pg=p[i+1], pb=p[i+2];
+
       const lc = r*0.2126 + g*0.7152 + b*0.0722;
       const lp = pr*0.2126 + pg*0.7152 + pb*0.0722;
       const d = Math.abs(lc - lp);
@@ -284,93 +281,60 @@
           G = G*(1-tintAmt) + (tg*(Y/255))*(tintAmt);
           B = B*(1-tintAmt) + (tb*(Y/255))*(tintAmt);
         }
-        gb[i]=R; gb[i+1]=G; gb[i+2]=B; gb[i+3]=255;
+        gd[i]=R; gd[i+1]=G; gd[i+2]=B; gd[i+3]=255;
       } else {
-        gb[i]=grey; gb[i+1]=grey; gb[i+2]=grey; gb[i+3]=255;
+        gd[i]=grey; gd[i+1]=grey; gd[i+2]=grey; gd[i+3]=255;
       }
     }
 
-    // 4) FIND EDGES over the ghostBase (Sobel on luminance)
-    let ghostToDraw = ghostBase; // default
-    if(document.getElementById('gFind').checked){
-      // luminance buffer of ghostBase
-      const L = new Float32Array(W*H);
-      for(let i=0,j=0;i<gb.length;i+=4,j++){
-        L[j] = gb[i]*0.2126 + gb[i+1]*0.7152 + gb[i+2]*0.0722;
-      }
-      const gain = +el.gGain.value;
-      const inv = document.getElementById('gInv').checked;
-      const edgeImg = gctx.createImageData(W,H);
-      const ed = edgeImg.data;
-
-      // Sobel
+    // optional edge-only mask to make ghosts wispy
+    let useMask = mask;
+    if(document.getElementById('gEdge').checked){
+      const edge = new Uint8ClampedArray(W*H);
       for(let y=1;y<H-1;y++){
-        for(let x=1;x<W-1;x++){
-          const j = y*W + x;
-          if(mask[j]===0){
-            // unchanged area -> grey
-            const i = j*4;
-            ed[i]=grey; ed[i+1]=grey; ed[i+2]=grey; ed[i+3]=255;
-            continue;
+        let idx=y*W+1;
+        for(let x=1;x<W-1;x++,idx++){
+          if(mask[idx]===0) continue;
+          if(mask[idx-1]===0 || mask[idx+1]===0 || mask[idx-W]===0 || mask[idx+W]===0){
+            edge[idx]=255;
           }
-          const a=L[j-W-1], b=L[j-W], c1=L[j-W+1];
-          const d1=L[j-1],   f=L[j+1];
-          const g1=L[j+W-1], h=L[j+W], i1=L[j+W+1];
-
-          const Gx = -a -2*d1 - g1 + c1 + 2*f + i1;
-          const Gy = -a -2*b - c1 + g1 + 2*h + i1;
-          let mag = Math.sqrt(Gx*Gx + Gy*Gy);   // ~0..~1440
-          let e = Math.min(255, (mag * gain) / 4); // scale
-          if(inv) e = 255 - e;
-
-          // tint edge intensity
-          const amt = tintAmt;
-          const Rt = (1-amt)*e + amt*(tr*(e/255));
-          const Gt = (1-amt)*e + amt*(tg*(e/255));
-          const Bt = (1-amt)*e + amt*(tb*(e/255));
-
-          const ii = j*4;
-          ed[ii]=Rt; ed[ii+1]=Gt; ed[ii+2]=Bt; ed[ii+3]=255;
         }
       }
-
-      ghostToDraw = edgeImg;
+      useMask = edge;
+      // zero out interior pixels in ghost image for true edge-only look
+      for(let y=0;y<H;y++){
+        for(let x=0;x<W;x++){
+          const j=y*W+x, i=j*4;
+          if(mask[j] && !edge[j]){
+            gd[i]=grey; gd[i+1]=grey; gd[i+2]=grey; gd[i+3]=255;
+          }
+        }
+      }
     }
 
     // paint ghost layer
-    gctx.putImageData(ghostToDraw,0,0);
+    gctx.putImageData(ghostImg,0,0);
 
-    // optional ghost line softness
-    if(+el.gBlur.value>0){
-      gctx.filter = `blur(${+el.gBlur.value}px)`;
-      // redraw blurred onto itself
-      const tmp = document.createElement('canvas');
-      tmp.width=W; tmp.height=H;
-      tmp.getContext('2d').drawImage(can.ghost,0,0);
-      gctx.filter='none';
-      gctx.clearRect(0,0,W,H);
-      gctx.drawImage(tmp,0,0);
-    }
-
-    // 5) STAIN (solid blotches) — uses FULL mask (not edges)
+    // 4) update stain layer (solid blotches)
     if(stainOn.checked){
+      // decay
       const decay = +el.decay.value;
       sctx.globalCompositeOperation='destination-out';
       sctx.fillStyle = `rgba(0,0,0,${1-decay})`;
       sctx.fillRect(0,0,W,H);
       sctx.globalCompositeOperation='source-over';
 
-      // mask → canvas
+      // draw expanded, colorized mask
       const mImg = maskCtx.createImageData(W,H);
       const mdat = mImg.data;
-      for(let j=0,k=0;j<mask.length;j++,k+=4){
-        const v = mask[j];
+      for(let j=0,k=0;j<useMask.length;j++,k+=4){
+        const v = mask[j]; // use FULL mask (not edge) for blotches
         mdat[k]=mdat[k+1]=mdat[k+2]=v; mdat[k+3]=v;
       }
       maskCtx.putImageData(mImg,0,0);
 
-      // expand & colorize
       colCtx.clearRect(0,0,W,H);
+      // expand/solidify
       const expand = +el.expand.value;
       if(expand>0){ colCtx.filter = `blur(${expand}px)`; }
       colCtx.drawImage(maskCanvas,0,0);
@@ -385,37 +349,41 @@
       sctx.drawImage(colCanvas,0,0);
     }
 
-    // 6) FINAL COMPOSITE: grey base → ghosts (blend/alpha) → stain (multiply)
+    // 5) compose final: flat grey base → ghosts (blend/alpha) → stain (multiply)
     fctx.clearRect(0,0,W,H);
-    const grey = +el.grey.value;
-    fctx.fillStyle = `rgb(${grey},${grey},${grey})`;
+    fctx.fillStyle = `rgb(${el.grey.value},${el.grey.value},${el.grey.value})`;
     fctx.fillRect(0,0,W,H);
 
     fctx.globalAlpha = +el.gAlpha.value;
-    fctx.globalCompositeOperation = gBlend.value;
+    fctx.globalCompositeOperation = gBlend.value;      // ghost blend
+    // optional softness
+    if(+el.gBlur.value>0){ fctx.filter = `blur(${el.gBlur.value}px)`; }
     fctx.drawImage(can.ghost,0,0);
+    fctx.filter='none';
     fctx.globalAlpha = 1;
 
+    // stain multiply on top
     if(stainOn.checked){
       fctx.globalCompositeOperation='multiply';
       fctx.drawImage(can.stain,0,0);
     }
     fctx.globalCompositeOperation='source-over';
 
-    // HUD / debug
+    // HUD/debug
     const dt = now - lastT; lastT = now;
     const inst = dt>0 ? 1000/dt : 0; fpsEMA = fpsEMA? fpsEMA*0.9 + inst*0.1 : inst;
     const pct = 100*(changedCount/(W*H));
     hud.textContent = `Δt = ${(+el.dt.value).toFixed(1)} s
-thr=${el.thr.value}, pre-blur=${el.preblur.value}, grey=${el.grey.value}
-ghost: find=${gFind.checked?'on':'off'}, gain=${(+el.gGain.value).toFixed(1)}, invert=${gInv.checked}, α=${(+el.gAlpha.value).toFixed(2)}, blend=${gBlend.value}
-stain: ${stainOn.checked?'on':'off'} decay=${(+el.decay.value).toFixed(3)}, expand=${el.expand.value}, strength=${(+el.strength.value).toFixed(2)}
-changed=${pct.toFixed(1)}%`;
+thr = ${el.thr.value}, pre-blur = ${el.preblur.value}, grey = ${el.grey.value}
+ghost: ${gEdge.checked?'edge ':''}${gBlend.value}, α=${(+el.gAlpha.value).toFixed(2)}, tint=${(+el.gTintAmt.value).toFixed(2)}
+stain: decay=${(+el.decay.value).toFixed(3)}, expand=${el.expand.value}, strength=${(+el.strength.value).toFixed(2)}
+changed = ${pct.toFixed(1)}%`;
     dbg.textContent = `buffer: ${buf.length} | fps ~ ${fpsEMA.toFixed(1)}`;
   }
   requestAnimationFrame(tick);
 
   vid.addEventListener('loadeddata', ()=>{ vid.play().catch(()=>{}); });
+
 })();
 </script>
 </body>

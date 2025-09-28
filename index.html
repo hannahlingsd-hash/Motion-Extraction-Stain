@@ -28,7 +28,6 @@
   .warn{color:#ffb86b}
   .ok{color:#6be77a}
   .nosrc{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#aac; font:12px ui-monospace; pointer-events:none}
-  /* Floating replay button */
   .fab{position:absolute;top:46px;right:10px;z-index:5;border:1px solid #2a3754;background:#121826;color:#cfe1ff;border-radius:999px;padding:6px 10px;cursor:pointer}
 </style>
 </head>
@@ -57,13 +56,18 @@
 
     <fieldset>
       <legend>Ghosts (motion)</legend>
-      <div class="row"><label>Ghost opacity</label><input id="gAlpha" type="range" min="0.2" max="1" step="0.05" value="0.7"><span id="gAlphaV">0.70</span></div>
+      <div class="row"><label>Ghost opacity</label><input id="gAlpha" type="range" min="0" max="1" step="0.05" value="0.7"><span id="gAlphaV">0.70</span></div>
       <div class="row"><label>Blend mode</label>
         <select id="gBlend">
           <option value="normal">Normal</option>
           <option value="screen" selected>Screen</option>
           <option value="lighter">Lighter</option>
         </select>
+      </div>
+      <div class="row">
+        <label>Use custom color</label>
+        <input id="gUseColor" type="checkbox">
+        <input id="gColor" type="color" value="#ffffff">
       </div>
     </fieldset>
 
@@ -143,6 +147,8 @@
   const sColor  = document.getElementById('sColor');
   const gBlend  = document.getElementById('gBlend');
   const formatSel = document.getElementById('format');
+  const gUseColor = document.getElementById('gUseColor');
+  const gColor    = document.getElementById('gColor');
 
   function sync(){
     out.dtV.textContent      = (+el.dt.value).toFixed(1);
@@ -154,7 +160,7 @@
     out.strengthV.textContent= (+el.strength.value).toFixed(2);
     out.expandV.textContent  = el.expand.value;
   }
-  [...ids.map(id=>el[id]), stainOn, sColor, gBlend, formatSel].forEach(x=>x.addEventListener('input', sync));
+  [...ids.map(id=>el[id]), stainOn, sColor, gBlend, formatSel, gUseColor, gColor].forEach(x=>x.addEventListener('input', sync));
   sync();
 
   // ---------- Source ----------
@@ -300,7 +306,7 @@
 
   // ---------- Replay ----------
   function resetState(){
-    buf.length = 0; // clear ring buffer
+    buf.length = 0;
     sctx.clearRect(0,0,can.stain.width,can.stain.height);
     gctx.clearRect(0,0,can.ghost.width,can.ghost.height);
   }
@@ -310,7 +316,7 @@
       return;
     }
     if(!vid.currentSrc && !vid.src){ alert('No clip loaded.'); return; }
-    if(recorder && recorder.state==='recording'){ stopRecording(); } // avoid capturing seek
+    if(recorder && recorder.state==='recording'){ stopRecording(); }
     try{
       vid.pause();
       resetState();
@@ -324,13 +330,18 @@
   }
   replayBtn.addEventListener('click', replay);
   replayFloat.addEventListener('click', replay);
-  // Keyboard: R = replay, Space = play/pause (ignore when typing in inputs)
   document.addEventListener('keydown', (e)=>{
     const t = e.target;
     if(t && (t.tagName==='INPUT' || t.tagName==='SELECT' || t.tagName==='TEXTAREA' || t.isContentEditable)) return;
     if(e.code === 'KeyR'){ e.preventDefault(); replay(); }
     else if(e.code === 'Space'){ e.preventDefault(); vid.paused ? vid.play() : vid.pause(); }
   });
+
+  // ---------- Helpers ----------
+  function hexToRgb(hex){
+    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return m ? [parseInt(m[1],16), parseInt(m[2],16), parseInt(m[3],16)] : [255,255,255];
+  }
 
   // ---------- Main loop ----------
   let lastT=0, fpsEMA=0;
@@ -378,12 +389,20 @@
 
       if(d > thr){
         changedCount++; mask[j]=255;
-        gd[i]   = (r + (255 - pr)) * 0.5;
-        gd[i+1] = (g + (255 - pg)) * 0.5;
-        gd[i+2] = (b + (255 - pb)) * 0.5;
-        gd[i+3] = 255;  // opaque where motion
+
+        if (gUseColor.checked) {
+          const [cr,cg,cb] = hexToRgb(gColor.value);
+          const a = Math.max(40, Math.min(255, (d - thr) * 8)); // stronger change → more alpha
+          gd[i]=cr; gd[i+1]=cg; gd[i+2]=cb; gd[i+3]=a;
+        } else {
+          // AE-style mix of current & inverted past
+          gd[i]   = (r + (255 - pr)) * 0.5;
+          gd[i+1] = (g + (255 - pg)) * 0.5;
+          gd[i+2] = (b + (255 - pb)) * 0.5;
+          gd[i+3] = 255;
+        }
       } else {
-        gd[i]=gd[i+1]=gd[i+2]=0; gd[i+3]=0; // fully transparent elsewhere
+        gd[i]=gd[i+1]=gd[i+2]=0; gd[i+3]=0;
       }
     }
     gctx.putImageData(ghostImg,0,0);
@@ -435,7 +454,7 @@
     const pct = 100*(changedCount/(W*H));
     hud.textContent = `Δt = ${(+el.dt.value).toFixed(1)} s
 thr = ${el.thr.value}, pre-blur = ${el.preblur.value}, grey = ${el.grey.value}
-ghost: ${gBlend.value}, α=${(+el.gAlpha.value).toFixed(2)}
+ghost: ${gBlend.value}, α=${(+el.gAlpha.value).toFixed(2)}${gUseColor.checked?`, color=${gColor.value}`:''}
 stain: decay=${(+el.decay.value).toFixed(3)}, expand=${el.expand.value}, strength=${(+el.strength.value).toFixed(2)}
 changed = ${pct.toFixed(1)}%`;
 

@@ -3,350 +3,236 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Forking Sun — Ghost Paths (Point-Cloud)</title>
+<title>Motion Window — Show Only What Moved</title>
 <style>
-  :root{--bg:#0a0a0c;--fg:#d8e6ff;--mut:#7f8ea3}
+  :root{--bg:#0b0e12;--fg:#dfe9ff;--mut:#8ea0ba}
   html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:14px/1.35 system-ui,Segoe UI,Roboto,Helvetica,Arial}
   .wrap{display:grid;grid-template-columns:320px 1fr;gap:14px;height:100%}
-  aside{padding:14px 12px 16px;border-right:1px solid #1a1f2a;overflow:auto}
+  aside{padding:14px 12px 16px;border-right:1px solid #1a2233;overflow:auto}
   main{position:relative}
-  canvas,video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
-  video{opacity:.15}
-  .layers{position:absolute;inset:0}
+  video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+  #view{background:#000}
   h1{font-size:16px;margin:0 0 10px}
-  fieldset{border:1px solid #1c2533;border-radius:10px;margin:10px 0;padding:10px}
-  legend{padding:0 6px;color:#9fb4d4}
+  fieldset{border:1px solid #1a2233;border-radius:10px;margin:10px 0;padding:10px}
+  legend{padding:0 6px;color:#9fb7e8}
   .row{display:flex;align-items:center;gap:8px;margin:9px 0}
   .row label{flex:1;color:var(--mut)}
   .row input[type="range"]{flex:2}
-  .small{font-size:12px;color:#9aa8c0}
-  .btn{appearance:none;border:1px solid #2a3650;background:#121725;color:#cfe3ff;border-radius:8px;padding:6px 10px;cursor:pointer}
+  .btn{appearance:none;border:1px solid #2a3754;background:#121826;color:#cfe1ff;border-radius:8px;padding:6px 10px;cursor:pointer}
   .btn:active{transform:translateY(1px)}
-  .kbd{font:12px/1.2 ui-monospace,Menlo,Consolas;background:#121520;border:1px solid #1f2734;border-radius:6px;padding:1px 6px;color:#b8c7e8}
+  .small{font-size:12px;color:#93a6c4}
+  .kbd{font:12px/1.2 ui-monospace,Menlo,Consolas;background:#121520;border:1px solid #1f2736;border-radius:6px;padding:1px 6px;color:#b8c7e8}
 </style>
 </head>
 <body>
 <div class="wrap">
   <aside>
-    <h1>Forking Sun — Ghost Paths</h1>
+    <h1>Motion Window — Show Only What Moved</h1>
     <div class="row">
       <input id="file" type="file" accept="video/*">
       <button id="play" class="btn">Play/Pause</button>
     </div>
-    <div class="row small">Or URL param: <span class="kbd">?src=your.mp4</span></div>
+    <div class="row small">Or URL param: <span class="kbd">?src=clip.mp4</span></div>
 
     <fieldset>
-      <legend>Detection</legend>
-      <div class="row"><label>Mask % (top bright)</label><input id="pct" type="range" min="0.5" max="60" step="0.5" value="12"><span id="pctV">12.0%</span></div>
-      <div class="row"><label>Use abs threshold</label><input id="useThr" type="checkbox"></div>
-      <div class="row"><label>Abs threshold</label><input id="thr" type="range" min="0" max="255" value="110"><span id="thrV">110</span></div>
-      <div class="row"><label>Blur (px)</label><input id="blur" type="range" min="0" max="6" value="2"><span id="blurV">2</span></div>
-      <div class="row"><label>Use frame difference</label><input id="useDiff" type="checkbox"></div>
-      <div class="row"><label>Diff threshold</label><input id="dthr" type="range" min="2" max="80" value="16"><span id="dthrV">16</span></div>
-      <div class="row small"><span id="dbg">kept: –</span></div>
+      <legend>Motion Window</legend>
+      <div class="row"><label>Window Δt (s)</label><input id="win" type="range" min="2" max="10" step="0.5" value="4"><span id="winV">4.0</span></div>
+      <div class="row"><label>Mode</label>
+        <select id="mode">
+          <option value="diff" selected>Diff Mask (grey background)</option>
+          <option value="invert">Invert-Blend (masked)</option>
+        </select>
+      </div>
+      <div class="row"><label>Diff threshold</label><input id="thr" type="range" min="4" max="80" value="18"><span id="thrV">18</span></div>
+      <div class="row"><label>Blur (px)</label><input id="blur" type="range" min="0" max="4" value="1"><span id="blurV">1</span></div>
+      <div class="row"><label>Neutral grey</label><input id="grey" type="range" min="0" max="255" value="120"><span id="greyV">120</span></div>
+      <div class="row"><label>Resolution scale</label><input id="scale" type="range" min="0.3" max="1" step="0.05" value="0.7"><span id="scaleV">0.70</span></div>
+      <div class="row small" id="dbg">buffer: 0 frames | fps ~ —</div>
     </fieldset>
 
     <fieldset>
-      <legend>Point-Cloud</legend>
-      <div class="row"><label>Point size</label><input id="pt" type="range" min="1" max="6" value="2"><span id="ptV">2</span></div>
-      <div class="row"><label>Cloud opacity</label><input id="palpha" type="range" min="0" max="1" step="0.01" value="0.6"><span id="palphaV">0.60</span></div>
-      <div class="row"><label>Sample step (px)</label><input id="step" type="range" min="1" max="6" value="2"><span id="stepV">2</span></div>
+      <legend>Export</legend>
+      <div class="row"><button id="shot" class="btn">Save PNG</button></div>
     </fieldset>
 
-    <fieldset>
-      <legend>Trails (Past)</legend>
-      <div class="row"><label>Trail decay</label><input id="decay" type="range" min="0.80" max="0.995" step="0.001" value="0.96"><span id="decayV">0.96</span></div>
-      <div class="row"><label>Trail weight</label><input id="tw" type="range" min="0.5" max="4" step="0.1" value="2"><span id="twV">2</span></div>
-    </fieldset>
-
-    <fieldset>
-      <legend>Ghosts (Future)</legend>
-      <div class="row"><label># Branches</label><input id="k" type="range" min="0" max="8" value="4"><span id="kV">4</span></div>
-      <div class="row"><label>Horizon (px)</label><input id="h" type="range" min="10" max="300" value="140"><span id="hV">140</span></div>
-      <div class="row"><label>Angle jitter (°)</label><input id="jit" type="range" min="0" max="45" value="18"><span id="jitV">18</span></div>
-      <div class="row"><label>Magnitude jitter</label><input id="mag" type="range" min="0" max="1" step="0.01" value="0.25"><span id="magV">0.25</span></div>
-      <div class="row"><label>Ghost opacity</label><input id="galpha" type="range" min="0" max="1" step="0.01" value="0.28"><span id="galphaV">0.28</span></div>
-      <div class="row"><label>Keep failed ghosts</label><input id="keep" type="checkbox" checked></div>
-    </fieldset>
-
-    <fieldset>
-      <legend>Render</legend>
-      <div class="row"><label>Dim video</label><input id="dim" type="range" min="0" max="1" step="0.01" value="0.85"><span id="dimV">0.85</span></div>
-      <div class="row"><label>Sun dot size</label><input id="sd" type="range" min="2" max="10" value="5"><span id="sdV">5</span></div>
-      <div class="row"><button id="snap" class="btn">Save Frame (PNG)</button></div>
-    </fieldset>
-
-    <div class="small">Start: Mask 15–25%, Use diff ON, Diff thr 10–24. If “kept” &lt; 50, bump Mask %.</div>
+    <div class="small">
+      Tip: raise <b>Δt</b> to catch slow drifts; lower <b>thr</b> if motion is subtle; increase <b>scale</b> for sharper output (heavier CPU).
+    </div>
   </aside>
 
   <main>
-    <video id="vid" playsinline muted loop></video>
-    <div class="layers">
-      <canvas id="cloud"></canvas>
-      <canvas id="trails"></canvas>
-      <canvas id="ghosts"></canvas>
-      <canvas id="hud"></canvas>
-    </div>
+    <canvas id="view"></canvas>
   </main>
 </div>
 
 <script>
 (function(){
   // Elements
-  const vid = document.getElementById('vid');
   const file = document.getElementById('file');
   const playBtn = document.getElementById('play');
-  const cs = {
-    cloud: document.getElementById('cloud'),
-    trails: document.getElementById('trails'),
-    ghosts: document.getElementById('ghosts'),
-    hud: document.getElementById('hud')
-  };
-  const ctx = Object.fromEntries(Object.entries(cs).map(([k,c])=>[k,c.getContext('2d')]));
+  const shotBtn = document.getElementById('shot');
+  const view = document.getElementById('view');
+  const vctx = view.getContext('2d');
 
-  const ids = ["pct","thr","blur","dthr","pt","palpha","step","decay","tw","k","h","jit","mag","galpha","dim","sd"];
-  const el = Object.fromEntries(ids.map(id=>[id, document.getElementById(id)]));
-  const out = Object.fromEntries(ids.map(id=>[id+"V", document.getElementById(id+"V")]));
-  const useDiff = document.getElementById('useDiff');
-  const useThr  = document.getElementById('useThr');
-  const keepChk = document.getElementById('keep');
-  const snapBtn = document.getElementById('snap');
-  const dbg     = document.getElementById('dbg');
+  const win = document.getElementById('win');
+  const thr = document.getElementById('thr');
+  const blur = document.getElementById('blur');
+  const grey = document.getElementById('grey');
+  const scale = document.getElementById('scale');
+  const mode = document.getElementById('mode');
 
-  function syncLabels(){
-    out.pctV.textContent = (+el.pct.value).toFixed(1) + "%";
-    out.thrV.textContent = el.thr.value;
-    out.blurV.textContent = el.blur.value;
-    out.dthrV.textContent = el.dthr.value;
-    out.ptV.textContent = el.pt.value;
-    out.palphaV.textContent = (+el.palpha.value).toFixed(2);
-    out.stepV.textContent = el.step.value;
-    out.decayV.textContent = el.decay.value;
-    out.twV.textContent = el.tw.value;
-    out.kV.textContent = el.k.value;
-    out.hV.textContent = el.h.value;
-    out.jitV.textContent = el.jit.value;
-    out.magV.textContent = el.mag.value;
-    out.galphaV.textContent = (+el.galpha.value).toFixed(2);
-    out.dimV.textContent = (+el.dim.value).toFixed(2);
-    out.sdV.textContent = el.sd.value;
+  const winV = document.getElementById('winV');
+  const thrV = document.getElementById('thrV');
+  const blurV = document.getElementById('blurV');
+  const greyV = document.getElementById('greyV');
+  const scaleV = document.getElementById('scaleV');
+  const dbg = document.getElementById('dbg');
+
+  function sync(){
+    winV.textContent = (+win.value).toFixed(1);
+    thrV.textContent = thr.value;
+    blurV.textContent = blur.value;
+    greyV.textContent = grey.value;
+    scaleV.textContent = (+scale.value).toFixed(2);
   }
-  ids.forEach(id=>el[id].addEventListener('input', syncLabels));
-  useDiff.addEventListener('change', syncLabels);
-  useThr.addEventListener('change', syncLabels);
-  syncLabels();
+  [win,thr,blur,grey,scale,mode].forEach(e=>e.addEventListener('input', sync));
+  sync();
 
-  // URL ?src=
+  // Video setup
+  const vid = document.createElement('video');
+  vid.crossOrigin = "anonymous";
+  vid.playsInline = true; vid.muted = true; vid.loop = true; vid.preload = "auto";
+
+  // Load via query ?src=
   const qs = new URLSearchParams(location.search);
-  const src = qs.get('src'); if(src){ vid.src = src; }
+  const src = qs.get('src');
+  if(src) vid.src = src;
 
-  // File input
+  // File picker
   file.addEventListener('change', e=>{
     const f = e.target.files[0]; if(!f) return;
-    vid.src = URL.createObjectURL(f); vid.play();
+    vid.src = URL.createObjectURL(f);
+    vid.play();
   });
+  playBtn.addEventListener('click', ()=> vid.paused ? vid.play() : vid.pause());
 
-  // Play button
-  if(playBtn) playBtn.addEventListener('click', ()=> vid.paused ? vid.play() : vid.pause());
-
-  // Resize canvases to visible size
-  function fit(){
-    const r = cs.cloud.getBoundingClientRect();
-    for(const k in cs){
-      cs[k].width = Math.max(2, r.width|0);
-      cs[k].height = Math.max(2, r.height|0);
-    }
-  }
-  new ResizeObserver(fit).observe(cs.cloud);
-
-  // Processing buffer
+  // Processing buffers (downscaled to save CPU)
   const proc = document.createElement('canvas');
   const pctx = proc.getContext('2d', {willReadFrequently:true});
-  let prevGray = null;
-  let prevPos = null;
 
-  // Helpers
-  function deg2rad(d){return d*Math.PI/180;}
+  // Ring buffer of past frames: {t, data (Uint8ClampedArray), w,h}
+  const buf = [];
+  const MAX_SEC = 12; // keep a bit more than max window
+  let lastTime = 0, fpsEMA = 0;
 
-  function decayTrails(amount){
-    const w=cs.trails.width, h=cs.trails.height;
-    ctx.trails.globalCompositeOperation = 'destination-out';
-    ctx.trails.fillStyle = `rgba(0,0,0,${1-amount})`;
-    ctx.trails.fillRect(0,0,w,h);
-    ctx.trails.globalCompositeOperation = 'source-over';
+  function pushFrame(imgData, t){
+    buf.push({t, data: new Uint8ClampedArray(imgData.data), w: imgData.width, h: imgData.height});
+    // drop old
+    const cutoff = t - (MAX_SEC+2);
+    while(buf.length && buf[0].t < cutoff) buf.shift();
   }
-  function drawTrail(p0,p1,w){
-    if(!p0||!p1) return;
-    ctx.trails.strokeStyle = "#a7c7ff";
-    ctx.trails.lineWidth = w;
-    ctx.trails.beginPath(); ctx.trails.moveTo(p0.x,p0.y); ctx.trails.lineTo(p1.x,p1.y); ctx.trails.stroke();
-  }
-  function drawDot(p, r){
-    ctx.hud.clearRect(0,0,cs.hud.width,cs.hud.height);
-    if(!p) return;
-    ctx.hud.fillStyle="#fff"; ctx.hud.beginPath(); ctx.hud.arc(p.x,p.y,r,0,Math.PI*2); ctx.hud.fill();
-    ctx.hud.strokeStyle="#7dd3fc"; ctx.hud.lineWidth=1; ctx.hud.stroke();
-  }
-  function drawGhosts(p, v){
-    ctx.ghosts.clearRect(0,0,cs.ghosts.width,cs.ghosts.height);
-    if(!p || !v) return;
-    const K=+el.k.value, J=deg2rad(+el.jit.value), Mj=+el.mag.value, H=+el.h.value, alpha=+el.galpha.value;
-    if(K<=0) return;
-    const baseA = Math.atan2(v.y,v.x), baseM = Math.hypot(v.x,v.y);
-    ctx.ghosts.globalAlpha = alpha; ctx.ghosts.strokeStyle="#ffdb8a"; ctx.ghosts.lineWidth=1.25;
-    for(let i=0;i<K;i++){
-      const ang = baseA + (Math.random()*2-1)*J;
-      const mag = Math.max(0.1, baseM*(1+(Math.random()*2-1)*Mj));
-      const dx = Math.cos(ang)*H*mag, dy = Math.sin(ang)*H*mag;
-      ctx.ghosts.beginPath(); ctx.ghosts.moveTo(p.x,p.y); ctx.ghosts.lineTo(p.x+dx,p.y+dy); ctx.ghosts.stroke();
-      if(keepChk && keepChk.checked){
-        ctx.trails.globalAlpha = 0.15; ctx.trails.strokeStyle="#ffd48a"; ctx.trails.lineWidth=1;
-        ctx.trails.beginPath(); ctx.trails.moveTo(p.x,p.y); ctx.trails.lineTo(p.x+dx,p.y+dy); ctx.trails.stroke();
-        ctx.trails.globalAlpha = 1;
-      }
+  function getPastFrame(tDelta){
+    const target = vid.currentTime - tDelta;
+    // find the closest frame at/just before target
+    for(let i=buf.length-1; i>=0; i--){
+      if(buf[i].t <= target) return buf[i];
     }
+    return buf[0] || null;
   }
 
-  // Core: point cloud + centroid (UNION mask + diff)
-  function pointCloudAndCentroid(srcImg){
-    const {width:w, height:h, data} = srcImg;
-    const step = +el.step.value, size = +el.pt.value, alpha = +el.palpha.value;
-
-    // Grayscale buffer
-    const gray = new Uint8ClampedArray(w*h);
-    for(let i=0, j=0;i<data.length;i+=4,j++){
-      gray[j] = data[i]*0.2126 + data[i+1]*0.7152 + data[i+2]*0.0722;
-    }
-
-    // Diff mask (optional)
-    let diff = null;
-    if(useDiff.checked){
-      diff = new Uint8ClampedArray(w*h);
-      if(prevGray){
-        const t = +el.dthr.value;
-        for(let i=0;i<gray.length;i++){
-          diff[i] = Math.abs(gray[i]-prevGray[i]) > t ? 255 : 0;
-        }
-      } else {
-        diff.fill(0);
-      }
-      prevGray = gray;
-    } else {
-      prevGray = gray;
-    }
-
-    // Quantile cutoff for top-pct
-    const targetCount = Math.max(1, Math.round(w*h * (+el.pct.value/100)));
-    const hist = new Uint32Array(256);
-    for(let i=0;i<gray.length;i++) hist[gray[i]]++;
-    let cum=0, cutoff=255;
-    for(let b=255;b>=0;b--){ cum+=hist[b]; if(cum>=targetCount){ cutoff=b; break; } }
-
-    // Optional absolute threshold (UNION)
-    const useAbs = useThr.checked;
-    const absThr = +el.thr.value;
-
-    const sx = cs.cloud.width / w, sy = cs.cloud.height / h;
-
-    // Draw cloud + count kept
-    ctx.cloud.globalAlpha = alpha;
-    ctx.cloud.clearRect(0,0,cs.cloud.width,cs.cloud.height);
-    ctx.cloud.fillStyle = "#cfe5ff";
-
-    let sumx=0,sumy=0,cnt=0, kept=0;
-
-    for(let y=0;y<h;y+=step){
-      for(let x=0;x<w;x+=step){
-        const i = y*w + x;
-        const bright = gray[i] >= cutoff;
-        const passesAbs = useAbs ? gray[i] >= absThr : false;
-        const passesDiff = useDiff.checked ? (diff[i]===255) : false;
-
-        // UNION of gates
-        const keep = (bright || passesAbs || passesDiff);
-        if(keep){
-          kept++;
-          ctx.cloud.fillRect(Math.round(x*sx), Math.round(y*sy), size, size);
-        }
-      }
-    }
-
-    // Centroid (full res)
-    for(let y=0;y<h;y++){
-      for(let x=0;x<w;x++){
-        const i = y*w + x;
-        const bright = gray[i] >= cutoff;
-        const passesAbs = useAbs ? gray[i] >= absThr : false;
-        const passesDiff = useDiff.checked ? (diff[i]===255) : false;
-        if(bright || passesAbs || passesDiff){
-          sumx+=x; sumy+=y; cnt++;
-        }
-      }
-    }
-
-    // Auto-expand if mask too strict
-    if(kept < 50 && +el.pct.value < 40){
-      el.pct.value = (+el.pct.value + 2).toFixed(1);
-      syncLabels();
-    }
-
-    dbg.textContent = `kept: ${kept} px @ pct=${(+el.pct.value).toFixed(1)}${useAbs?`, thr=${absThr}`:''}${useDiff.checked?`, diff=${el.dthr.value}`:''}`;
-
-    if(cnt<10) return null;
-    return { x:(sumx/cnt)*sx, y:(sumy/cnt)*sy };
+  function resize(){
+    const rect = view.getBoundingClientRect();
+    view.width = Math.max(2, rect.width|0);
+    view.height = Math.max(2, rect.height|0);
   }
+  new ResizeObserver(resize).observe(view);
 
-  // Main loop
-  function tick(){
+  function tick(now){
     requestAnimationFrame(tick);
     if(vid.readyState < 2) return;
 
-    // Fit processing size
-    const w = Math.max(320, cs.cloud.clientWidth|0);
-    const h = Math.max(180, cs.cloud.clientHeight|0);
-    if(proc.width!==w || proc.height!==h){ proc.width=w; proc.height=h; }
+    // Downscaled analysis size
+    const s = +scale.value;
+    const aw = Math.max(160, Math.round(view.width * s));
+    const ah = Math.max(90,  Math.round(view.height* s));
+    if(proc.width!==aw || proc.height!==ah){ proc.width=aw; proc.height=ah; }
 
-    // 1) draw dimmed video
-    ctx.cloud.save();
-    ctx.cloud.globalAlpha = +el.dim.value;
-    ctx.cloud.globalCompositeOperation='source-over';
-    ctx.cloud.drawImage(vid, 0,0, cs.cloud.width, cs.cloud.height);
-    ctx.cloud.restore();
+    // Draw current frame to analysis canvas (with optional blur)
+    pctx.filter = (+blur.value>0) ? `blur(${blur.value}px)` : 'none';
+    pctx.drawImage(vid, 0, 0, aw, ah);
+    const curr = pctx.getImageData(0, 0, aw, ah);
+    pushFrame(curr, vid.currentTime);
 
-    // 2) analysis frame (with blur)
-    pctx.filter = (+el.blur.value>0) ? `blur(${el.blur.value}px)` : 'none';
-    pctx.drawImage(vid, 0,0, w, h);
-    const frame = pctx.getImageData(0,0,w,h);
+    // Find past frame by Δt
+    const past = getPastFrame(+win.value);
+    if(!past) return;
 
-    // 3) cloud + centroid
-    const centroid = pointCloudAndCentroid(frame);
+    // Compose output: show only change; static areas to grey
+    const out = vctx.createImageData(view.width, view.height);
+    const sx = view.width/aw, sy = view.height/ah;
 
-    // 4) trails / ghosts / dot
-    decayTrails(+el.decay.value);
-    if(centroid && prevPos) drawTrail(prevPos, centroid, +el.tw.value);
-    const motion = (centroid && prevPos) ? {x:centroid.x-prevPos.x, y:centroid.y-prevPos.y} : null;
-    drawGhosts(centroid, motion);
-    drawDot(centroid, +el.sd.value);
-    if(centroid) prevPos = centroid;
+    // We render in tiles to avoid per-pixel drawImage overhead: compute at analysis scale then scale up
+    // So build a small ImageData first:
+    const small = new ImageData(aw, ah);
+    const th = +thr.value;
+    const g  = +grey.value;
+
+    const c = curr.data, p = past.data, o = small.data;
+    const useInvert = (mode.value === 'invert');
+
+    for(let i=0;i<c.length;i+=4){
+      const r=c[i], g1=c[i+1], b=c[i+2];
+      const pr=p[i], pg=p[i+1], pb=p[i+2];
+
+      // luminance difference (0..255)
+      const lc = r*0.2126 + g1*0.7152 + b*0.0722;
+      const lp = pr*0.2126 + pg*0.7152 + pb*0.0722;
+      const d = Math.abs(lc - lp);
+
+      if(d > th){
+        if(useInvert){
+          // 0.5*curr + 0.5*(255 - past)
+          o[i]   = (r + (255 - pr)) * 0.5;
+          o[i+1] = (g1 + (255 - pg)) * 0.5;
+          o[i+2] = (b + (255 - pb)) * 0.5;
+          o[i+3] = 255;
+        }else{
+          // show current color
+          o[i]=r; o[i+1]=g1; o[i+2]=b; o[i+3]=255;
+        }
+      }else{
+        // neutral grey
+        o[i]=g; o[i+1]=g; o[i+2]=g; o[i+3]=255;
+      }
+    }
+
+    // Paint small → scale up to view
+    // First clear
+    vctx.clearRect(0,0,view.width,view.height);
+    // Put small into an offscreen canvas then draw scaled
+    const tmp = document.createElement('canvas');
+    tmp.width = aw; tmp.height = ah;
+    const tctx = tmp.getContext('2d');
+    tctx.putImageData(small, 0, 0);
+    vctx.imageSmoothingEnabled = true;
+    vctx.drawImage(tmp, 0, 0, view.width, view.height);
+
+    // FPS/debug
+    const dt = now - lastTime; lastTime = now;
+    const inst = dt>0 ? 1000/dt : 0; fpsEMA = fpsEMA? fpsEMA*0.9 + inst*0.1 : inst;
+    dbg.textContent = `buffer: ${buf.length} frames | fps ~ ${fpsEMA.toFixed(1)} | Δt=${(+win.value).toFixed(1)}s | thr=${th}`;
   }
   requestAnimationFrame(tick);
 
-  // Save composite PNG
-  document.getElementById('snap').addEventListener('click', ()=>{
-    const out = document.createElement('canvas');
-    out.width = cs.cloud.width; out.height = cs.cloud.height;
-    const ox = out.getContext('2d');
-    ox.drawImage(cs.cloud,0,0);
-    ox.drawImage(cs.trails,0,0);
-    ox.drawImage(cs.ghosts,0,0);
-    ox.drawImage(cs.hud,0,0);
+  // Save PNG of current output
+  document.getElementById('shot').addEventListener('click', ()=>{
     const a = document.createElement('a');
-    a.download = 'forking_sun_'+Date.now()+'.png';
-    a.href = out.toDataURL('image/png');
+    a.download = 'motion_window_'+Date.now()+'.png';
+    a.href = view.toDataURL('image/png');
     a.click();
   });
 
-  // Autoplay when src provided
+  // autoplay on src
   vid.addEventListener('loadeddata', ()=>{ vid.play().catch(()=>{}); });
 })();
 </script>

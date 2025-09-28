@@ -14,7 +14,7 @@
   h1{font-size:16px;margin:0 0 10px}
   fieldset{border:1px solid #1a2233;border-radius:10px;margin:10px 0;padding:10px}
   legend{padding:0 6px;color:#9fb7e8}
-  .row{display:flex;align-items:center;gap:8px;margin:8px 0}
+  .row{display:flex;align-items:center;gap:8px;margin:8px 0;flex-wrap:wrap}
   .row label{flex:1;color:var(--mut)}
   .row input[type="range"], .row select{flex:2}
   .btn{appearance:none;border:1px solid #2a3754;background:#121826;color:#cfe1ff;border-radius:8px;padding:6px 10px;cursor:pointer}
@@ -27,8 +27,9 @@
   .dot{width:8px;height:8px;background:var(--accent);border-radius:50%;box-shadow:0 0 8px var(--accent)}
   .warn{color:#ffb86b}
   .ok{color:#6be77a}
-  .nosrc{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-         color:#aac; font:12px ui-monospace; pointer-events:none}
+  .nosrc{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#aac; font:12px ui-monospace; pointer-events:none}
+  /* Floating replay button */
+  .fab{position:absolute;top:46px;right:10px;z-index:5;border:1px solid #2a3754;background:#121826;color:#cfe1ff;border-radius:999px;padding:6px 10px;cursor:pointer}
 </style>
 </head>
 <body>
@@ -39,7 +40,10 @@
       <input id="file" type="file" accept="video/*">
       <button id="webcam" class="btn">Webcam</button>
       <button id="play" class="btn secondary">Play/Pause</button>
-      <button id="replay" class="btn secondary">Replay</button>
+    </div>
+    <div class="row">
+      <button id="replay" class="btn secondary">↺ Replay</button>
+      <span class="small">Shortcut: <span class="kbd">R</span></span>
     </div>
     <div class="row small">Or URL: <span class="kbd">?src=clip.mp4</span> (same-origin or CORS)</div>
 
@@ -95,13 +99,13 @@
   </aside>
 
   <main>
-    <!-- layers: base is in final -->
     <canvas id="stain"></canvas>
     <canvas id="ghost"></canvas>
     <canvas id="final"></canvas>
     <div id="hud" class="hud"></div>
     <div id="recHUD" class="rec" style="display:none;"><span class="dot"></span><span id="recTime">REC 00:00</span></div>
     <div id="nosrc" class="nosrc" style="display:none;">load a clip or use the webcam</div>
+    <button id="replayFloat" class="fab" title="Replay (R)">↺</button>
   </main>
 </div>
 
@@ -121,6 +125,7 @@
   const webcamBtn = document.getElementById('webcam');
   const playBtn = document.getElementById('play');
   const replayBtn = document.getElementById('replay');
+  const replayFloat = document.getElementById('replayFloat');
   const recStartBtn = document.getElementById('recStart');
   const recStopBtn  = document.getElementById('recStop');
   const shotBtn = document.getElementById('shot');
@@ -197,7 +202,7 @@
     colCanvas.width=W; colCanvas.height=H;
   }
   new ResizeObserver(fit).observe(can.final);
-  fit(); // initial size immediately
+  fit(); // initial size
 
   // ---------- Buffers ----------
   const buf = []; const MAX_SEC = 14;
@@ -305,8 +310,7 @@
       return;
     }
     if(!vid.currentSrc && !vid.src){ alert('No clip loaded.'); return; }
-    // stop recording if active (avoid capturing the seek)
-    if(recorder && recorder.state==='recording'){ stopRecording(); }
+    if(recorder && recorder.state==='recording'){ stopRecording(); } // avoid capturing seek
     try{
       vid.pause();
       resetState();
@@ -314,12 +318,19 @@
       vid.addEventListener('seeked', onSeeked, { once:true });
       vid.currentTime = 0;
     }catch(e){
-      // fallback: reload same src
       const src = vid.currentSrc || vid.src;
       if(src){ resetState(); vid.src = src; vid.play(); }
     }
   }
   replayBtn.addEventListener('click', replay);
+  replayFloat.addEventListener('click', replay);
+  // Keyboard: R = replay, Space = play/pause (ignore when typing in inputs)
+  document.addEventListener('keydown', (e)=>{
+    const t = e.target;
+    if(t && (t.tagName==='INPUT' || t.tagName==='SELECT' || t.tagName==='TEXTAREA' || t.isContentEditable)) return;
+    if(e.code === 'KeyR'){ e.preventDefault(); replay(); }
+    else if(e.code === 'Space'){ e.preventDefault(); vid.paused ? vid.play() : vid.pause(); }
+  });
 
   // ---------- Main loop ----------
   let lastT=0, fpsEMA=0;
@@ -328,13 +339,12 @@
 
     const W = can.final.width, H = can.final.height;
 
-    // Always paint base so you don't see black between states
+    // base
     const grey = +el.grey.value;
     fctx.clearRect(0,0,W,H);
     fctx.fillStyle = `rgb(${grey},${grey},${grey})`;
     fctx.fillRect(0,0,W,H);
 
-    // If video not ready, show hint and bail
     if(vid.readyState < 2){
       nosrc.style.display = 'block';
       return;
@@ -342,16 +352,16 @@
       nosrc.style.display = 'none';
     }
 
-    // 1) Draw current frame into analysis canvas
+    // 1) current frame → analysis
     drawVideoContained(pctx, vid, W, H, +el.preblur.value);
     const curr = pctx.getImageData(0,0,W,H);
     pushFrame(curr, vid.currentTime);
 
-    // 2) Past frame
+    // 2) past frame
     const past = getPastFrame(+el.dt.value);
     if(!past){ return; }
 
-    // 3) Build motion mask + ghost pixels (transparent elsewhere)
+    // 3) motion mask + ghosts
     const c = curr.data, p = past.data;
     const ghostImg = gctx.createImageData(W,H);
     const gd = ghostImg.data;
@@ -368,27 +378,24 @@
 
       if(d > thr){
         changedCount++; mask[j]=255;
-        // AE-style: 0.5*current + 0.5*(255 - pastΔt)
         gd[i]   = (r + (255 - pr)) * 0.5;
         gd[i+1] = (g + (255 - pg)) * 0.5;
         gd[i+2] = (b + (255 - pb)) * 0.5;
-        gd[i+3] = 255;                       // opaque where motion
+        gd[i+3] = 255;  // opaque where motion
       } else {
-        gd[i]=gd[i+1]=gd[i+2]=0; gd[i+3]=0;  // fully transparent where no motion
+        gd[i]=gd[i+1]=gd[i+2]=0; gd[i+3]=0; // fully transparent elsewhere
       }
     }
     gctx.putImageData(ghostImg,0,0);
 
-    // 4) Update stain (solid blotches)
+    // 4) stain accumulation
     if(stainOn.checked){
-      // decay
       const decay = +el.decay.value;
       sctx.globalCompositeOperation='destination-out';
       sctx.fillStyle = `rgba(0,0,0,${1-decay})`;
       sctx.fillRect(0,0,W,H);
       sctx.globalCompositeOperation='source-over';
 
-      // full mask
       const mImg = maskCtx.createImageData(W,H);
       const mdat = mImg.data;
       for(let j=0,k=0;j<mask.length;j++,k+=4){
@@ -396,7 +403,6 @@
       }
       maskCtx.putImageData(mImg,0,0);
 
-      // expand → colorize → stamp
       colCtx.clearRect(0,0,W,H);
       const expand = +el.expand.value;
       if(expand>0){ colCtx.filter = `blur(${expand}px)`; }
@@ -411,19 +417,19 @@
       sctx.drawImage(colCanvas,0,0);
     }
 
-    // 5) Compose final: base grey → stain (multiply) → ghosts
+    // 5) compose: base grey → stain (multiply) → ghosts
     if(stainOn.checked){
       fctx.globalCompositeOperation='multiply';
       fctx.drawImage(can.stain,0,0);
       fctx.globalCompositeOperation='source-over';
     }
     fctx.globalAlpha = +el.gAlpha.value;
-    fctx.globalCompositeOperation = gBlend.value; // normal/screen/lighter
+    fctx.globalCompositeOperation = gBlend.value;
     fctx.drawImage(can.ghost,0,0);
     fctx.globalAlpha = 1;
     fctx.globalCompositeOperation='source-over';
 
-    // HUD/debug
+    // HUD
     const dt = now - lastT; lastT = now;
     const inst = dt>0 ? 1000/dt : 0; fpsEMA = fpsEMA? fpsEMA*0.9 + inst*0.1 : inst;
     const pct = 100*(changedCount/(W*H));

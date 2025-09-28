@@ -1,239 +1,453 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Blob-Track — Motion Extract (Ghost + Stain)</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Wind-on-Wall — Ghosts (separate) + Stain (hi-res)</title>
 <style>
-  :root { color-scheme: dark; --fg:#e9f9ef; --mut:#9fb3a7; --accent:#00f0c0; }
-  html,body{height:100%;margin:0;background:#0b0f0d;font:14px/1.4 system-ui}
-  #stage{position:fixed;inset:0;overflow:hidden}
-  .layer{position:absolute;inset:0;display:block;width:100%;height:100%}
-  #v{display:none}
-  #gate{position:fixed;inset:0;display:grid;place-items:center;background:#000a}
-  #gate .box{border:1px solid var(--accent);padding:14px 18px;border-radius:12px;color:var(--fg);background:#00150f}
-  #ui{position:fixed;left:12px;bottom:12px;display:grid;gap:8px;
-       background:#0c1512cc;padding:12px 12px;border-radius:12px;border:1px solid #21443a}
-  #ui label{display:flex;align-items:center;gap:8px;color:var(--mut)}
-  #ui input[type="range"]{width:160px}
-  #ui input[type="color"]{width:32px;height:24px;border:none;background:transparent;padding:0}
-  #ui .row{display:flex;gap:12px;flex-wrap:wrap}
-  #ui .btn{border:1px solid #224; background:#10161a; color:#cfe; padding:6px 10px; border-radius:8px; cursor:pointer}
-  #ui .btn:active{transform:translateY(1px)}
-  #notice{position:fixed;right:12px;bottom:12px;color:#9fb3a7}
+  :root{--bg:#0b0e12;--fg:#e6eeff;--mut:#90a1bb;--accent:#ff5b5b}
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:14px/1.35 system-ui,Segoe UI,Roboto,Helvetica,Arial}
+  .wrap{display:grid;grid-template-columns:360px 1fr;gap:14px;height:100%}
+  aside{padding:14px 12px 16px;border-right:1px solid #1a2233;overflow:auto}
+  main{position:relative}
+  canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+  h1{font-size:16px;margin:0 0 10px}
+  fieldset{border:1px solid #1a2233;border-radius:10px;margin:10px 0;padding:10px}
+  legend{padding:0 6px;color:#9fb7e8}
+  .row{display:flex;align-items:center;gap:8px;margin:8px 0}
+  .row label{flex:1;color:var(--mut)}
+  .row input[type="range"], .row select{flex:2}
+  .btn{appearance:none;border:1px solid #2a3754;background:#121826;color:#cfe1ff;border-radius:8px;padding:6px 10px;cursor:pointer}
+  .btn.secondary{background:#0e1422;border-color:#1f2b44;color:#a8b7d6}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .kbd{font:12px ui-monospace;background:#121520;border:1px solid #1f2736;border-radius:6px;padding:1px 6px;color:#b8c7e8}
+  .small{font-size:12px;color:#93a6c4}
+  .hud{position:absolute;top:10px;left:10px;background:rgba(0,0,0,.45);padding:6px 8px;border-radius:8px;font:12px ui-monospace;white-space:pre}
+  .rec{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.55);padding:6px 10px;border-radius:999px;font:12px ui-monospace;display:flex;align-items:center;gap:8px}
+  .dot{width:8px;height:8px;background:var(--accent);border-radius:50%;box-shadow:0 0 8px var(--accent)}
+  .warn{color:#ffb86b}
+  .ok{color:#6be77a}
 </style>
 </head>
 <body>
+<div class="wrap">
+  <aside>
+    <h1>Wind-on-Wall — Live</h1>
+    <div class="row">
+      <input id="file" type="file" accept="video/*">
+      <button id="webcam" class="btn">Webcam</button>
+      <button id="play" class="btn secondary">Play/Pause</button>
+    </div>
+    <div class="row small">Or URL: <span class="kbd">?src=clip.mp4</span> (same-origin or CORS)</div>
 
-<div id="stage">
-  <canvas id="stain" class="layer"></canvas>
-  <canvas id="ghost" class="layer"></canvas>
+    <fieldset>
+      <legend>Temporal window</legend>
+      <div class="row"><label>Δt (seconds)</label><input id="dt" type="range" min="2" max="10" step="0.5" value="6"><span id="dtV">6.0</span></div>
+      <div class="row"><label>Diff threshold</label><input id="thr" type="range" min="4" max="60" value="18"><span id="thrV">18</span></div>
+      <div class="row"><label>Grey level</label><input id="grey" type="range" min="60" max="200" value="120"><span id="greyV">120</span></div>
+      <div class="row"><label>Pre-blur (px)</label><input id="preblur" type="range" min="0" max="3" value="0"><span id="preblurV">0</span></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Ghosts (motion)</legend>
+      <div class="row"><label>Ghost opacity</label><input id="gAlpha" type="range" min="0.2" max="1" step="0.05" value="0.7"><span id="gAlphaV">0.70</span></div>
+      <div class="row"><label>Blend mode</label>
+        <select id="gBlend">
+          <option value="normal">Normal</option>
+          <option value="screen" selected>Screen</option>
+          <option value="lighter">Lighter</option>
+        </select>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Stain (residual blotches)</legend>
+      <div class="row"><label>Enable stain</label><input id="stainOn" type="checkbox" checked></div>
+      <div class="row"><label>Decay</label><input id="decay" type="range" min="0.90" max="0.995" step="0.001" value="0.970"><span id="decayV">0.970</span></div>
+      <div class="row"><label>Strength</label><input id="strength" type="range" min="0.1" max="1" step="0.05" value="0.50"><span id="strengthV">0.50</span></div>
+      <div class="row"><label>Expand (px)</label><input id="expand" type="range" min="0" max="8" step="1" value="2"><span id="expandV">2</span></div>
+      <div class="row"><label>Stain color</label><input id="sColor" type="color" value="#223b7a"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Export</legend>
+      <div class="row">
+        <label>Format</label>
+        <select id="format">
+          <option value="mp4">MP4 (preferred)</option>
+          <option value="webm">WebM</option>
+          <option value="auto" selected>Auto (best available)</option>
+        </select>
+      </div>
+      <div class="row">
+        <button id="recStart" class="btn">Start Recording</button>
+        <button id="recStop" class="btn" disabled>Stop & Save</button>
+      </div>
+      <div class="row">
+        <button id="shot" class="btn secondary">Export PNG</button>
+      </div>
+      <div class="row small" id="supportNote"></div>
+      <div class="row small" id="dbg">buffer: 0 | fps —</div>
+    </fieldset>
+  </aside>
+
+  <main>
+    <!-- layers: base is built on final canvas -->
+    <canvas id="stain"></canvas> <!-- just the blotches -->
+    <canvas id="ghost"></canvas> <!-- transparent except where motion -->
+    <canvas id="final"></canvas> <!-- composited output -->
+    <div id="hud" class="hud"></div>
+    <div id="recHUD" class="rec" style="display:none;"><span class="dot"></span><span id="recTime">REC 00:00</span></div>
+  </main>
 </div>
-
-<video id="v" playsinline muted></video>
-
-<div id="gate"><div class="box">
-  <b>Motion Extract</b><br/>Choose source:
-  <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
-    <button id="useCam" class="btn">Use Webcam</button>
-    <label class="btn" for="file">Load Video</label>
-    <input id="file" type="file" accept="video/*" style="display:none">
-  </div>
-  <div style="margin-top:8px;color:#9fb3a7">Tip: Large videos may run slower. 720p is plenty.</div>
-</div></div>
-
-<div id="ui" hidden>
-  <div class="row">
-    <label>Threshold <input id="th" type="range" min="5" max="120" value="35"></label>
-    <label>Sample step <input id="step" type="range" min="2" max="12" value="5"></label>
-    <label>Point size <input id="ps" type="range" min="1" max="8" value="3"></label>
-  </div>
-  <div class="row">
-    <label>Ghost decay <input id="gd" type="range" min="0" max="40" value="5"></label>
-    <label>Stain decay <input id="sd" type="range" min="0" max="30" value="3"></label>
-  </div>
-  <div class="row">
-    <label>Ghost color <input id="gc" type="color" value="#00ffb4"></label>
-    <label>Stain color <input id="sc" type="color" value="#ff8c00"></label>
-  </div>
-  <div class="row">
-    <button id="toggleGhost" class="btn">Hide Ghost</button>
-    <button id="toggleStain" class="btn">Hide Stain</button>
-    <button id="saveFrame" class="btn">Save PNG</button>
-  </div>
-</div>
-
-<div id="notice"></div>
 
 <script>
-(function () {
-  const v = document.getElementById('v');
-  const stain = document.getElementById('stain');
-  const ghost = document.getElementById('ghost');
-  const sctx = stain.getContext('2d');
-  const gctx = ghost.getContext('2d');
-
-  const gate = document.getElementById('gate');
-  const ui = document.getElementById('ui');
-  const notice = document.getElementById('notice');
-
-  // UI elements
-  const thEl = document.getElementById('th');
-  const stepEl = document.getElementById('step');
-  const psEl = document.getElementById('ps');
-  const gdEl = document.getElementById('gd');
-  const sdEl = document.getElementById('sd');
-  const gcEl = document.getElementById('gc');
-  const scEl = document.getElementById('sc');
-
-  let showGhost = true, showStain = true;
-
-  document.getElementById('toggleGhost').onclick = e=>{
-    showGhost = !showGhost;
-    e.target.textContent = showGhost ? 'Hide Ghost' : 'Show Ghost';
-    ghost.style.display = showGhost ? 'block' : 'none';
+(function(){
+  // ---------- Elements ----------
+  const can = {
+    stain: document.getElementById('stain'),
+    ghost: document.getElementById('ghost'),
+    final: document.getElementById('final'),
   };
-  document.getElementById('toggleStain').onclick = e=>{
-    showStain = !showStain;
-    e.target.textContent = showStain ? 'Hide Stain' : 'Show Stain';
-    stain.style.display = showStain ? 'block' : 'none';
-  };
-  document.getElementById('saveFrame').onclick = ()=>{
-    // composite both into a temp canvas and download
-    const t = document.createElement('canvas');
-    t.width = ghost.width; t.height = ghost.height;
-    const tctx = t.getContext('2d');
-    if (showStain) tctx.drawImage(stain,0,0);
-    if (showGhost) tctx.drawImage(ghost,0,0);
-    const a = document.createElement('a');
-    a.download = 'blob-track.png';
-    a.href = t.toDataURL('image/png');
-    a.click();
-  };
+  const sctx = can.stain.getContext('2d');
+  const gctx = can.ghost.getContext('2d');
+  const fctx = can.final.getContext('2d');
 
-  // Gate controls
-  document.getElementById('useCam').onclick = async ()=>{
-    try{
-      const stream = await navigator.mediaDevices.getUserMedia({video:true,audio:false});
-      v.srcObject = stream; await v.play(); start();
-    }catch(err){ alert('Camera blocked. Load a video instead.'); }
-  };
-  document.getElementById('file').onchange = (e)=>{
+  const file = document.getElementById('file');
+  const webcamBtn = document.getElementById('webcam');
+  const playBtn = document.getElementById('play');
+  const recStartBtn = document.getElementById('recStart');
+  const recStopBtn  = document.getElementById('recStop');
+  const shotBtn = document.getElementById('shot');
+  const hud = document.getElementById('hud');
+  const recHUD = document.getElementById('recHUD');
+  const recTime = document.getElementById('recTime');
+  const dbg = document.getElementById('dbg');
+  const supportNote = document.getElementById('supportNote');
+
+  const ids = ["dt","thr","grey","preblur","gAlpha","decay","strength","expand"];
+  const el  = Object.fromEntries(ids.map(id=>[id, document.getElementById(id)]));
+  const out = Object.fromEntries(ids.map(id=>[id+"V", document.getElementById(id+"V")]));
+  const stainOn = document.getElementById('stainOn');
+  const sColor  = document.getElementById('sColor');
+  const gBlend  = document.getElementById('gBlend');
+  const formatSel = document.getElementById('format');
+
+  function sync(){
+    out.dtV.textContent      = (+el.dt.value).toFixed(1);
+    out.thrV.textContent     = el.thr.value;
+    out.greyV.textContent    = el.grey.value;
+    out.preblurV.textContent = el.preblur.value;
+    out.gAlphaV.textContent  = (+el.gAlpha.value).toFixed(2);
+    out.decayV.textContent   = (+el.decay.value).toFixed(3);
+    out.strengthV.textContent= (+el.strength.value).toFixed(2);
+    out.expandV.textContent  = el.expand.value;
+  }
+  [...ids.map(id=>el[id]), stainOn, sColor, gBlend, formatSel].forEach(x=>x.addEventListener('input', sync));
+  sync();
+
+  // ---------- Source ----------
+  const vid = document.createElement('video');
+  vid.crossOrigin = "anonymous";
+  vid.playsInline = true; vid.muted = true; vid.loop = true; vid.preload = "auto";
+
+  const qs = new URLSearchParams(location.search);
+  const src = qs.get('src'); if(src){ vid.src = src; }
+
+  let mediaStream = null;
+  file.addEventListener('change', e=>{
     const f = e.target.files[0]; if(!f) return;
-    v.srcObject = null;
-    v.src = URL.createObjectURL(f);
-    v.onloadedmetadata = async()=>{ await v.play(); start(); };
-  };
-
-  // --- Core ---
-  let w=0,h=0, off, octx, prev;
-  function resize() {
-    const vw = v.videoWidth || 640;
-    const vh = v.videoHeight || 480;
-    const scale = Math.min(window.innerWidth/vw, window.innerHeight/vh);
-    w = Math.round(vw*scale); h = Math.round(vh*scale);
-    [stain, ghost].forEach(c=>{ c.width=w; c.height=h; });
-    off = document.createElement('canvas'); off.width=w; off.height=h;
-    octx = off.getContext('2d');
+    stopWebcam();
+    vid.src = URL.createObjectURL(f);
+    vid.play();
+  });
+  playBtn.addEventListener('click', ()=> vid.paused ? vid.play() : vid.pause());
+  webcamBtn.addEventListener('click', ()=> startWebcam().catch(e=>alert('Webcam failed: '+e.message)));
+  async function startWebcam(){
+    stopWebcam();
+    mediaStream = await navigator.mediaDevices.getUserMedia({video:true, audio:false});
+    vid.srcObject = mediaStream; await vid.play();
   }
-  window.addEventListener('resize', ()=>{ if(v.readyState>=2) resize(); });
+  function stopWebcam(){ if(mediaStream){ mediaStream.getTracks().forEach(t=>t.stop()); mediaStream=null; } }
 
-  function start(){
-    gate.hidden = true; ui.hidden = false;
-    resize();
-    sctx.clearRect(0,0,w,h);
-    gctx.clearRect(0,0,w,h);
-    prev = null;
+  // ---------- HiDPI sizing ----------
+  function fit(){
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const r = can.final.getBoundingClientRect();
+    const W = Math.max(2, Math.round(r.width*dpr));
+    const H = Math.max(2, Math.round(r.height*dpr));
+    for(const k in can){ can[k].width=W; can[k].height=H; }
+    proc.width=W; proc.height=H;
+    maskCanvas.width=W; maskCanvas.height=H;
+    colCanvas.width=W; colCanvas.height=H;
+  }
+  new ResizeObserver(fit).observe(can.final);
+
+  // ---------- Buffers ----------
+  const proc = document.createElement('canvas');
+  const pctx = proc.getContext('2d', {willReadFrequently:true});
+  const maskCanvas = document.createElement('canvas');
+  const maskCtx = maskCanvas.getContext('2d');
+  const colCanvas = document.createElement('canvas');
+  const colCtx = colCanvas.getContext('2d');
+
+  const buf = []; const MAX_SEC = 14;
+  function pushFrame(img, t){
+    buf.push({t, data: new Uint8ClampedArray(img.data), w: img.width, h: img.height});
+    const cutoff = t - (MAX_SEC + 2);
+    while(buf.length && buf[0].t < cutoff) buf.shift();
+  }
+  function getPastFrame(delta){
+    const target = vid.currentTime - delta;
+    for(let i=buf.length-1;i>=0;i--){ if(buf[i].t <= target) return buf[i]; }
+    return buf[0] || null;
+  }
+
+  function drawVideoContained(ctx, video, W, H, blurPx){
+    ctx.save();
+    ctx.clearRect(0,0,W,H);
+    if(blurPx>0) ctx.filter = `blur(${blurPx}px)`;
+    const vw=video.videoWidth||0, vh=video.videoHeight||0;
+    if(vw && vh){
+      const s = Math.min(W/vw, H/vh);
+      const dw = Math.round(vw*s), dh = Math.round(vh*s);
+      const dx = Math.floor((W-dw)/2), dy = Math.floor((H-dh)/2);
+      ctx.drawImage(video, dx,dy,dw,dh);
+    }
+    ctx.restore();
+  }
+
+  // ---------- Recording ----------
+  let recorder=null, chunks=[], recStartTime=0, recTimer=null, recMime="", recExt="webm";
+  function bestSupported(){
+    const mp4='video/mp4;codecs=avc1.42E01E,mp4a.40.2';
+    const webm='video/webm;codecs=vp9,opus';
+    const webm2='video/webm;codecs=vp8,opus';
+    const canMp4 = !!(window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(mp4));
+    const canWebm= !!(window.MediaRecorder && MediaRecorder.isTypeSupported && (MediaRecorder.isTypeSupported(webm)||MediaRecorder.isTypeSupported(webm2)));
+    return {canMp4, canWebm, mp4, webm:(MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(webm)?webm:webm2)};
+  }
+  function refreshSupportNote(){
+    const s=bestSupported();
+    let msg='';
+    const fmt=document.getElementById('format').value;
+    if(fmt==='mp4'){ msg = s.canMp4 ? '<span class="ok">MP4 recording supported ✓</span>' : '<span class="warn">MP4 not supported here. Use Safari/WebKit or switch to WebM.</span>'; }
+    else if(fmt==='webm'){ msg = s.canWebm ? 'WebM recording supported ✓' : '<span class="warn">WebM not supported.</span>'; }
+    else { msg = s.canMp4 ? 'Auto → MP4' : (s.canWebm ? 'Auto → WebM' : '<span class="warn">Recording unsupported.</span>'); }
+    supportNote.innerHTML = msg;
+  }
+  refreshSupportNote();
+  document.getElementById('format').addEventListener('change', refreshSupportNote);
+
+  function startRecording(){
+    const s=bestSupported(); const sel=document.getElementById('format').value;
+    let mime='';
+    if(sel==='mp4') mime = s.canMp4 ? s.mp4 : '';
+    else if(sel==='webm') mime = s.canWebm ? s.webm : '';
+    else mime = s.canMp4 ? s.mp4 : (s.canWebm ? s.webm : '');
+
+    if(!mime){ alert('Recording format not supported on this browser.'); return; }
+
+    const stream = can.final.captureStream ? can.final.captureStream(30) : can.final.mozCaptureStream(30);
+    chunks=[];
+    recorder = new MediaRecorder(stream, {mimeType:mime, videoBitsPerSecond: 8_000_000});
+    recMime=mime; recExt = mime.startsWith('video/mp4') ? 'mp4' : 'webm';
+
+    recorder.ondataavailable = e=>{ if(e.data && e.data.size) chunks.push(e.data); };
+    recorder.onstop = ()=>{
+      const blob = new Blob(chunks, {type: recMime});
+      const a = document.createElement('a');
+      a.download = `wind_on_wall_${Date.now()}.${recExt}`;
+      a.href = URL.createObjectURL(blob);
+      a.click();
+      stopRecUI();
+    };
+    recorder.start(250);
+
+    recStartTime = performance.now();
+    recTimer = setInterval(()=>{
+      const t = Math.floor((performance.now()-recStartTime)/1000);
+      const mm = String(Math.floor(t/60)).padStart(2,'0');
+      const ss = String(t%60).padStart(2,'0');
+      recTime.textContent = `REC ${mm}:${ss}`;
+    },250);
+    recHUD.style.display='flex';
+    recStartBtn.disabled=true; recStopBtn.disabled=false;
+  }
+  function stopRecording(){ if(recorder && recorder.state==='recording'){ recorder.stop(); } }
+  function stopRecUI(){ clearInterval(recTimer); recTimer=null; recHUD.style.display='none'; recStartBtn.disabled=false; recStopBtn.disabled=true; }
+  recStartBtn.addEventListener('click', startRecording);
+  recStopBtn.addEventListener('click',  stopRecording);
+
+  shotBtn.addEventListener('click', ()=>{
+    const a = document.createElement('a');
+    a.download = 'still_'+Date.now()+'.png';
+    a.href = can.final.toDataURL('image/png');
+    a.click();
+  });
+
+  // ---------- Main loop ----------
+  let lastT=0, fpsEMA=0;
+  requestAnimationFrame(function tick(now){
     requestAnimationFrame(tick);
-  }
+    if(vid.readyState < 2) return;
 
-  function rgbaFromHex(hex, a=1){
-    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    const r=parseInt(m[1],16), g=parseInt(m[2],16), b=parseInt(m[3],16);
-    return `rgba(${r},${g},${b},${a})`;
-  }
+    const W = can.final.width, H = can.final.height;
 
-  function tick(){
-    if(v.readyState>=2){
-      // draw current frame to offscreen
-      octx.drawImage(v,0,0,w,h);
-      const img = octx.getImageData(0,0,w,h);
-      const data = img.data;
+    // 1) Draw current frame into analysis canvas
+    drawVideoContained(pctx, vid, W, H, +el.preblur.value);
+    const curr = pctx.getImageData(0,0,W,H);
+    pushFrame(curr, vid.currentTime);
 
-      // previous frame
-      if(prev && prev.width===w && prev.height===h){
-        const p = prev.data;
+    // 2) Past frame
+    const past = getPastFrame(+el.dt.value);
+    if(!past) return;
 
-        // decay passes (independent)
-        // ghost decay reduces alpha
-        const gDecay = (Number(gdEl.value)||0)/100; // 0..0.4
-        if (gDecay>0){
-          gctx.globalCompositeOperation='destination-out';
-          gctx.fillStyle = `rgba(0,0,0,${gDecay})`;
-          gctx.fillRect(0,0,w,h);
-          gctx.globalCompositeOperation='source-over';
-        }
-        // stain decay
-        const sDecay = (Number(sdEl.value)||0)/100; // 0..0.3
-        if (sDecay>0){
-          sctx.globalCompositeOperation='destination-out';
-          sctx.fillStyle = `rgba(0,0,0,${sDecay})`;
-          sctx.fillRect(0,0,w,h);
-          sctx.globalCompositeOperation='source-over';
-        }
+    // 3) Build motion mask + ghost pixels (transparent elsewhere)
+    const c = curr.data, p = past.data;
+    const ghostImg = gctx.createImageData(W,H);
+    const gd = ghostImg.data;
+    const thr = +el.thr.value;
+    const mask = new Uint8ClampedArray(W*H);
+    let changedCount=0;
 
-        // settings
-        const T = Number(thEl.value)||35;          // threshold 5..120
-        const STEP = Number(stepEl.value)||5;      // sampling step
-        const PS = Number(psEl.value)||3;          // point size
-        const ghostColor = rgbaFromHex(gcEl.value, 1);
-        const stainColor = rgbaFromHex(scEl.value, 0.18); // subtle
+    for(let i=0,j=0;i<c.length;i+=4,j++){
+      const r=c[i], g=c[i+1], b=c[i+2];
+      const pr=p[i], pg=p[i+1], pb=p[i+2];
+      const lc = r*0.2126 + g*0.7152 + b*0.0722;
+      const lp = pr*0.2126 + pg*0.7152 + pb*0.0722;
+      const d = Math.abs(lc - lp);
 
-        // draw loop (sampled grid)
-        gctx.fillStyle = ghostColor;
-        sctx.fillStyle = stainColor;
-
-        for(let y=0; y<h; y+=STEP){
-          for(let x=0; x<w; x+=STEP){
-            const i = ((y*w)+x)*4;
-            // luminance diff
-            const r = data[i], g = data[i+1], b = data[i+2];
-            const rp= p[i],   gp= p[i+1],   bp= p[i+2];
-            const cur = 0.299*r + 0.587*g + 0.114*b;
-            const old = 0.299*rp + 0.587*gp + 0.114*bp;
-            const diff = Math.abs(cur - old);
-
-            if (diff > T){
-              // ghost = instantaneous motion marker
-              if (showGhost){
-                gctx.fillRect(x, y, PS, PS);
-              }
-              // stain = accumulative paint
-              if (showStain){
-                sctx.fillRect(x, y, PS, PS);
-              }
-            }
-          }
-        }
+      if(d > thr){
+        changedCount++; mask[j]=255;
+        // AE-style: 0.5*current + 0.5*(255 - pastΔt)
+        gd[i]   = (r + (255 - pr)) * 0.5;
+        gd[i+1] = (g + (255 - pg)) * 0.5;
+        gd[i+2] = (b + (255 - pb)) * 0.5;
+        gd[i+3] = 255;                       // opaque where motion
+      } else {
+        gd[i]=gd[i+1]=gd[i+2]=0; gd[i+3]=0;  // fully transparent where no motion
       }
-      prev = img; // keep a copy
     }
-    requestAnimationFrame(tick);
+    gctx.putImageData(ghostImg,0,0);
+
+    // 4) Update stain (solid blotches)
+    if(stainOn.checked){
+      // decay
+      const decay = +el.decay.value;
+      sctx.globalCompositeOperation='destination-out';
+      sctx.fillStyle = `rgba(0,0,0,${1-decay})`;
+      sctx.fillRect(0,0,W,H);
+      sctx.globalCompositeOperation='source-over';
+
+      // build a full (filled) mask
+      const mImg = maskCtx.createImageData(W,H);
+      const mdat = mImg.data;
+      for(let j=0,k=0;j<mask.length;j++,k+=4){
+        const v = mask[j]; mdat[k]=mdat[k+1]=mdat[k+2]=v; mdat[k+3]=v;
+      }
+      maskCtx.putImageData(mImg,0,0);
+
+      // expand → colorize → stamp
+      colCtx.clearRect(0,0,W,H);
+      const expand = +el.expand.value;
+      if(expand>0){ colCtx.filter = `blur(${expand}px)`; }
+      colCtx.drawImage(maskCanvas,0,0);
+      colCtx.filter='none';
+      colCtx.globalCompositeOperation='source-in';
+      colCtx.fillStyle = sColor.value;
+      colCtx.globalAlpha = +el.strength.value;
+      colCtx.fillRect(0,0,W,H);
+      colCtx.globalCompositeOperation='source-over';
+      colCtx.globalAlpha = 1;
+      sctx.drawImage(colCanvas,0,0);
+    }
+
+    // 5) Compose final:
+    //    base = GREY, then STAIN (multiply) → affects base only,
+    //    then GHOSTS on top (source-over with opacity).
+    fctx.clearRect(0,0,W,H);
+    const grey = +el.grey.value;
+    fctx.fillStyle = `rgb(${grey},${grey},${grey})`;
+    fctx.fillRect(0,0,W,H);
+
+    if(stainOn.checked){
+      fctx.globalCompositeOperation='multiply';
+      fctx.drawImage(can.stain,0,0);
+      fctx.globalCompositeOperation='source-over';
+    }
+
+    fctx.globalAlpha = +el.gAlpha.value;
+    fctx.globalCompositeOperation = document.getElementById('gBlend').value; // normal/screen/lighter
+    fctx.drawImage(can.ghost,0,0);
+    fctx.globalAlpha = 1;
+    fctx.globalCompositeOperation='source-over';
+
+    // HUD/debug
+    const dt = now - lastT; lastT = now;
+    const inst = dt>0 ? 1000/dt : 0; fpsEMA = fpsEMA? fpsEMA*0.9 + inst*0.1 : inst;
+    const pct = 100*(changedCount/(W*H));
+    hud.textContent = `Δt = ${(+el.dt.value).toFixed(1)} s
+thr = ${el.thr.value}, pre-blur = ${el.preblur.value}, grey = ${el.grey.value}
+ghost: ${gBlend.value}, α=${(+el.gAlpha.value).toFixed(2)}
+stain: decay=${(+el.decay.value).toFixed(3)}, expand=${el.expand.value}, strength=${(+el.strength.value).toFixed(2)}
+changed = ${pct.toFixed(1)}%`;
+
+    const s = bestSupported();
+    dbg.textContent = `buffer: ${buf.length} | fps ~ ${fpsEMA.toFixed(1)} | support: ${s.canMp4?'MP4✓':'MP4×'}/${s.canWebm?'WebM✓':'WebM×'}`;
+  });
+
+  vid.addEventListener('loadeddata', ()=>{ vid.play().catch(()=>{}); });
+
+  // ---------- helpers ----------
+  function bestSupported(){
+    const mp4='video/mp4;codecs=avc1.42E01E,mp4a.40.2';
+    const webm='video/webm;codecs=vp9,opus';
+    const webm2='video/webm;codecs=vp8,opus';
+    const canMp4 = !!(window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(mp4));
+    const canWebm= !!(window.MediaRecorder && MediaRecorder.isTypeSupported && (MediaRecorder.isTypeSupported(webm)||MediaRecorder.isTypeSupported(webm2)));
+    return {canMp4, canWebm, mp4, webm:(MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(webm)?webm:webm2)};
   }
 
-  // small helper: show fps-ish info
-  let last = performance.now(), frames=0;
-  function ping(){
-    frames++;
-    const now = performance.now();
-    if (now-last>1000){
-      notice.textContent = frames+' fps';
-      frames=0; last=now;
-    }
-    requestAnimationFrame(ping);
-  }
-  ping();
+  // recording UI wires
+  recStartBtn.addEventListener('click', startRecording);
+  recStopBtn.addEventListener('click',  stopRecording);
+  function startRecording(){
+    const s=bestSupported(); const sel=document.getElementById('format').value;
+    let mime='';
+    if(sel==='mp4') mime = s.canMp4 ? s.mp4 : '';
+    else if(sel==='webm') mime = s.canWebm ? s.webm : '';
+    else mime = s.canMp4 ? s.mp4 : (s.canWebm ? s.webm : '');
+    if(!mime){ alert('Recording format not supported on this browser.'); return; }
 
+    const stream = can.final.captureStream ? can.final.captureStream(30) : can.final.mozCaptureStream(30);
+    chunks=[];
+    recorder = new MediaRecorder(stream, {mimeType:mime, videoBitsPerSecond: 8_000_000});
+    recMime=mime; recExt = mime.startsWith('video/mp4') ? 'mp4' : 'webm';
+    recorder.ondataavailable = e=>{ if(e.data && e.data.size) chunks.push(e.data); };
+    recorder.onstop = ()=>{
+      const blob = new Blob(chunks, {type: recMime});
+      const a = document.createElement('a');
+      a.download = `wind_on_wall_${Date.now()}.${recExt}`;
+      a.href = URL.createObjectURL(blob);
+      a.click();
+      stopRecUI();
+    };
+    recorder.start(250);
+
+    recStartTime = performance.now();
+    recTimer = setInterval(()=>{
+      const t = Math.floor((performance.now()-recStartTime)/1000);
+      const mm = String(Math.floor(t/60)).padStart(2,'0');
+      const ss = String(t%60).padStart(2,'0');
+      recTime.textContent = `REC ${mm}:${ss}`;
+    },250);
+    recHUD.style.display='flex';
+    recStartBtn.disabled=true; recStopBtn.disabled=false;
+  }
+  let recorder=null, chunks=[], recTimer=null, recStartTime=0, recMime='', recExt='webm';
+  function stopRecording(){ if(recorder && recorder.state==='recording'){ recorder.stop(); } }
+  function stopRecUI(){ clearInterval(recTimer); recHUD.style.display='none'; recStartBtn.disabled=false; recStopBtn.disabled=true; }
 })();
 </script>
 </body>

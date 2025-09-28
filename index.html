@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Wind-on-Wall — Invert-Blend + Residual Staining (Hi-Res)</title>
+<title>Wind-on-Wall — Ghosts + Stain (Hi-Res, MP4 Recording)</title>
 <style>
-  :root{--bg:#0b0e12;--fg:#e6eeff;--mut:#90a1bb}
+  :root{--bg:#0b0e12;--fg:#e6eeff;--mut:#90a1bb;--accent:#ff5b5b}
   html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:14px/1.35 system-ui,Segoe UI,Roboto,Helvetica,Arial}
-  .wrap{display:grid;grid-template-columns:320px 1fr;gap:14px;height:100%}
+  .wrap{display:grid;grid-template-columns:360px 1fr;gap:14px;height:100%}
   aside{padding:14px 12px 16px;border-right:1px solid #1a2233;overflow:auto}
   main{position:relative}
   canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
@@ -16,12 +16,17 @@
   legend{padding:0 6px;color:#9fb7e8}
   .row{display:flex;align-items:center;gap:8px;margin:8px 0}
   .row label{flex:1;color:var(--mut)}
-  .row input[type="range"]{flex:2}
+  .row input[type="range"], .row select{flex:2}
   .btn{appearance:none;border:1px solid #2a3754;background:#121826;color:#cfe1ff;border-radius:8px;padding:6px 10px;cursor:pointer}
-  .btn:active{transform:translateY(1px)}
+  .btn.secondary{background:#0e1422;border-color:#1f2b44;color:#a8b7d6}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
   .kbd{font:12px ui-monospace;background:#121520;border:1px solid #1f2736;border-radius:6px;padding:1px 6px;color:#b8c7e8}
   .small{font-size:12px;color:#93a6c4}
   .hud{position:absolute;top:10px;left:10px;background:rgba(0,0,0,.45);padding:6px 8px;border-radius:8px;font:12px ui-monospace;white-space:pre}
+  .rec{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.55);padding:6px 10px;border-radius:999px;font:12px ui-monospace;display:flex;align-items:center;gap:8px}
+  .dot{width:8px;height:8px;background:var(--accent);border-radius:50%;box-shadow:0 0 8px var(--accent)}
+  .warn{color:#ffb86b}
+  .ok{color:#6be77a}
 </style>
 </head>
 <body>
@@ -31,77 +36,131 @@
     <div class="row">
       <input id="file" type="file" accept="video/*">
       <button id="webcam" class="btn">Webcam</button>
-      <button id="play" class="btn">Play/Pause</button>
+      <button id="play" class="btn secondary">Play/Pause</button>
     </div>
-    <div class="row small">Or URL param: <span class="kbd">?src=clip.mp4</span> (same-origin or CORS)</div>
+    <div class="row small">Or URL: <span class="kbd">?src=clip.mp4</span> (same-origin or CORS)</div>
 
     <fieldset>
       <legend>Temporal window</legend>
       <div class="row"><label>Δt (seconds)</label><input id="dt" type="range" min="2" max="10" step="0.5" value="6"><span id="dtV">6.0</span></div>
       <div class="row"><label>Diff threshold</label><input id="thr" type="range" min="4" max="60" value="18"><span id="thrV">18</span></div>
-      <div class="row"><label>Blur (px)</label><input id="blur" type="range" min="0" max="3" value="0"><span id="blurV">0</span></div>
       <div class="row"><label>Grey level</label><input id="grey" type="range" min="60" max="200" value="120"><span id="greyV">120</span></div>
+      <div class="row"><label>Pre-blur (px)</label><input id="preblur" type="range" min="0" max="3" value="0"><span id="preblurV">0</span></div>
     </fieldset>
 
     <fieldset>
-      <legend>Residual staining</legend>
+      <legend>Ghosts (motion layer)</legend>
+      <div class="row"><label>Opacity</label><input id="gAlpha" type="range" min="0.2" max="1" step="0.05" value="0.6"><span id="gAlphaV">0.60</span></div>
+      <div class="row"><label>Edge-only</label><input id="gEdge" type="checkbox" checked></div>
+      <div class="row"><label>Softness (px)</label><input id="gBlur" type="range" min="0" max="4" value="1"><span id="gBlurV">1</span></div>
+      <div class="row"><label>Tint amount</label><input id="gTintAmt" type="range" min="0" max="1" step="0.05" value="0.5"><span id="gTintAmtV">0.50</span></div>
+      <div class="row"><label>Tint color</label><input id="gTintCol" type="color" value="#a7d1ff"></div>
+      <div class="row"><label>Blend mode</label>
+        <select id="gBlend">
+          <option value="normal">Normal</option>
+          <option value="screen" selected>Screen</option>
+          <option value="lighter">Lighter</option>
+        </select>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Stain (residual blotches)</legend>
       <div class="row"><label>Enable stain</label><input id="stainOn" type="checkbox" checked></div>
-      <div class="row"><label>Stain decay</label><input id="decay" type="range" min="0.90" max="0.995" step="0.001" value="0.970"><span id="decayV">0.970</span></div>
-      <div class="row"><label>Stain strength</label><input id="strength" type="range" min="0.1" max="1" step="0.05" value="0.50"><span id="strengthV">0.50</span></div>
-      <div class="row"><label>Stain color</label><input id="color" type="color" value="#223b7a"></div>
+      <div class="row"><label>Decay</label><input id="decay" type="range" min="0.90" max="0.995" step="0.001" value="0.970"><span id="decayV">0.970</span></div>
+      <div class="row"><label>Strength</label><input id="strength" type="range" min="0.1" max="1" step="0.05" value="0.50"><span id="strengthV">0.50</span></div>
+      <div class="row"><label>Expand (px)</label><input id="expand" type="range" min="0" max="8" step="1" value="2"><span id="expandV">2</span></div>
+      <div class="row"><label>Color</label><input id="sColor" type="color" value="#223b7a"></div>
     </fieldset>
 
     <fieldset>
       <legend>Export</legend>
       <div class="row">
-        <button id="shot" class="btn">Export PNG</button>
-        <button id="rec" class="btn">Start/Stop Video</button>
+        <label>Format</label>
+        <select id="format">
+          <option value="mp4">MP4 (preferred)</option>
+          <option value="webm">WebM</option>
+          <option value="auto" selected>Auto (best available)</option>
+        </select>
       </div>
+      <div class="row">
+        <button id="recStart" class="btn">Start Recording</button>
+        <button id="recStop" class="btn" disabled>Stop & Save</button>
+      </div>
+      <div class="row">
+        <button id="shot" class="btn secondary">Export PNG</button>
+      </div>
+      <div class="row small" id="supportNote"></div>
       <div class="row small" id="dbg">buffer: 0 | fps —</div>
     </fieldset>
+
+    <div class="small">
+      <span class="ok">Tip</span>: **MP4** is supported natively in Safari/WebKit. Chrome/Firefox usually record **WebM**.  
+      This app auto-selects the best it can and tells you which one you’ll get before you hit Record.
+    </div>
   </aside>
 
   <main>
-    <canvas id="view"></canvas>
+    <!-- layers -->
+    <canvas id="ghost"></canvas>
     <canvas id="stain"></canvas>
+    <canvas id="final"></canvas>
+
     <div id="hud" class="hud"></div>
+    <div id="recHUD" class="rec" style="display:none;"><span class="dot"></span><span id="recTime">REC 00:00</span></div>
   </main>
 </div>
 
 <script>
 (function(){
-  // --- Elements & UI ---
-  const view = document.getElementById('view');
-  const vctx = view.getContext('2d');
-  const stain = document.getElementById('stain');
-  const sctx = stain.getContext('2d');
+  // ----- Elements & state -----
+  const can = {
+    ghost: document.getElementById('ghost'),
+    stain: document.getElementById('stain'),
+    final: document.getElementById('final'),
+  };
+  const gctx = can.ghost.getContext('2d');
+  const sctx = can.stain.getContext('2d');
+  const fctx = can.final.getContext('2d');
 
   const file = document.getElementById('file');
   const webcamBtn = document.getElementById('webcam');
   const playBtn = document.getElementById('play');
-  const recBtn = document.getElementById('rec');
+  const recStartBtn = document.getElementById('recStart');
+  const recStopBtn  = document.getElementById('recStop');
   const shotBtn = document.getElementById('shot');
   const hud = document.getElementById('hud');
+  const recHUD = document.getElementById('recHUD');
+  const recTime = document.getElementById('recTime');
   const dbg = document.getElementById('dbg');
+  const supportNote = document.getElementById('supportNote');
 
-  const ids = ["dt","thr","blur","grey","decay","strength"];
+  const ids = ["dt","thr","grey","preblur","gAlpha","gBlur","gTintAmt","decay","strength","expand"];
   const el  = Object.fromEntries(ids.map(id=>[id, document.getElementById(id)]));
   const out = Object.fromEntries(ids.map(id=>[id+"V", document.getElementById(id+"V")]));
+  const gEdge   = document.getElementById('gEdge');
+  const gBlend  = document.getElementById('gBlend');
+  const gTintCol= document.getElementById('gTintCol');
   const stainOn = document.getElementById('stainOn');
-  const colorPick = document.getElementById('color');
+  const sColor  = document.getElementById('sColor');
+  const formatSel = document.getElementById('format');
 
   function sync(){
     out.dtV.textContent = (+el.dt.value).toFixed(1);
     out.thrV.textContent = el.thr.value;
-    out.blurV.textContent = el.blur.value;
     out.greyV.textContent = el.grey.value;
+    out.preblurV.textContent = el.preblur.value;
+    out.gAlphaV.textContent = (+el.gAlpha.value).toFixed(2);
+    out.gBlurV.textContent = el.gBlur.value;
+    out.gTintAmtV.textContent = (+el.gTintAmt.value).toFixed(2);
     out.decayV.textContent = (+el.decay.value).toFixed(3);
     out.strengthV.textContent = (+el.strength.value).toFixed(2);
+    out.expandV.textContent = el.expand.value;
   }
-  [...ids.map(id=>el[id]), stainOn, colorPick].forEach(x=>x.addEventListener('input', sync));
+  [...ids.map(id=>el[id]), gEdge, gBlend, gTintCol, stainOn, sColor, formatSel].forEach(x=>x.addEventListener('input', sync));
   sync();
 
-  // --- Video source ---
+  // ----- Source video -----
   const vid = document.createElement('video');
   vid.crossOrigin = "anonymous";
   vid.playsInline = true; vid.muted = true; vid.loop = true; vid.preload = "auto";
@@ -109,6 +168,7 @@
   const qs = new URLSearchParams(location.search);
   const src = qs.get('src'); if(src){ vid.src = src; }
 
+  let mediaStream = null;
   file.addEventListener('change', e=>{
     const f = e.target.files[0]; if(!f) return;
     stopWebcam();
@@ -116,39 +176,38 @@
     vid.play();
   });
   playBtn.addEventListener('click', ()=> vid.paused ? vid.play() : vid.pause());
-
-  let mediaStream = null;
+  webcamBtn.addEventListener('click', ()=> startWebcam().catch(e=>alert('Webcam failed: '+e.message)));
   async function startWebcam(){
     stopWebcam();
     mediaStream = await navigator.mediaDevices.getUserMedia({video:true, audio:false});
     vid.srcObject = mediaStream; await vid.play();
   }
   function stopWebcam(){ if(mediaStream){ mediaStream.getTracks().forEach(t=>t.stop()); mediaStream=null; } }
-  webcamBtn.addEventListener('click', ()=> startWebcam().catch(e=>alert('Webcam failed: '+e.message)));
 
-  // --- HiDPI resize ---
+  // ----- HiDPI sizing -----
   function fit(){
     const dpr = Math.max(1, window.devicePixelRatio || 1);
-    const rect = view.getBoundingClientRect();
-    const w = Math.max(2, Math.round(rect.width  * dpr));
-    const h = Math.max(2, Math.round(rect.height * dpr));
-    [view, stain].forEach(c=>{ c.width = w; c.height = h; });
-    // also resize offscreens
-    proc.width = w; proc.height = h;
-    maskCanvas.width = w; maskCanvas.height = h;
+    const r = can.final.getBoundingClientRect();
+    const W = Math.max(2, Math.round(r.width*dpr));
+    const H = Math.max(2, Math.round(r.height*dpr));
+    for(const k in can){ can[k].width=W; can[k].height=H; }
+    proc.width=W; proc.height=H;
+    maskCanvas.width=W; maskCanvas.height=H;
+    colCanvas.width=W; colCanvas.height=H;
   }
-  new ResizeObserver(fit).observe(view);
+  new ResizeObserver(fit).observe(can.final);
 
-  // --- Processing buffers ---
+  // ----- Processing buffers -----
   const proc = document.createElement('canvas');
   const pctx = proc.getContext('2d', {willReadFrequently:true});
   const maskCanvas = document.createElement('canvas');
   const maskCtx = maskCanvas.getContext('2d');
+  const colCanvas = document.createElement('canvas');
+  const colCtx = colCanvas.getContext('2d');
 
-  // ring buffer of past frames (full-res)
   const buf = []; const MAX_SEC = 14;
-  function pushFrame(imgData, t){ // store a copy
-    buf.push({t, data: new Uint8ClampedArray(imgData.data), w: imgData.width, h: imgData.height});
+  function pushFrame(img, t){
+    buf.push({t, data: new Uint8ClampedArray(img.data), w: img.width, h: img.height});
     const cutoff = t - (MAX_SEC + 2);
     while(buf.length && buf[0].t < cutoff) buf.shift();
   }
@@ -158,73 +217,144 @@
     return buf[0] || null;
   }
 
-  // helpers: draw video with "contain" fit (no distortion)
   function drawVideoContained(ctx, video, W, H, blurPx){
     ctx.save();
     ctx.clearRect(0,0,W,H);
     if(blurPx>0) ctx.filter = `blur(${blurPx}px)`;
-    const vw = video.videoWidth || 0, vh = video.videoHeight || 0;
+    const vw=video.videoWidth||0, vh=video.videoHeight||0;
     if(vw && vh){
       const s = Math.min(W/vw, H/vh);
       const dw = Math.round(vw*s), dh = Math.round(vh*s);
-      const dx = Math.floor((W - dw)/2), dy = Math.floor((H - dh)/2);
-      ctx.drawImage(video, dx, dy, dw, dh);
+      const dx = Math.floor((W-dw)/2), dy = Math.floor((H-dh)/2);
+      ctx.drawImage(video, dx,dy,dw,dh);
     }
     ctx.restore();
   }
 
-  // --- Recording ---
-  let recorder=null, chunks=[];
-  recBtn.addEventListener('click', ()=>{
-    if(recorder && recorder.state==='recording'){ recorder.stop(); return; }
+  function hexRGB(hex){
+    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return m ? [parseInt(m[1],16), parseInt(m[2],16), parseInt(m[3],16)] : [255,255,255];
+  }
+
+  // ----- Recording (MP4 if supported) -----
+  let recorder=null, chunks=[], recStartTime=0, recTimer=null, recMime="", recExt="webm";
+  const wantMP4 = () => formatSel.value === 'mp4';
+  const wantWebM= () => formatSel.value === 'webm';
+  const wantAuto= () => formatSel.value === 'auto';
+
+  function bestSupported(){
+    const mp4 = 'video/mp4;codecs=avc1.42E01E,mp4a.40.2'; // H.264/AAC (Safari/WebKit typical)
+    const webm = 'video/webm;codecs=vp9,opus';
+    const webm2= 'video/webm;codecs=vp8,opus';
+    const canMp4 = !!(window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(mp4));
+    const canWebm = !!(window.MediaRecorder && MediaRecorder.isTypeSupported && (MediaRecorder.isTypeSupported(webm) || MediaRecorder.isTypeSupported(webm2)));
+    return {canMp4, canWebm, mp4, webm: (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(webm)? webm : webm2)};
+  }
+
+  function refreshSupportNote(){
+    const s = bestSupported();
+    let msg = '';
+    if(formatSel.value==='mp4'){
+      msg = s.canMp4 ? '<span class="ok">MP4 recording supported ✓</span>' : '<span class="warn">MP4 not supported in this browser. Use Safari/WebKit, or choose WebM.</span>';
+    } else if(formatSel.value==='webm'){
+      msg = s.canWebm ? 'WebM recording supported ✓' : '<span class="warn">WebM not supported here (rare).</span>';
+    } else {
+      msg = s.canMp4 ? 'Auto → will record MP4.' : (s.canWebm ? 'Auto → will record WebM.' : '<span class="warn">Recording not supported on this browser.</span>');
+    }
+    supportNote.innerHTML = msg;
+  }
+  refreshSupportNote();
+
+  formatSel.addEventListener('change', refreshSupportNote);
+
+  function startRecording(){
+    const s = bestSupported();
+    let mime = '';
+    if(wantMP4()){ mime = s.canMp4 ? s.mp4 : ''; }
+    else if(wantWebM()){ mime = s.canWebm ? s.webm : ''; }
+    else { mime = s.canMp4 ? s.mp4 : (s.canWebm ? s.webm : ''); }
+
+    if(!mime){ alert('This browser cannot record the chosen format. Try Safari for MP4 or switch to WebM.'); return; }
+
+    const stream = can.final.captureStream ? can.final.captureStream(30) : can.final.mozCaptureStream(30);
     chunks = [];
-    const stream = view.captureStream ? view.captureStream(30) : view.mozCaptureStream(30);
-    recorder = new MediaRecorder(stream, {mimeType:'video/webm;codecs=vp9'});
-    recorder.ondataavailable = e=>{ if(e.data.size) chunks.push(e.data); };
+    recorder = new MediaRecorder(stream, {mimeType: mime, videoBitsPerSecond: 8_000_000}); // ~8 Mbps
+    recMime = mime;
+    recExt  = mime.startsWith('video/mp4') ? 'mp4' : 'webm';
+
+    recorder.ondataavailable = e=>{ if(e.data && e.data.size) chunks.push(e.data); };
     recorder.onstop = ()=>{
-      const blob = new Blob(chunks, {type:'video/webm'});
+      const blob = new Blob(chunks, {type: recMime});
       const a = document.createElement('a');
-      a.download = 'wind_on_wall_'+Date.now()+'.webm';
+      a.download = `wind_on_wall_${Date.now()}.${recExt}`;
       a.href = URL.createObjectURL(blob);
       a.click();
+      stopRecUI();
     };
-    recorder.start();
-  });
+    recorder.start(250); // gather in chunks
+
+    // UI state
+    recStartTime = performance.now();
+    recTimer = setInterval(()=>{
+      const t = Math.floor((performance.now()-recStartTime)/1000);
+      const mm = String(Math.floor(t/60)).padStart(2,'0');
+      const ss = String(t%60).padStart(2,'0');
+      recTime.textContent = `REC ${mm}:${ss}`;
+    }, 250);
+    recHUD.style.display = 'flex';
+    recStartBtn.disabled = true;
+    recStopBtn.disabled = false;
+  }
+
+  function stopRecording(){
+    if(recorder && recorder.state==='recording'){ recorder.stop(); }
+  }
+
+  function stopRecUI(){
+    clearInterval(recTimer); recTimer=null;
+    recHUD.style.display='none';
+    recStartBtn.disabled = false;
+    recStopBtn.disabled = true;
+  }
+
+  recStartBtn.addEventListener('click', startRecording);
+  recStopBtn.addEventListener('click', stopRecording);
 
   shotBtn.addEventListener('click', ()=>{
-    // view already contains composite with stain (multiply)
     const a = document.createElement('a');
     a.download = 'still_'+Date.now()+'.png';
-    a.href = view.toDataURL('image/png');
+    a.href = can.final.toDataURL('image/png');
     a.click();
   });
 
-  // --- Main loop ---
+  // ----- Main render loop -----
   let lastT=0, fpsEMA=0;
   function tick(now){
     requestAnimationFrame(tick);
     if(vid.readyState < 2) return;
 
-    const W = view.width, H = view.height;
+    const W = can.final.width, H = can.final.height;
 
-    // 1) draw current frame at full-res into proc
-    drawVideoContained(pctx, vid, W, H, +el.blur.value);
+    // 1) draw current frame
+    drawVideoContained(pctx, vid, W, H, +el.preblur.value);
     const curr = pctx.getImageData(0,0,W,H);
     pushFrame(curr, vid.currentTime);
 
-    // 2) fetch past frame at t-Δt
+    // 2) past frame
     const past = getPastFrame(+el.dt.value);
     if(!past) return;
 
-    // 3) per-pixel compute: masked invert-blend; build mask for staining
+    // 3) mask + ghost
     const c = curr.data, p = past.data;
-    const out = vctx.createImageData(W,H);
-    const od = out.data;
-    const md = new Uint8ClampedArray(W*H); // binary mask 0/255
+    const ghostImg = gctx.createImageData(W,H);
+    const gd = ghostImg.data;
     const thr = +el.thr.value, grey = +el.grey.value;
+    const tintAmt = +el.gTintAmt.value;
+    const [tr,tg,tb] = hexRGB(gTintCol.value);
+    const mask = new Uint8ClampedArray(W*H);
+    let changedCount=0;
 
-    let changedCount = 0;
-    for(let i=0, j=0; i<c.length; i+=4, j++){
+    for(let i=0,j=0;i<c.length;i+=4,j++){
       const r=c[i], g=c[i+1], b=c[i+2];
       const pr=p[i], pg=p[i+1], pb=p[i+2];
 
@@ -233,71 +363,112 @@
       const d = Math.abs(lc - lp);
 
       if(d > thr){
-        changedCount++; md[j]=255;
-        od[i]   = (r + (255 - pr)) * 0.5;
-        od[i+1] = (g + (255 - pg)) * 0.5;
-        od[i+2] = (b + (255 - pb)) * 0.5;
-        od[i+3] = 255;
+        changedCount++; mask[j]=255;
+        let R = (r + (255 - pr)) * 0.5;
+        let G = (g + (255 - pg)) * 0.5;
+        let B = (b + (255 - pb)) * 0.5;
+        if(tintAmt>0){
+          const Y = R*0.2126 + G*0.7152 + B*0.0722;
+          R = R*(1-tintAmt) + (tr*(Y/255))*(tintAmt);
+          G = G*(1-tintAmt) + (tg*(Y/255))*(tintAmt);
+          B = B*(1-tintAmt) + (tb*(Y/255))*(tintAmt);
+        }
+        gd[i]=R; gd[i+1]=G; gd[i+2]=B; gd[i+3]=255;
       } else {
-        md[j]=0;
-        od[i]=od[i+1]=od[i+2]=grey; od[i+3]=255;
+        gd[i]=grey; gd[i+1]=grey; gd[i+2]=grey; gd[i+3]=255;
       }
     }
 
-    // 4) paint output
-    vctx.putImageData(out, 0, 0);
+    // edge-only ghosts
+    if(gEdge.checked){
+      const edge = new Uint8ClampedArray(W*H);
+      for(let y=1;y<H-1;y++){
+        let idx=y*W+1;
+        for(let x=1;x<W-1;x++,idx++){
+          if(mask[idx]===0) continue;
+          if(mask[idx-1]===0 || mask[idx+1]===0 || mask[idx-W]===0 || mask[idx+W]===0){
+            edge[idx]=255;
+          }
+        }
+      }
+      // zero interior
+      for(let y=0;y<H;y++){
+        for(let x=0;x<W;x++){
+          const j=y*W+x, i=j*4;
+          if(mask[j] && !edge[j]){
+            gd[i]=grey; gd[i+1]=grey; gd[i+2]=grey; gd[i+3]=255;
+          }
+        }
+      }
+    }
 
-    // 5) residual staining
+    gctx.putImageData(ghostImg,0,0);
+
+    // 4) stain (solid blotches)
     if(stainOn.checked){
-      // decay existing stain uniformly
+      // decay
       const decay = +el.decay.value;
-      sctx.globalCompositeOperation = 'destination-out';
+      sctx.globalCompositeOperation='destination-out';
       sctx.fillStyle = `rgba(0,0,0,${1-decay})`;
       sctx.fillRect(0,0,W,H);
-      sctx.globalCompositeOperation = 'source-over';
+      sctx.globalCompositeOperation='source-over';
 
-      // draw new stain where mask=1 (colorized)
-      // reuse maskCanvas
+      // full mask (not edge)
       const mImg = maskCtx.createImageData(W,H);
       const mdat = mImg.data;
-      for(let j=0, k=0; j<md.length; j++, k+=4){
-        const v = md[j];
-        mdat[k]=mdat[k+1]=mdat[k+2]=v; mdat[k+3]=v;
+      for(let j=0,k=0;j<mask.length;j++,k+=4){
+        const v = mask[j]; mdat[k]=mdat[k+1]=mdat[k+2]=v; mdat[k+3]=v;
       }
-      maskCtx.putImageData(mImg, 0, 0);
+      maskCtx.putImageData(mImg,0,0);
 
-      // colorize mask on offscreen then add to stain
-      const col = colorPick.value;
-      const colCtx = maskCtx; // reuse same context via composite ops
-      colCtx.globalCompositeOperation = 'source-in';
-      colCtx.fillStyle = col;
+      // expand → colorize → stamp
+      colCtx.clearRect(0,0,W,H);
+      const expand = +el.expand.value;
+      if(expand>0){ colCtx.filter = `blur(${expand}px)`; }
+      colCtx.drawImage(maskCanvas,0,0);
+      colCtx.filter='none';
+      colCtx.globalCompositeOperation='source-in';
+      colCtx.fillStyle = sColor.value;
       colCtx.globalAlpha = +el.strength.value;
       colCtx.fillRect(0,0,W,H);
-      // draw onto stain
-      sctx.drawImage(maskCanvas, 0, 0);
-      // reset maskCtx state
+      colCtx.globalCompositeOperation='source-over';
       colCtx.globalAlpha = 1;
-      colCtx.globalCompositeOperation = 'source-over';
+
+      sctx.drawImage(colCanvas,0,0);
     }
 
-    // 6) composite stain over view (multiply)
+    // 5) compose final: grey → ghosts → stain
+    fctx.clearRect(0,0,W,H);
+    fctx.fillStyle = `rgb(${el.grey.value},${el.grey.value},${el.grey.value})`;
+    fctx.fillRect(0,0,W,H);
+
+    fctx.globalAlpha = +el.gAlpha.value;
+    fctx.globalCompositeOperation = gBlend.value;
+    if(+el.gBlur.value>0){ fctx.filter = `blur(${el.gBlur.value}px)`; }
+    fctx.drawImage(can.ghost,0,0);
+    fctx.filter='none';
+    fctx.globalAlpha = 1;
+
     if(stainOn.checked){
-      vctx.globalCompositeOperation = 'multiply';
-      vctx.drawImage(stain,0,0);
-      vctx.globalCompositeOperation = 'source-over';
+      fctx.globalCompositeOperation='multiply';
+      fctx.drawImage(can.stain,0,0);
     }
+    fctx.globalCompositeOperation='source-over';
 
-    // HUD/debug
+    // HUD / debug
     const dt = now - lastT; lastT = now;
     const inst = dt>0 ? 1000/dt : 0; fpsEMA = fpsEMA? fpsEMA*0.9 + inst*0.1 : inst;
-    const totalPix = W*H;
-    const pct = 100 * (changedCount / totalPix);
-    hud.textContent = `Δt = ${(+el.dt.value).toFixed(1)} s\nthr = ${el.thr.value}, blur = ${el.blur.value}, grey = ${el.grey.value}\nchanged = ${pct.toFixed(1)}%`;
-    dbg.textContent = `buffer: ${buf.length} | fps ~ ${fpsEMA.toFixed(1)}`;
+    const pct = 100*(changedCount/(W*H));
+    hud.textContent = `Δt = ${(+el.dt.value).toFixed(1)} s
+thr = ${el.thr.value}, pre-blur = ${el.preblur.value}, grey = ${el.grey.value}
+ghost: ${gEdge.checked?'edge ':''}${gBlend.value}, α=${(+el.gAlpha.value).toFixed(2)}, tint=${(+el.gTintAmt.value).toFixed(2)}
+stain: decay=${(+el.decay.value).toFixed(3)}, expand=${el.expand.value}, strength=${(+el.strength.value).toFixed(2)}
+changed = ${pct.toFixed(1)}%`;
+    const d = bestSupported();
+    dbg.textContent = `buffer: ${buf.length} | fps ~ ${fpsEMA.toFixed(1)} | support: ${d.canMp4?'MP4✓':'MP4×'}/${d.canWebm?'WebM✓':'WebM×'}`;
   }
   requestAnimationFrame(tick);
 
-  // start playback on load
   vid.addEventListener('loadeddata', ()=>{ vid.play().catch(()=>{}); });
 
 })();

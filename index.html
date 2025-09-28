@@ -27,6 +27,8 @@
   .dot{width:8px;height:8px;background:var(--accent);border-radius:50%;box-shadow:0 0 8px var(--accent)}
   .warn{color:#ffb86b}
   .ok{color:#6be77a}
+  .nosrc{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+         color:#aac; font:12px ui-monospace; pointer-events:none}
 </style>
 </head>
 <body>
@@ -92,12 +94,13 @@
   </aside>
 
   <main>
-    <!-- layers: base is built on final canvas -->
-    <canvas id="stain"></canvas> <!-- just the blotches -->
-    <canvas id="ghost"></canvas> <!-- transparent except where motion -->
-    <canvas id="final"></canvas> <!-- composited output -->
+    <!-- layers: base is in final -->
+    <canvas id="stain"></canvas>
+    <canvas id="ghost"></canvas>
+    <canvas id="final"></canvas>
     <div id="hud" class="hud"></div>
     <div id="recHUD" class="rec" style="display:none;"><span class="dot"></span><span id="recTime">REC 00:00</span></div>
+    <div id="nosrc" class="nosrc" style="display:none;">load a clip or use the webcam</div>
   </main>
 </div>
 
@@ -124,6 +127,7 @@
   const recTime = document.getElementById('recTime');
   const dbg = document.getElementById('dbg');
   const supportNote = document.getElementById('supportNote');
+  const nosrc = document.getElementById('nosrc');
 
   const ids = ["dt","thr","grey","preblur","gAlpha","decay","strength","expand"];
   const el  = Object.fromEntries(ids.map(id=>[id, document.getElementById(id)]));
@@ -171,6 +175,13 @@
   function stopWebcam(){ if(mediaStream){ mediaStream.getTracks().forEach(t=>t.stop()); mediaStream=null; } }
 
   // ---------- HiDPI sizing ----------
+  const proc = document.createElement('canvas');
+  const pctx = proc.getContext('2d', {willReadFrequently:true});
+  const maskCanvas = document.createElement('canvas');
+  const maskCtx = maskCanvas.getContext('2d');
+  const colCanvas = document.createElement('canvas');
+  const colCtx = colCanvas.getContext('2d');
+
   function fit(){
     const dpr = Math.max(1, window.devicePixelRatio || 1);
     const r = can.final.getBoundingClientRect();
@@ -182,15 +193,10 @@
     colCanvas.width=W; colCanvas.height=H;
   }
   new ResizeObserver(fit).observe(can.final);
+  // ensure initial size immediately
+  fit();
 
   // ---------- Buffers ----------
-  const proc = document.createElement('canvas');
-  const pctx = proc.getContext('2d', {willReadFrequently:true});
-  const maskCanvas = document.createElement('canvas');
-  const maskCtx = maskCanvas.getContext('2d');
-  const colCanvas = document.createElement('canvas');
-  const colCtx = colCanvas.getContext('2d');
-
   const buf = []; const MAX_SEC = 14;
   function pushFrame(img, t){
     buf.push({t, data: new Uint8ClampedArray(img.data), w: img.width, h: img.height});
@@ -229,8 +235,8 @@
   }
   function refreshSupportNote(){
     const s=bestSupported();
-    let msg='';
     const fmt=document.getElementById('format').value;
+    let msg='';
     if(fmt==='mp4'){ msg = s.canMp4 ? '<span class="ok">MP4 recording supported ✓</span>' : '<span class="warn">MP4 not supported here. Use Safari/WebKit or switch to WebM.</span>'; }
     else if(fmt==='webm'){ msg = s.canWebm ? 'WebM recording supported ✓' : '<span class="warn">WebM not supported.</span>'; }
     else { msg = s.canMp4 ? 'Auto → MP4' : (s.canWebm ? 'Auto → WebM' : '<span class="warn">Recording unsupported.</span>'); }
@@ -245,14 +251,12 @@
     if(sel==='mp4') mime = s.canMp4 ? s.mp4 : '';
     else if(sel==='webm') mime = s.canWebm ? s.webm : '';
     else mime = s.canMp4 ? s.mp4 : (s.canWebm ? s.webm : '');
-
     if(!mime){ alert('Recording format not supported on this browser.'); return; }
 
     const stream = can.final.captureStream ? can.final.captureStream(30) : can.final.mozCaptureStream(30);
     chunks=[];
     recorder = new MediaRecorder(stream, {mimeType:mime, videoBitsPerSecond: 8_000_000});
     recMime=mime; recExt = mime.startsWith('video/mp4') ? 'mp4' : 'webm';
-
     recorder.ondataavailable = e=>{ if(e.data && e.data.size) chunks.push(e.data); };
     recorder.onstop = ()=>{
       const blob = new Blob(chunks, {type: recMime});
@@ -271,11 +275,11 @@
       const ss = String(t%60).padStart(2,'0');
       recTime.textContent = `REC ${mm}:${ss}`;
     },250);
-    recHUD.style.display='flex';
+    document.getElementById('recHUD').style.display='flex';
     recStartBtn.disabled=true; recStopBtn.disabled=false;
   }
   function stopRecording(){ if(recorder && recorder.state==='recording'){ recorder.stop(); } }
-  function stopRecUI(){ clearInterval(recTimer); recTimer=null; recHUD.style.display='none'; recStartBtn.disabled=false; recStopBtn.disabled=true; }
+  function stopRecUI(){ clearInterval(recTimer); recTimer=null; document.getElementById('recHUD').style.display='none'; recStartBtn.disabled=false; recStopBtn.disabled=true; }
   recStartBtn.addEventListener('click', startRecording);
   recStopBtn.addEventListener('click',  stopRecording);
 
@@ -290,9 +294,22 @@
   let lastT=0, fpsEMA=0;
   requestAnimationFrame(function tick(now){
     requestAnimationFrame(tick);
-    if(vid.readyState < 2) return;
 
     const W = can.final.width, H = can.final.height;
+
+    // Always paint base so you don't see black between states
+    const grey = +el.grey.value;
+    fctx.clearRect(0,0,W,H);
+    fctx.fillStyle = `rgb(${grey},${grey},${grey})`;
+    fctx.fillRect(0,0,W,H);
+
+    // If video not ready, show hint and bail
+    if(vid.readyState < 2){
+      nosrc.style.display = 'block';
+      return;
+    } else {
+      nosrc.style.display = 'none';
+    }
 
     // 1) Draw current frame into analysis canvas
     drawVideoContained(pctx, vid, W, H, +el.preblur.value);
@@ -301,7 +318,10 @@
 
     // 2) Past frame
     const past = getPastFrame(+el.dt.value);
-    if(!past) return;
+    if(!past){
+      // nothing to diff yet; leave base grey visible
+      return;
+    }
 
     // 3) Build motion mask + ghost pixels (transparent elsewhere)
     const c = curr.data, p = past.data;
@@ -340,7 +360,7 @@
       sctx.fillRect(0,0,W,H);
       sctx.globalCompositeOperation='source-over';
 
-      // build a full (filled) mask
+      // full mask
       const mImg = maskCtx.createImageData(W,H);
       const mdat = mImg.data;
       for(let j=0,k=0;j<mask.length;j++,k+=4){
@@ -363,22 +383,14 @@
       sctx.drawImage(colCanvas,0,0);
     }
 
-    // 5) Compose final:
-    //    base = GREY, then STAIN (multiply) → affects base only,
-    //    then GHOSTS on top (source-over with opacity).
-    fctx.clearRect(0,0,W,H);
-    const grey = +el.grey.value;
-    fctx.fillStyle = `rgb(${grey},${grey},${grey})`;
-    fctx.fillRect(0,0,W,H);
-
+    // 5) Compose final: base grey → stain (multiply) → ghosts
     if(stainOn.checked){
       fctx.globalCompositeOperation='multiply';
       fctx.drawImage(can.stain,0,0);
       fctx.globalCompositeOperation='source-over';
     }
-
     fctx.globalAlpha = +el.gAlpha.value;
-    fctx.globalCompositeOperation = document.getElementById('gBlend').value; // normal/screen/lighter
+    fctx.globalCompositeOperation = gBlend.value; // normal/screen/lighter
     fctx.drawImage(can.ghost,0,0);
     fctx.globalAlpha = 1;
     fctx.globalCompositeOperation='source-over';
@@ -399,55 +411,6 @@ changed = ${pct.toFixed(1)}%`;
 
   vid.addEventListener('loadeddata', ()=>{ vid.play().catch(()=>{}); });
 
-  // ---------- helpers ----------
-  function bestSupported(){
-    const mp4='video/mp4;codecs=avc1.42E01E,mp4a.40.2';
-    const webm='video/webm;codecs=vp9,opus';
-    const webm2='video/webm;codecs=vp8,opus';
-    const canMp4 = !!(window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(mp4));
-    const canWebm= !!(window.MediaRecorder && MediaRecorder.isTypeSupported && (MediaRecorder.isTypeSupported(webm)||MediaRecorder.isTypeSupported(webm2)));
-    return {canMp4, canWebm, mp4, webm:(MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(webm)?webm:webm2)};
-  }
-
-  // recording UI wires
-  recStartBtn.addEventListener('click', startRecording);
-  recStopBtn.addEventListener('click',  stopRecording);
-  function startRecording(){
-    const s=bestSupported(); const sel=document.getElementById('format').value;
-    let mime='';
-    if(sel==='mp4') mime = s.canMp4 ? s.mp4 : '';
-    else if(sel==='webm') mime = s.canWebm ? s.webm : '';
-    else mime = s.canMp4 ? s.mp4 : (s.canWebm ? s.webm : '');
-    if(!mime){ alert('Recording format not supported on this browser.'); return; }
-
-    const stream = can.final.captureStream ? can.final.captureStream(30) : can.final.mozCaptureStream(30);
-    chunks=[];
-    recorder = new MediaRecorder(stream, {mimeType:mime, videoBitsPerSecond: 8_000_000});
-    recMime=mime; recExt = mime.startsWith('video/mp4') ? 'mp4' : 'webm';
-    recorder.ondataavailable = e=>{ if(e.data && e.data.size) chunks.push(e.data); };
-    recorder.onstop = ()=>{
-      const blob = new Blob(chunks, {type: recMime});
-      const a = document.createElement('a');
-      a.download = `wind_on_wall_${Date.now()}.${recExt}`;
-      a.href = URL.createObjectURL(blob);
-      a.click();
-      stopRecUI();
-    };
-    recorder.start(250);
-
-    recStartTime = performance.now();
-    recTimer = setInterval(()=>{
-      const t = Math.floor((performance.now()-recStartTime)/1000);
-      const mm = String(Math.floor(t/60)).padStart(2,'0');
-      const ss = String(t%60).padStart(2,'0');
-      recTime.textContent = `REC ${mm}:${ss}`;
-    },250);
-    recHUD.style.display='flex';
-    recStartBtn.disabled=true; recStopBtn.disabled=false;
-  }
-  let recorder=null, chunks=[], recTimer=null, recStartTime=0, recMime='', recExt='webm';
-  function stopRecording(){ if(recorder && recorder.state==='recording'){ recorder.stop(); } }
-  function stopRecUI(){ clearInterval(recTimer); recHUD.style.display='none'; recStartBtn.disabled=false; recStopBtn.disabled=true; }
 })();
 </script>
 </body>

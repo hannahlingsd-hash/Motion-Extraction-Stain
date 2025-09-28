@@ -101,7 +101,8 @@
       </div>
       <div class="row">
         <button id="exportOne" class="btn">Export 1:1 (source)</button>
-        <span class="small">Runs once from 0 → end</span>
+        <label style="flex:none;">Match preview look</label>
+        <input id="matchPreview" type="checkbox" checked>
       </div>
       <div class="row small" id="supportNote"></div>
       <div class="row small" id="dbg">buffer: 0 | fps —</div>
@@ -140,6 +141,7 @@
   const recStopBtn  = document.getElementById('recStop');
   const shotBtn = document.getElementById('shot');
   const exportOneBtn = document.getElementById('exportOne');
+  const matchPreview = document.getElementById('matchPreview');
   const hud = document.getElementById('hud');
   const recHUD = document.getElementById('recHUD');
   const recTime = document.getElementById('recTime');
@@ -236,19 +238,15 @@
     if(blurPx>0) ctx.filter = `blur(${blurPx}px)`;
     const vw=video.videoWidth||0, vh=video.videoHeight||0;
     if(vw && vh){
-      if (W===vw && H===vh) {
-        ctx.drawImage(video, 0, 0, W, H); // 1:1 path
-      } else {
-        const s = Math.min(W/vw, H/vh);
-        const dw = Math.round(vw*s), dh = Math.round(vh*s);
-        const dx = Math.floor((W-dw)/2), dy = Math.floor((H-dh)/2);
-        ctx.drawImage(video, dx,dy,dw,dh);
-      }
+      const s = Math.min(W/vw, H/vh);
+      const dw = Math.round(vw*s), dh = Math.round(vh*s);
+      const dx = Math.floor((W-dw)/2), dy = Math.floor((H-dh)/2);
+      ctx.drawImage(video, dx,dy,dw,dh);
     }
     ctx.restore();
   }
 
-  // ---------- Recording (live) ----------
+  // ---------- Recording ----------
   let recorder=null, chunks=[], recStartTime=0, recTimer=null, recMime="", recExt="webm";
   function bestSupported(){
     const mp4='video/mp4;codecs=avc1.42E01E,mp4a.40.2';
@@ -348,212 +346,17 @@
     else if(e.code === 'Space'){ e.preventDefault(); vid.paused ? vid.play() : vid.pause(); }
   });
 
-  // ---------- 1:1 Export (source-size, one pass) ----------
-  let suspendLive = false; // pauses the live rAF loop during export
-
-  exportOneBtn.addEventListener('click', exportSourceOnce);
-
-  async function exportSourceOnce(){
-    if(vid.srcObject){ alert('1:1 export is for file/URL clips, not webcam.'); return; }
-    if(!(vid.currentSrc || vid.src)){ alert('Load a clip first.'); return; }
-
-    // ensure metadata
-    if(vid.readyState < 1){
-      await new Promise(res=>vid.addEventListener('loadedmetadata', res, {once:true}));
-    }
-    const vw = vid.videoWidth|0, vh = vid.videoHeight|0;
-    if(!vw || !vh){ alert('Video metadata unavailable.'); return; }
-
-    // choose format
-    const s=bestSupported();
-    const sel=formatSel.value;
-    let mime='';
-    if(sel==='mp4') mime = s.canMp4 ? s.mp4 : '';
-    else if(sel==='webm') mime = s.canWebm ? s.webm : '';
-    else mime = s.canMp4 ? s.mp4 : (s.canWebm ? s.webm : '');
-    if(!mime){ alert('Export not supported in this browser. Try Safari (MP4) or Chrome/Firefox (WebM).'); return; }
-
-    // UI lock
-    exportOneBtn.disabled = true;
-    recStartBtn.disabled = true;
-
-    // pause live loop and resize to source pixels
-    suspendLive = true;
-    const prev = {
-      loop: vid.loop,
-      t: vid.currentTime,
-    };
-    [can.stain, can.ghost, can.final, proc, maskCanvas, colCanvas].forEach(c=>{ c.width = vw; c.height = vh; });
-    resetState();
-
-    // recorder setup on final canvas (source-size)
-    const stream = can.final.captureStream ? can.final.captureStream(30) : can.final.mozCaptureStream(30);
-    chunks=[];
-    recorder = new MediaRecorder(stream, {mimeType:mime, videoBitsPerSecond: 8_000_000});
-    const recType = mime.startsWith('video/mp4') ? 'mp4' : 'webm';
-    const done = new Promise(resolve=>{
-      recorder.ondataavailable = e=>{ if(e.data && e.data.size) chunks.push(e.data); };
-      recorder.onstop = ()=>resolve();
-    });
-    recorder.start(250);
-
-    // drive frames using requestVideoFrameCallback for 1:1 drawing
-    vid.pause();
-    vid.loop = false;
-    const endOnce = new Promise(res=>vid.addEventListener('ended', res, {once:true}));
-    try {
-      vid.currentTime = 0;
-    } catch(_) {}
-
-    function processFrameOnce(now){
-      const W = can.final.width, H = can.final.height;
-
-      // base
-      const grey = +el.grey.value;
-      fctx.clearRect(0,0,W,H);
-      fctx.fillStyle = `rgb(${grey},${grey},${grey})`;
-      fctx.fillRect(0,0,W,H);
-
-      // current → analysis
-      drawVideoContained(pctx, vid, W, H, +el.preblur.value);
-      const curr = pctx.getImageData(0,0,W,H);
-      pushFrame(curr, vid.currentTime);
-
-      // past
-      const past = getPastFrame(+el.dt.value);
-      if(!past){
-        // compose stain only (if any), no ghosts yet
-        if(stainOn.checked){
-          fctx.globalCompositeOperation='multiply';
-          fctx.drawImage(can.stain,0,0);
-          fctx.globalCompositeOperation='source-over';
-        }
-        return;
-      }
-
-      // diff → ghosts
-      const c = curr.data, p = past.data;
-      const ghostImg = gctx.createImageData(W,H);
-      const gd = ghostImg.data;
-      const thr = +el.thr.value;
-      const mask = new Uint8ClampedArray(W*H);
-
-      for(let i=0,j=0;i<c.length;i+=4,j++){
-        const r=c[i], g=c[i+1], b=c[i+2];
-        const pr=p[i], pg=p[i+1], pb=p[i+2];
-        const lc = r*0.2126 + g*0.7152 + b*0.0722;
-        const lp = pr*0.2126 + pg*0.7152 + pb*0.0722;
-        const d = Math.abs(lc - lp);
-
-        if(d > thr){
-          mask[j]=255;
-          if (gUseColor.checked) {
-            const [cr,cg,cb] = hexToRgb(gColor.value);
-            const a = Math.max(40, Math.min(255, (d - thr) * 8));
-            gd[i]=cr; gd[i+1]=cg; gd[i+2]=cb; gd[i+3]=a;
-          } else {
-            gd[i]   = (r + (255 - pr)) * 0.5;
-            gd[i+1] = (g + (255 - pg)) * 0.5;
-            gd[i+2] = (b + (255 - pb)) * 0.5;
-            gd[i+3] = 255;
-          }
-        } else {
-          gd[i]=gd[i+1]=gd[i+2]=0; gd[i+3]=0;
-        }
-      }
-      gctx.putImageData(ghostImg,0,0);
-
-      // stain accumulate
-      if(stainOn.checked){
-        const decay = +el.decay.value;
-        sctx.globalCompositeOperation='destination-out';
-        sctx.fillStyle = `rgba(0,0,0,${1-decay})`;
-        sctx.fillRect(0,0,W,H);
-        sctx.globalCompositeOperation='source-over';
-
-        const mImg = maskCtx.createImageData(W,H);
-        const mdat = mImg.data;
-        for(let j=0,k=0;j<mask.length;j++,k+=4){
-          const v = mask[j]; mdat[k]=mdat[k+1]=mdat[k+2]=v; mdat[k+3]=v;
-        }
-        maskCtx.putImageData(mImg,0,0);
-
-        colCtx.clearRect(0,0,W,H);
-        const expand = +el.expand.value;
-        if(expand>0){ colCtx.filter = `blur(${expand}px)`; }
-        colCtx.drawImage(maskCanvas,0,0);
-        colCtx.filter='none';
-        colCtx.globalCompositeOperation='source-in';
-        colCtx.fillStyle = sColor.value;
-        colCtx.globalAlpha = +el.strength.value;
-        colCtx.fillRect(0,0,W,H);
-        colCtx.globalCompositeOperation='source-over';
-        colCtx.globalAlpha = 1;
-        sctx.drawImage(colCanvas,0,0);
-      }
-
-      // compose final
-      if(stainOn.checked){
-        fctx.globalCompositeOperation='multiply';
-        fctx.drawImage(can.stain,0,0);
-        fctx.globalCompositeOperation='source-over';
-      }
-      fctx.globalAlpha = +el.gAlpha.value;
-      fctx.globalCompositeOperation = gBlend.value;
-      fctx.drawImage(can.ghost,0,0);
-      fctx.globalAlpha = 1;
-      fctx.globalCompositeOperation='source-over';
-    }
-
-    function hexToRgb(hex){
-      const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-      return m ? [parseInt(m[1],16), parseInt(m[2],16), parseInt(m[3],16)] : [255,255,255];
-    }
-
-    function drive(){
-      // draw current frame into the export canvas
-      processFrameOnce(performance.now());
-      vid.requestVideoFrameCallback(drive);
-    }
-
-    try{
-      await vid.play();
-      vid.requestVideoFrameCallback(drive);
-      await endOnce;            // wait for video to finish once
-    } catch(e){
-      console.error(e);
-    } finally {
-      recorder.stop();
-      await done;
-      // save file
-      const blob = new Blob(chunks, {type: recMime || mime});
-      const a = document.createElement('a');
-      a.download = `wind_on_wall_1x_${vw}x${vh}_${Date.now()}.${mime.startsWith('video/mp4')?'mp4':'webm'}`;
-      a.href = URL.createObjectURL(blob);
-      a.click();
-
-      // restore UI / state
-      vid.loop = prev.loop;
-      suspendLive = false;
-      fit();
-      exportOneBtn.disabled = false;
-      recStartBtn.disabled = false;
-      // return to previous time
-      try{ vid.currentTime = prev.t; } catch(_){}
-    }
-  }
-
   // ---------- Helpers ----------
   function hexToRgb(hex){
     const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
     return m ? [parseInt(m[1],16), parseInt(m[2],16), parseInt(m[3],16)] : [255,255,255];
   }
 
-  // ---------- Main loop ----------
-  let lastT=0, fpsEMA=0;
+  // ---------- Main loop (unchanged visuals) ----------
+  let lastT=0, fpsEMA=0, suspendLive=false;
   requestAnimationFrame(function tick(now){
     requestAnimationFrame(tick);
-    if (suspendLive) return; // paused during 1:1 export
+    if (suspendLive) return;
 
     const W = can.final.width, H = can.final.height;
 
@@ -596,11 +399,13 @@
 
       if(d > thr){
         changedCount++; mask[j]=255;
+
         if (gUseColor.checked) {
           const [cr,cg,cb] = hexToRgb(gColor.value);
-          const a = Math.max(40, Math.min(255, (d - thr) * 8));
+          const a = Math.max(40, Math.min(255, (d - thr) * 8)); // stronger change → more alpha
           gd[i]=cr; gd[i+1]=cg; gd[i+2]=cb; gd[i+3]=a;
         } else {
+          // AE-style mix of current & inverted past
           gd[i]   = (r + (255 - pr)) * 0.5;
           gd[i+1] = (g + (255 - pg)) * 0.5;
           gd[i+2] = (b + (255 - pb)) * 0.5;
@@ -669,6 +474,231 @@ changed = ${pct.toFixed(1)}%`;
 
   vid.addEventListener('loadeddata', ()=>{ vid.play().catch(()=>{}); });
 
+  // ---------- Export 1:1 (source) with "Match preview look" ----------
+  exportOneBtn.addEventListener('click', exportSourceOnce);
+
+  async function exportSourceOnce(){
+    if(vid.srcObject){ alert('1:1 export is for file/URL clips, not webcam.'); return; }
+    if(!(vid.currentSrc || vid.src)){ alert('Load a clip first.'); return; }
+
+    // ensure metadata
+    if(vid.readyState < 1){
+      await new Promise(res=>vid.addEventListener('loadedmetadata', res, {once:true}));
+    }
+    const vw = vid.videoWidth|0, vh = vid.videoHeight|0;
+    if(!vw || !vh){ alert('Video metadata unavailable.'); return; }
+
+    // choose format
+    const s=bestSupported();
+    const sel=formatSel.value;
+    let mime='';
+    if(sel==='mp4') mime = s.canMp4 ? s.mp4 : '';
+    else if(sel==='webm') mime = s.canWebm ? s.webm : '';
+    else mime = s.canMp4 ? s.mp4 : (s.canWebm ? s.webm : '');
+    if(!mime){ alert('Export not supported in this browser. Try Safari (MP4) or Chrome/Firefox (WebM).'); return; }
+
+    // UI lock
+    exportOneBtn.disabled = true;
+    recStartBtn.disabled = true;
+
+    // pause live loop (but DON'T change live canvas sizes for "Match preview look")
+    suspendLive = true;
+
+    // Prepare output canvas at source pixels
+    const outCanvas = document.createElement('canvas');
+    outCanvas.width = vw; outCanvas.height = vh;
+    const octx = outCanvas.getContext('2d');
+
+    // record the output canvas
+    chunks=[];
+    const stream = outCanvas.captureStream ? outCanvas.captureStream(30) : outCanvas.mozCaptureStream(30);
+    recorder = new MediaRecorder(stream, {mimeType:mime, videoBitsPerSecond: 8_000_000});
+    const done = new Promise(resolve=>{
+      recorder.ondataavailable = e=>{ if(e.data && e.data.size) chunks.push(e.data); };
+      recorder.onstop = ()=>resolve();
+    });
+    recorder.start(250);
+
+    // Save/prepare video state
+    const prev = { loop: vid.loop, t: vid.currentTime, paused: vid.paused };
+    resetState();
+    vid.pause();
+    vid.loop = false;
+    const endOnce = new Promise(res=>vid.addEventListener('ended', res, {once:true}));
+    try{ vid.currentTime = 0; }catch(_){}
+
+    // driver
+    function drawContain(srcCanvas, dstCtx, dstW, dstH){
+      const sw = srcCanvas.width, sh = srcCanvas.height;
+      const s = Math.min(dstW/sw, dstH/sh);
+      const dw = Math.round(sw*s), dh = Math.round(sh*s);
+      const dx = Math.floor((dstW-dw)/2), dy = Math.floor((dstH-dh)/2);
+      dstCtx.clearRect(0,0,dstW,dstH);
+      dstCtx.drawImage(srcCanvas, dx, dy, dw, dh);
+    }
+
+    function processOneFrame(W, H){
+      // base
+      const grey = +el.grey.value;
+      fctx.clearRect(0,0,W,H);
+      fctx.fillStyle = `rgb(${grey},${grey},${grey})`;
+      fctx.fillRect(0,0,W,H);
+
+      // analysis
+      drawVideoContained(pctx, vid, W, H, +el.preblur.value);
+      const curr = pctx.getImageData(0,0,W,H);
+      pushFrame(curr, vid.currentTime);
+
+      const past = getPastFrame(+el.dt.value);
+      if(!past){
+        // early frames: only stain decay
+        if(stainOn.checked){
+          fctx.globalCompositeOperation='multiply';
+          fctx.drawImage(can.stain,0,0);
+          fctx.globalCompositeOperation='source-over';
+        }
+        return;
+      }
+
+      // ghosts
+      const c = curr.data, p = past.data;
+      const ghostImg = gctx.createImageData(W,H);
+      const gd = ghostImg.data;
+      const thr = +el.thr.value;
+      const mask = new Uint8ClampedArray(W*H);
+
+      for(let i=0,j=0;i<c.length;i+=4,j++){
+        const r=c[i], g=c[i+1], b=c[i+2];
+        const pr=p[i], pg=p[i+1], pb=p[i+2];
+        const lc = r*0.2126 + g*0.7152 + b*0.0722;
+        const lp = pr*0.2126 + pg*0.7152 + pb*0.0722;
+        const d = Math.abs(lc - lp);
+
+        if(d > thr){
+          mask[j]=255;
+          if (gUseColor.checked) {
+            const [cr,cg,cb] = hexToRgb(gColor.value);
+            const a = Math.max(40, Math.min(255, (d - thr) * 8));
+            gd[i]=cr; gd[i+1]=cg; gd[i+2]=cb; gd[i+3]=a;
+          } else {
+            gd[i]   = (r + (255 - pr)) * 0.5;
+            gd[i+1] = (g + (255 - pg)) * 0.5;
+            gd[i+2] = (b + (255 - pb)) * 0.5;
+            gd[i+3] = 255;
+          }
+        } else {
+          gd[i]=gd[i+1]=gd[i+2]=0; gd[i+3]=0;
+        }
+      }
+      gctx.putImageData(ghostImg,0,0);
+
+      // stain
+      if(stainOn.checked){
+        const decay = +el.decay.value;
+        sctx.globalCompositeOperation='destination-out';
+        sctx.fillStyle = `rgba(0,0,0,${1-decay})`;
+        sctx.fillRect(0,0,W,H);
+        sctx.globalCompositeOperation='source-over';
+
+        const mImg = maskCtx.createImageData(W,H);
+        const mdat = mImg.data;
+        for(let j=0,k=0;j<mask.length;j++,k+=4){
+          const v = mask[j]; mdat[k]=mdat[k+1]=mdat[k+2]=v; mdat[k+3]=v;
+        }
+        maskCtx.putImageData(mImg,0,0);
+
+        colCtx.clearRect(0,0,W,H);
+        const expand = +el.expand.value;
+        if(expand>0){ colCtx.filter = `blur(${expand}px)`; }
+        colCtx.drawImage(maskCanvas,0,0);
+        colCtx.filter='none';
+        colCtx.globalCompositeOperation='source-in';
+        colCtx.fillStyle = sColor.value;
+        colCtx.globalAlpha = +el.strength.value;
+        colCtx.fillRect(0,0,W,H);
+        colCtx.globalCompositeOperation='source-over';
+        colCtx.globalAlpha = 1;
+        sctx.drawImage(colCanvas,0,0);
+      }
+
+      // compose
+      if(stainOn.checked){
+        fctx.globalCompositeOperation='multiply';
+        fctx.drawImage(can.stain,0,0);
+        fctx.globalCompositeOperation='source-over';
+      }
+      fctx.globalAlpha = +el.gAlpha.value;
+      fctx.globalCompositeOperation = gBlend.value;
+      fctx.drawImage(can.ghost,0,0);
+      fctx.globalAlpha = 1;
+      fctx.globalCompositeOperation='source-over';
+    }
+
+    // match-preview path: keep live canvas sizes; composite same, then scale result into source-sized outCanvas
+    // native-analysis path: temporarily resize processing canvases to source pixels
+    const prevSizes = {
+      W: can.final.width, H: can.final.height,
+      sW: can.stain.width, sH: can.stain.height,
+      gW: can.ghost.width, gH: can.ghost.height,
+      pW: proc.width, pH: proc.height,
+      mW: maskCanvas.width, mH: maskCanvas.height,
+      cW: colCanvas.width, cH: colCanvas.height
+    };
+
+    if(!matchPreview.checked){
+      // resize processing to source pixels
+      [can.stain, can.ghost, can.final, proc, maskCanvas, colCanvas].forEach(c=>{ c.width = vw; c.height = vh; });
+    }
+
+    function drive(){
+      const W = can.final.width, H = can.final.height;
+      processOneFrame(W, H);
+
+      if(matchPreview.checked){
+        drawContain(can.final, octx, vw, vh);
+      } else {
+        // already source-sized
+        octx.clearRect(0,0,vw,vh);
+        octx.drawImage(can.final, 0, 0, vw, vh);
+      }
+      vid.requestVideoFrameCallback(drive);
+    }
+
+    try{
+      await vid.play();
+      vid.requestVideoFrameCallback(drive);
+      await endOnce;            // wait for video to finish once
+    } catch(e){
+      console.error(e);
+    } finally {
+      recorder.stop();
+      await done;
+      const blob = new Blob(chunks, {type: recMime || mime});
+      const a = document.createElement('a');
+      const tag = matchPreview.checked ? 'match' : 'native';
+      a.download = `wind_on_wall_1x_${vw}x${vh}_${tag}_${Date.now()}.${mime.startsWith('video/mp4')?'mp4':'webm'}`;
+      a.href = URL.createObjectURL(blob);
+      a.click();
+
+      // restore sizes if changed
+      if(!matchPreview.checked){
+        can.final.width = prevSizes.W; can.final.height = prevSizes.H;
+        can.stain.width = prevSizes.sW; can.stain.height = prevSizes.sH;
+        can.ghost.width = prevSizes.gW; can.ghost.height = prevSizes.gH;
+        proc.width = prevSizes.pW; proc.height = prevSizes.pH;
+        maskCanvas.width = prevSizes.mW; maskCanvas.height = prevSizes.mH;
+        colCanvas.width = prevSizes.cW; colCanvas.height = prevSizes.cH;
+      }
+
+      // restore UI / state
+      vid.loop = prev.loop;
+      try{ vid.currentTime = prev.t; }catch(_){}
+      if(!prev.paused){ try{ await vid.play(); }catch(_){ } }
+      suspendLive = false;
+      exportOneBtn.disabled = false;
+      recStartBtn.disabled = false;
+    }
+  }
 })();
 </script>
 </body>

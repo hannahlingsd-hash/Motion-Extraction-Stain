@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Wind-on-Wall — Ghosts (separate) + Stain (hi-res)</title>
+<title>Wind-on-Wall — Live</title>
 <style>
-  :root{--bg:#0b0e12;--fg:#e6eeff;--mut:#90a1bb;--accent:#ff5b5b}
+  :root{--bg:#0b0e12;--fg:#e6eeff;--mut:#90a1bb}
   html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:14px/1.35 system-ui,Segoe UI,Roboto,Helvetica,Arial}
   .wrap{display:grid;grid-template-columns:380px 1fr;gap:14px;height:100%}
   aside{padding:14px 12px 16px;border-right:1px solid #1a2233;overflow:auto}
@@ -24,11 +24,8 @@
   .small{font-size:12px;color:#93a6c4}
   .hud{position:absolute;top:10px;left:10px;background:rgba(0,0,0,.45);padding:6px 8px;border-radius:8px;font:12px ui-monospace;white-space:pre}
   .rec{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.55);padding:6px 10px;border-radius:999px;font:12px ui-monospace;display:flex;align-items:center;gap:8px}
-  .dot{width:8px;height:8px;background:var(--accent);border-radius:50%;box-shadow:0 0 8px var(--accent)}
-  .warn{color:#ffb86b}
-  .ok{color:#6be77a}
+  .dot{width:8px;height:8px;background:#ff5b5b;border-radius:50%;box-shadow:0 0 8px #ff5b5b}
   .nosrc{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#aac;font:12px ui-monospace;pointer-events:none}
-  .fab{position:absolute;top:46px;right:10px;z-index:5;border:1px solid #2a3754;background:#121826;color:#cfe1ff;border-radius:999px;padding:6px 10px;cursor:pointer}
 </style>
 </head>
 <body>
@@ -39,10 +36,6 @@
       <input id="file" type="file" accept="video/*">
       <button id="webcam" class="btn">Webcam</button>
       <button id="play" class="btn secondary">Play/Pause</button>
-    </div>
-    <div class="row">
-      <button id="replay" class="btn secondary">↺ Replay</button>
-      <span class="small">Shortcut: <span class="kbd">R</span></span>
     </div>
     <div class="row small">Or URL: <span class="kbd">?src=clip.mp4</span> (same-origin or CORS)</div>
 
@@ -103,10 +96,6 @@
         <button id="exportOne" class="btn">Export 1:1 (source)</button>
         <label style="flex:none;">Match preview look</label>
         <input id="matchPreview" type="checkbox" checked>
-        <button id="exportHeadless" class="btn">Export 1:1 (seek, headless)</button>
-        <label style="flex:none;">fps</label>
-        <input id="headlessFps" type="number" value="30" min="1" max="120" style="width:68px;">
-        <button id="exportCancel" class="btn secondary" disabled>Cancel Export</button>
       </div>
       <div class="row small" id="supportNote"></div>
       <div class="row small" id="dbg">buffer: 0 | fps —</div>
@@ -120,7 +109,6 @@
     <div id="hud" class="hud"></div>
     <div id="recHUD" class="rec" style="display:none;"><span class="dot"></span><span id="recTime">REC 00:00</span></div>
     <div id="nosrc" class="nosrc" style="display:none;">load a clip or use the webcam</div>
-    <button id="replayFloat" class="fab" title="Replay (R)">↺</button>
   </main>
 </div>
 
@@ -128,82 +116,74 @@
 (function(){
   // ---------- Elements ----------
   const can = { stain: $('#stain'), ghost: $('#ghost'), final: $('#final') };
-  const sctx = ctx(can.stain), gctx = ctx(can.ghost), fctx = ctx(can.final);
-  const file = $('#file'), webcamBtn = $('#webcam'), playBtn = $('#play');
-  const replayBtn = $('#replay'), replayFloat = $('#replayFloat');
-  const recStartBtn = $('#recStart'), recStopBtn = $('#recStop'), shotBtn = $('#shot');
-  const exportOneBtn = $('#exportOne'), exportHeadlessBtn = $('#exportHeadless'), exportCancelBtn = $('#exportCancel');
-  const headlessFps = $('#headlessFps');
-  const matchPreview = $('#matchPreview'), hud = $('#hud'), recHUD = $('#recHUD'), recTime = $('#recTime');
-  const dbg = $('#dbg'), supportNote = $('#supportNote'), nosrc = $('#nosrc');
+  const sctx = can.stain.getContext('2d');
+  const gctx = can.ghost.getContext('2d');
+  const fctx = can.final.getContext('2d');
+
+  const file = $('#file'), webcamBtn=$('#webcam'), playBtn=$('#play');
+  const recStartBtn=$('#recStart'), recStopBtn=$('#recStop'), shotBtn=$('#shot');
+  const exportOneBtn=$('#exportOne'), matchPreview=$('#matchPreview');
+  const hud=$('#hud'), recHUD=$('#recHUD'), recTime=$('#recTime');
+  const dbg=$('#dbg'), supportNote=$('#supportNote'), nosrc=$('#nosrc');
 
   const ids = ["dt","thr","grey","preblur","gAlpha","decay","strength","expand"];
-  const el  = obj(ids, id=>$('#'+id));
-  const out = obj(ids, id=>$('#'+id+'V'));
-  const stainOn = $('#stainOn'), sColor = $('#sColor'), gBlend = $('#gBlend'), formatSel = $('#format');
-  const gUseColor = $('#gUseColor'), gColor = $('#gColor');
+  const el  = Object.fromEntries(ids.map(id=>[id, $('#'+id)]));
+  const out = Object.fromEntries(ids.map(id=>[id+'V', $('#'+id+'V')]));
+  const stainOn=$('#stainOn'), sColor=$('#sColor'), gBlend=$('#gBlend'), formatSel=$('#format');
+  const gUseColor=$('#gUseColor'), gColor=$('#gColor');
 
   function $(id){ return document.getElementById(id); }
-  function ctx(c){ return c.getContext('2d'); }
-  function obj(ids, f){ return Object.fromEntries(ids.map(id=>[id, f(id)])); }
-
   function sync(){
-    out.dt.textContent      = (+el.dt.value).toFixed(1);
-    out.thr.textContent     = el.thr.value;
-    out.grey.textContent    = el.grey.value;
-    out.preblur.textContent = el.preblur.value;
-    out.gAlpha.textContent  = (+el.gAlpha.value).toFixed(2);
-    out.decay.textContent   = (+el.decay.value).toFixed(3);
-    out.strength.textContent= (+el.strength.value).toFixed(2);
-    out.expand.textContent  = el.expand.value;
+    out.dtV.textContent=(+el.dt.value).toFixed(1);
+    out.thrV.textContent=el.thr.value;
+    out.greyV.textContent=el.grey.value;
+    out.preblurV.textContent=el.preblur.value;
+    out.gAlphaV.textContent=(+el.gAlpha.value).toFixed(2);
+    out.decayV.textContent=(+el.decay.value).toFixed(3);
+    out.strengthV.textContent=(+el.strength.value).toFixed(2);
+    out.expandV.textContent=el.expand.value;
   }
   [...ids.map(k=>el[k]), stainOn, sColor, gBlend, formatSel, gUseColor, gColor].forEach(x=>x.addEventListener('input', sync));
   sync();
 
   // ---------- Source ----------
   const vid = document.createElement('video');
-  vid.crossOrigin = "anonymous"; vid.playsInline = true; vid.muted = true; vid.loop = true; vid.preload = "auto";
-  const qs = new URLSearchParams(location.search); const src = qs.get('src'); if(src){ vid.src = src; }
+  vid.crossOrigin="anonymous"; vid.playsInline=true; vid.muted=true; vid.loop=true; vid.preload="auto";
 
-  let mediaStream = null;
+  const qs = new URLSearchParams(location.search); const src=qs.get('src'); if(src){ vid.src=src; }
+
+  let mediaStream=null;
   file.addEventListener('change', e=>{
-    const f = e.target.files[0]; if(!f) return;
-    stopWebcam(); resetState(); vid.src = URL.createObjectURL(f); vid.play();
+    const f=e.target.files[0]; if(!f) return;
+    stopWebcam(); resetState(); vid.src=URL.createObjectURL(f); vid.play();
   });
   playBtn.addEventListener('click', ()=> vid.paused ? vid.play() : vid.pause());
   webcamBtn.addEventListener('click', ()=> startWebcam().catch(e=>alert('Webcam failed: '+e.message)));
-  async function startWebcam(){
-    stopWebcam(); resetState();
-    mediaStream = await navigator.mediaDevices.getUserMedia({video:true, audio:false});
-    vid.srcObject = mediaStream; await vid.play();
-  }
+  async function startWebcam(){ stopWebcam(); resetState(); mediaStream=await navigator.mediaDevices.getUserMedia({video:true,audio:false}); vid.srcObject=mediaStream; await vid.play(); }
   function stopWebcam(){ if(mediaStream){ mediaStream.getTracks().forEach(t=>t.stop()); mediaStream=null; } }
 
   // ---------- Sizing ----------
-  const proc = document.createElement('canvas'), pctx = proc.getContext('2d', {willReadFrequently:true});
-  const maskCanvas = document.createElement('canvas'), maskCtx = maskCanvas.getContext('2d');
-  const colCanvas  = document.createElement('canvas'),  colCtx = colCanvas.getContext('2d');
+  const proc=document.createElement('canvas'), pctx=proc.getContext('2d',{willReadFrequently:true});
+  const maskCanvas=document.createElement('canvas'), maskCtx=maskCanvas.getContext('2d');
+  const colCanvas=document.createElement('canvas'), colCtx=colCanvas.getContext('2d');
 
   function fit(){
-    const dpr = Math.max(1, window.devicePixelRatio||1);
-    const r = can.final.getBoundingClientRect();
-    const W = Math.round(Math.max(2, r.width*dpr)), H = Math.round(Math.max(2, r.height*dpr));
-    for(const k in can){ can[k].width=W; can[k].height=H; }
-    proc.width=W; proc.height=H; maskCanvas.width=W; maskCanvas.height=H; colCanvas.width=W; colCanvas.height=H;
+    const dpr=Math.max(1,window.devicePixelRatio||1);
+    const r=can.final.getBoundingClientRect();
+    const W=Math.max(2,Math.round(r.width*dpr)), H=Math.max(2,Math.round(r.height*dpr));
+    [can.stain, can.ghost, can.final, proc, maskCanvas, colCanvas].forEach(c=>{ c.width=W; c.height=H; });
   }
   new ResizeObserver(fit).observe(can.final); fit();
 
   // ---------- Buffers ----------
-  const buf = []; const MAX_SEC = 14;
-  function pushFrame(img, t){ buf.push({t, data:new Uint8ClampedArray(img.data), w:img.width, h:img.height});
-    const cutoff = t - (MAX_SEC+2); while(buf.length && buf[0].t < cutoff) buf.shift(); }
-  function getPastFrame(delta){ const target = vid.currentTime - delta; for(let i=buf.length-1;i>=0;i--){ if(buf[i].t <= target) return buf[i]; } return buf[0]||null; }
+  const buf=[]; const MAX_SEC=14;
+  function pushFrame(img,t){ buf.push({t, data:new Uint8ClampedArray(img.data), w:img.width, h:img.height}); const cutoff=t-(MAX_SEC+2); while(buf.length && buf[0].t<cutoff) buf.shift(); }
+  function getPastFrame(delta){ const target=vid.currentTime-delta; for(let i=buf.length-1;i>=0;i--){ if(buf[i].t<=target) return buf[i]; } return buf[0]||null; }
 
   function drawVideoContained(ctx, video, W, H, blurPx){
-    ctx.save(); ctx.clearRect(0,0,W,H); if(blurPx>0) ctx.filter = `blur(${blurPx}px)`;
+    ctx.save(); ctx.clearRect(0,0,W,H); if(blurPx>0) ctx.filter=`blur(${blurPx}px)`;
     const vw=video.videoWidth||0, vh=video.videoHeight||0;
-    if(vw&&vh){ const s=Math.min(W/vw,H/vh), dw=Math.round(vw*s), dh=Math.round(vh*s), dx=Math.floor((W-dw)/2), dy=Math.floor((H-dh)/2);
-      ctx.drawImage(video, dx,dy,dw,dh); }
+    if(vw&&vh){ const s=Math.min(W/vw,H/vh), dw=Math.round(vw*s), dh=Math.round(vh*s), dx=Math.floor((W-dw)/2), dy=Math.floor((H-dh)/2); ctx.drawImage(video,dx,dy,dw,dh); }
     ctx.restore();
   }
 
@@ -211,15 +191,15 @@
   let recorder=null, chunks=[], recStartTime=0, recTimer=null, recMime="", recExt="webm";
   function bestSupported(){
     const mp4='video/mp4;codecs=avc1.42E01E,mp4a.40.2', webm='video/webm;codecs=vp9,opus', webm2='video/webm;codecs=vp8,opus';
-    const canMp4 = !!(window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(mp4));
-    const canWebm= !!(window.MediaRecorder && MediaRecorder.isTypeSupported && (MediaRecorder.isTypeSupported(webm)||MediaRecorder.isTypeSupported(webm2)));
-    return {canMp4, canWebm, mp4, webm:(MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(webm)?webm:webm2)};
+    const canMp4=!!(window.MediaRecorder&&MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(mp4));
+    const canWebm=!!(window.MediaRecorder&&MediaRecorder.isTypeSupported&&(MediaRecorder.isTypeSupported(webm)||MediaRecorder.isTypeSupported(webm2)));
+    return {canMp4,canWebm,mp4,webm:(MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(webm)?webm:webm2)};
   }
   function refreshSupportNote(){
     const s=bestSupported(), fmt=formatSel.value;
     supportNote.innerHTML = fmt==='mp4' ? (s.canMp4?'<span class="ok">MP4 recording supported ✓</span>':'<span class="warn">MP4 not supported. Use Safari/WebKit or switch to WebM.</span>')
-                         : fmt==='webm'? (s.canWebm?'WebM recording supported ✓':'<span class="warn">WebM not supported.</span>')
-                         : (s.canMp4?'Auto → MP4':(s.canWebm?'Auto → WebM':'<span class="warn">Recording unsupported.</span>'));
+                           : fmt==='webm'? (s.canWebm?'WebM recording supported ✓':'<span class="warn">WebM not supported.</span>')
+                           : (s.canMp4?'Auto → MP4':(s.canWebm?'Auto → WebM':'<span class="warn">Recording unsupported.</span>'));
   }
   refreshSupportNote(); formatSel.addEventListener('change', refreshSupportNote);
 
@@ -229,10 +209,10 @@
     const s=bestSupported(), sel=formatSel.value;
     let mime=''; if(sel==='mp4') mime=s.canMp4?s.mp4:''; else if(sel==='webm') mime=s.canWebm?s.webm:''; else mime=s.canMp4?s.mp4:(s.canWebm?s.webm:'');
     if(!mime){ alert('Recording format not supported on this browser.'); return; }
-    const stream = can.final.captureStream ? can.final.captureStream(30) : can.final.mozCaptureStream(30);
+    const stream=can.final.captureStream?can.final.captureStream(30):can.final.mozCaptureStream(30);
     chunks=[]; recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:8_000_000}); recMime=mime; recExt=mime.startsWith('video/mp4')?'mp4':'webm';
-    recorder.ondataavailable = e=>{ if(e.data&&e.data.size) chunks.push(e.data); };
-    recorder.onstop = ()=>{ const blob=new Blob(chunks,{type:recMime}); const a=document.createElement('a'); a.download=`wind_on_wall_${Date.now()}.${recExt}`; a.href=URL.createObjectURL(blob); a.click(); stopRecUI(); };
+    recorder.ondataavailable=e=>{ if(e.data&&e.data.size) chunks.push(e.data); };
+    recorder.onstop=()=>{ const blob=new Blob(chunks,{type:recMime}); const a=document.createElement('a'); a.download=`wind_on_wall_${Date.now()}.${recExt}`; a.href=URL.createObjectURL(blob); a.click(); stopRecUI(); };
     recorder.start(250);
     recStartTime=performance.now(); recTimer=setInterval(()=>{ const t=Math.floor((performance.now()-recStartTime)/1000); const mm=String(Math.floor(t/60)).padStart(2,'0'); const ss=String(t%60).padStart(2,'0'); recTime.textContent=`REC ${mm}:${ss}`; },250);
     recHUD.style.display='flex'; recStartBtn.disabled=true; recStopBtn.disabled=false;
@@ -241,43 +221,30 @@
   function stopRecUI(){ clearInterval(recTimer); recTimer=null; recHUD.style.display='none'; recStartBtn.disabled=false; recStopBtn.disabled=true; }
   shotBtn.addEventListener('click', ()=>{ const a=document.createElement('a'); a.download='still_'+Date.now()+'.png'; a.href=can.final.toDataURL('image/png'); a.click(); });
 
-  // ---------- Replay ----------
-  function resetState(){ buf.length=0; sctx.clearRect(0,0,can.stain.width,can.stain.height); gctx.clearRect(0,0,can.ghost.width,can.ghost.height); }
-  function replay(){
-    if(vid.srcObject){ alert('Replay is for file/URL clips. Stop Webcam and load a clip to use Replay.'); return; }
-    if(!vid.currentSrc && !vid.src){ alert('No clip loaded.'); return; }
-    if(recorder && recorder.state==='recording'){ stopRecording(); }
-    try{ vid.pause(); resetState(); const onSeeked=()=>{ vid.removeEventListener('seeked', onSeeked); vid.play(); }; vid.addEventListener('seeked', onSeeked, {once:true}); vid.currentTime=0; }
-    catch(e){ const src=vid.currentSrc||vid.src; if(src){ resetState(); vid.src=src; vid.play(); } }
-  }
-  replayBtn.addEventListener('click', replay); replayFloat.addEventListener('click', replay);
-  document.addEventListener('keydown', e=>{ const t=e.target; if(t && (t.tagName==='INPUT'||t.tagName==='SELECT'||t.tagName==='TEXTAREA'||t.isContentEditable)) return;
-    if(e.code==='KeyR'){ e.preventDefault(); replay(); } else if(e.code==='Space'){ e.preventDefault(); vid.paused?vid.play():vid.pause(); } });
-
+  // ---------- Helpers ----------
   function hexToRgb(hex){ const m=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex); return m?[parseInt(m[1],16),parseInt(m[2],16),parseInt(m[3],16)]:[255,255,255]; }
 
-  // ---------- Live loop ----------
+  // ---------- Live loop (unchanged visuals) ----------
   let lastT=0, fpsEMA=0, suspendLive=false;
   requestAnimationFrame(function tick(now){
     requestAnimationFrame(tick);
     if(suspendLive) return;
 
-    const W = can.final.width, H = can.final.height;
-    const grey = +el.grey.value;
-    fctx.clearRect(0,0,W,H); fctx.fillStyle=`rgb(${grey},${grey},${grey})`; fctx.fillRect(0,0,W,H);
+    const W=can.final.width, H=can.final.height;
+    const grey=+el.grey.value; fctx.clearRect(0,0,W,H); fctx.fillStyle=`rgb(${grey},${grey},${grey})`; fctx.fillRect(0,0,W,H);
 
-    if(vid.readyState < 2){ nosrc.style.display='block'; return; } else { nosrc.style.display='none'; }
+    if(vid.readyState<2){ nosrc.style.display='block'; return; } else { nosrc.style.display='none'; }
 
     drawVideoContained(pctx, vid, W, H, +el.preblur.value);
-    const curr = pctx.getImageData(0,0,W,H); pushFrame(curr, vid.currentTime);
-    const past = getPastFrame(+el.dt.value); if(!past) return;
+    const curr=pctx.getImageData(0,0,W,H); pushFrame(curr, vid.currentTime);
+    const past=getPastFrame(+el.dt.value); if(!past) return;
 
     const c=curr.data, p=past.data, ghostImg=gctx.createImageData(W,H), gd=ghostImg.data, thr=+el.thr.value;
     const mask=new Uint8ClampedArray(W*H); let changedCount=0;
 
     for(let i=0,j=0;i<c.length;i+=4,j++){
       const r=c[i], g=c[i+1], b=c[i+2], pr=p[i], pg=p[i+1], pb=p[i+2];
-      const lc = r*0.2126 + g*0.7152 + b*0.0722, lp = pr*0.2126 + pg*0.7152 + pb*0.0722, d=Math.abs(lc-lp);
+      const lc=r*.2126+g*.7152+b*.0722, lp=pr*.2126+pg*.7152+pb*.0722, d=Math.abs(lc-lp);
       if(d>thr){ changedCount++; mask[j]=255;
         if(gUseColor.checked){ const [cr,cg,cb]=hexToRgb(gColor.value); const a=Math.max(40,Math.min(255,(d-thr)*8)); gd[i]=cr; gd[i+1]=cg; gd[i+2]=cb; gd[i+3]=a; }
         else { gd[i]=(r+(255-pr))*0.5; gd[i+1]=(g+(255-pg))*0.5; gd[i+2]=(b+(255-pb))*0.5; gd[i+3]=255; }
@@ -298,9 +265,9 @@
     if(stainOn.checked){ fctx.globalCompositeOperation='multiply'; fctx.drawImage(can.stain,0,0); fctx.globalCompositeOperation='source-over'; }
     fctx.globalAlpha=+el.gAlpha.value; fctx.globalCompositeOperation=gBlend.value; fctx.drawImage(can.ghost,0,0); fctx.globalAlpha=1; fctx.globalCompositeOperation='source-over';
 
-    const dt=now-lastT; lastT=now; const inst = dt>0 ? 1000/dt : 0; fpsEMA = fpsEMA? fpsEMA*0.9 + inst*0.1 : inst;
-    const pct = 100*(changedCount/(W*H));
-    hud.textContent = `Δt = ${(+el.dt.value).toFixed(1)} s
+    const dt=now-lastT; lastT=now; const inst=dt>0?1000/dt:0; fpsEMA=fpsEMA?fpsEMA*0.9+inst*0.1:inst;
+    const pct=100*(changedCount/(W*H));
+    hud.textContent=`Δt = ${(+el.dt.value).toFixed(1)} s
 thr = ${el.thr.value}, pre-blur = ${el.preblur.value}, grey = ${el.grey.value}
 ghost: ${gBlend.value}, α=${(+el.gAlpha.value).toFixed(2)}${gUseColor.checked?`, color=${gColor.value}`:''}
 stain: decay=${(+el.decay.value).toFixed(3)}, expand=${el.expand.value}, strength=${(+el.strength.value).toFixed(2)}
@@ -309,11 +276,11 @@ changed = ${pct.toFixed(1)}%`;
   });
   vid.addEventListener('loadeddata', ()=>{ vid.play().catch(()=>{}); });
 
-  // ---------- Export 1:1 (playback-driven; unchanged) ----------
+  // ---------- Export 1:1 (source) — robust, no extra UI ----------
   exportOneBtn.addEventListener('click', exportSourceOnce);
-  exportCancelBtn.addEventListener('click', ()=> finalizeExport(true));
-  let exporting=false, vfcId=null, rafId=null, watchId=null, restoreSizes=null, endHandler=null;
-  let expRecorder=null, expChunks=[], expRecMime='', expRecExt='webm', prevState=null, outCanvas=null, octx=null, expDone=null;
+
+  let exporting=false, vfcId=null, rafId=null, watchId=null, endHandler=null, restoreSizes=null;
+  let expRecorder=null, expChunks=[], expRecMime='', expRecExt='webm', expDone=null, prevState=null;
 
   async function exportSourceOnce(){
     if(vid.srcObject){ alert('1:1 export is for file/URL clips, not webcam.'); return; }
@@ -321,129 +288,57 @@ changed = ${pct.toFixed(1)}%`;
     if(vid.readyState<1){ await once(vid,'loadedmetadata'); }
     const vw=vid.videoWidth|0, vh=vid.videoHeight|0; if(!vw||!vh){ alert('Video metadata unavailable.'); return; }
 
-    const {mime,ext} = pickMime(); if(!mime){ alert('Export not supported here. Try Safari (MP4) or Chrome/Firefox (WebM).'); return; }
+    const {mime,ext}=pickMime(); if(!mime){ alert('Export not supported here. Try Safari (MP4) or Chrome/Firefox (WebM).'); return; }
 
-    lockExportUI(); suspendLive=true; exporting=true;
-    ({outCanvas,octx,expRecorder,expDone,expRecMime,expRecExt} = startCanvasRecorder(vw,vh,mime));
+    exportOneBtn.disabled=true; recStartBtn.disabled=true;
+    suspendLive=true; exporting=true;
 
-    prevState = {loop:vid.loop,t:vid.currentTime,paused:vid.paused}; resetState(); vid.pause(); vid.loop=false; try{ vid.currentTime=0; }catch(_){}
-    const savedSizes = snapshotSizes(); restoreSizes = ()=> applySizes(savedSizes);
-    if(!matchPreview.checked) resizePipeline(vw,vh);
+    // recorder on source-sized offscreen canvas
+    const outCanvas=document.createElement('canvas'); outCanvas.width=vw; outCanvas.height=vh;
+    const octx=outCanvas.getContext('2d');
+    expChunks=[];
+    const stream=outCanvas.captureStream?outCanvas.captureStream(30):outCanvas.mozCaptureStream(30);
+    expRecorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:8_000_000});
+    expRecMime=mime; expRecExt=ext;
+    expDone=new Promise(resolve=>{ expRecorder.ondataavailable=e=>{ if(e.data&&e.data.size) expChunks.push(e.data); }; expRecorder.onstop=()=>resolve(); });
+    expRecorder.start(250);
+
+    // snapshot + prep
+    prevState={loop:vid.loop,t:vid.currentTime,paused:vid.paused};
+    resetState(); vid.pause(); vid.loop=false; try{ vid.currentTime=0; }catch(_){}
+    const saved = snapshotSizes(); restoreSizes = ()=> applySizes(saved);
+    if(!matchPreview.checked) resizePipeline(vw,vh); // native-analysis path
 
     function drawContain(srcCanvas, dstCtx, dstW, dstH){
       const sw=srcCanvas.width, sh=srcCanvas.height; const s=Math.min(dstW/sw,dstH/sh);
       const dw=Math.round(sw*s), dh=Math.round(sh*s), dx=Math.floor((dstW-dw)/2), dy=Math.floor((dstH-dh)/2);
       dstCtx.clearRect(0,0,dstW,dstH); dstCtx.drawImage(srcCanvas,dx,dy,dw,dh);
     }
-    const stepAndBlit=()=>{ const W=can.final.width,H=can.final.height; processOneFrame(W,H); if(matchPreview.checked) drawContain(can.final,octx,vw,vh); else { octx.clearRect(0,0,vw,vh); octx.drawImage(can.final,0,0,vw,vh);} };
-
-    let lastCT=-1, stalledMs=0; const eps=0.035;
-    endHandler = ()=> finalizeExport(false,vw,vh); vid.addEventListener('ended', endHandler, {once:true});
-    watchId=setInterval(()=>{ const D=vid.duration, ct=vid.currentTime;
-      if(isFinite(D)&&D>0&&ct>=D-eps){ finalizeExport(false,vw,vh); }
-      else if(Math.abs(ct-lastCT)<1e-4 && !vid.paused){ stalledMs+=500; if(stalledMs>5000) finalizeExport(false,vw,vh); }
-      else { stalledMs=0; lastCT=ct; }
-    },500);
-
-    const hasVFC=typeof vid.requestVideoFrameCallback==='function';
-    function driveVFC(){ if(!exporting) return; stepAndBlit(); vfcId=vid.requestVideoFrameCallback(()=>driveVFC()); }
-    function driveRAF(){ if(!exporting) return; stepAndBlit(); rafId=requestAnimationFrame(driveRAF); }
-
-    try{ await vid.play(); if(hasVFC) vfcId=vid.requestVideoFrameCallback(()=>driveVFC()); else rafId=requestAnimationFrame(driveRAF); }
-    catch(e){ console.error(e); finalizeExport(true,vw,vh); }
 
     function processOneFrame(W,H){
-      const grey=+el.grey.value; fctx.clearRect(0,0,W,H); fctx.fillStyle=`rgb(${grey},${grey},${grey})`; fctx.fillRect(0,0,W,H);
-      drawVideoContained(pctx, vid, W, H, +el.preblur.value); const curr=pctx.getImageData(0,0,W,H); pushFrame(curr,vid.currentTime);
-      const past=getPastFrame(+el.dt.value); if(past){
-        const c=curr.data,pd=past.data,ghostImg=gctx.createImageData(W,H),gd=ghostImg.data,thr=+el.thr.value,mask=new Uint8ClampedArray(W*H);
-        for(let i=0,j=0;i<c.length;i+=4,j++){ const r=c[i],g=c[i+1],b=c[i+2], pr=pd[i],pg=pd[i+1],pb=pd[i+2];
-          const lc=r*.2126+g*.7152+b*.0722, lp=pr*.2126+pg*.7152+pb*.0722, d=Math.abs(lc-lp);
-          if(d>thr){ mask[j]=255; if(gUseColor.checked){ const [cr,cg,cb]=hexToRgb(gColor.value); const a=Math.max(40,Math.min(255,(d-thr)*8)); gd[i]=cr;gd[i+1]=cg;gd[i+2]=cb;gd[i+3]=a; }
-          else { gd[i]=(r+(255-pr))*0.5; gd[i+1]=(g+(255-pg))*0.5; gd[i+2]=(b+(255-pb))*0.5; gd[i+3]=255; } }
-          else { gd[i]=gd[i+1]=gd[i+2]=0; gd[i+3]=0; } }
-        gctx.putImageData(ghostImg,0,0);
-        if(stainOn.checked){ const decay=+el.decay.value; sctx.globalCompositeOperation='destination-out'; sctx.fillStyle=`rgba(0,0,0,${1-decay})`; sctx.fillRect(0,0,W,H); sctx.globalCompositeOperation='source-over';
-          const mImg=maskCtx.createImageData(W,H),mdat=mImg.data; for(let j=0,k=0;j<mask.length;j++,k+=4){ const v=mask[j]; mdat[k]=mdat[k+1]=mdat[k+2]=v; mdat[k+3]=v; }
-          maskCtx.putImageData(mImg,0,0); colCtx.clearRect(0,0,W,H); const expand=+el.expand.value; if(expand>0) colCtx.filter=`blur(${expand}px)`; colCtx.drawImage(maskCanvas,0,0); colCtx.filter='none';
-          colCtx.globalCompositeOperation='source-in'; colCtx.fillStyle=sColor.value; colCtx.globalAlpha=+el.strength.value; colCtx.fillRect(0,0,W,H); colCtx.globalCompositeOperation='source-over'; colCtx.globalAlpha=1; sctx.drawImage(colCanvas,0,0); }
-      }
-      if(stainOn.checked){ fctx.globalCompositeOperation='multiply'; fctx.drawImage(can.stain,0,0); fctx.globalCompositeOperation='source-over'; }
-      fctx.globalAlpha=+el.gAlpha.value; fctx.globalCompositeOperation=gBlend.value; fctx.drawImage(can.ghost,0,0); fctx.globalAlpha=1; fctx.globalCompositeOperation='source-over';
-    }
-  }
-
-  async function finalizeExport(cancelled,vw,vh){
-    if(!exporting) return; exporting=false;
-    if(vfcId && vid.cancelVideoFrameCallback){ try{ vid.cancelVideoFrameCallback(vfcId); }catch(_){} } if(rafId){ try{ cancelAnimationFrame(rafId);}catch(_){}} vfcId=null; rafId=null;
-    if(watchId){ clearInterval(watchId); watchId=null; } if(endHandler){ try{ vid.removeEventListener('ended', endHandler);}catch(_){} endHandler=null; }
-    try{ if(expRecorder && expRecorder.state==='recording') expRecorder.stop(); }catch(_){} await 0; try{ await expDone; }catch(_){}
-    if(!cancelled && expChunks.length){ const blob=new Blob(expChunks,{type:expRecMime}); const a=document.createElement('a'); const tag=matchPreview.checked?'match':'native';
-      a.download=`wind_on_wall_1x_${vw}x${vh}_${tag}_${Date.now()}.${expRecExt}`; a.href=URL.createObjectURL(blob); a.click(); }
-    if(restoreSizes && !matchPreview.checked) restoreSizes();
-    suspendLive=false; exportOneBtn.disabled=false; exportHeadlessBtn.disabled=false; recStartBtn.disabled=false; exportCancelBtn.disabled=true;
-  }
-
-  // ---------- Export 1:1 (seek, headless; no playback) ----------
-  exportHeadlessBtn.addEventListener('click', exportHeadlessOnce);
-
-  async function exportHeadlessOnce(){
-    if(vid.srcObject){ alert('Headless export is for file/URL clips, not webcam.'); return; }
-    if(!(vid.currentSrc || vid.src)){ alert('Load a clip first.'); return; }
-    if(vid.readyState<1){ await once(vid,'loadedmetadata'); }
-    const vw=vid.videoWidth|0, vh=vid.videoHeight|0; if(!vw||!vh){ alert('Video metadata unavailable.'); return; }
-
-    const {mime,ext} = pickMime(); if(!mime){ alert('Export not supported here. Try Safari (MP4) or Chrome/Firefox (WebM).'); return; }
-
-    lockExportUI(); suspendLive=true; exporting=true; exportHeadlessBtn.disabled=true;
-
-    const {outCanvas:oCanvas, octx:oCtx, expRecorder:r, expDone:d, expRecMime:m, expRecExt:e} = startCanvasRecorder(vw,vh,mime);
-    outCanvas=oCanvas; octx=oCtx; expRecorder=r; expDone=d; expRecMime=m; expRecExt=e;
-
-    const savedSizes = snapshotSizes(); restoreSizes = ()=> applySizes(savedSizes);
-    if(!matchPreview.checked) resizePipeline(vw,vh);
-
-    // prepare
-    resetState(); vid.pause(); try{ vid.currentTime=0; }catch(_){}
-    const fps = Math.max(1, Math.min(120, +headlessFps.value||30));
-    const step = 1/fps; const D = isFinite(vid.duration)?vid.duration:NaN; if(!isFinite(D)||D<=0){ alert('Unknown duration. Try the other export.'); return finalizeExport(true,vw,vh); }
-
-    // per-frame seek helper
-    async function seekTo(t){
-      return new Promise((res)=>{ const onS=()=>res(vid.currentTime); vid.addEventListener('seeked', onS, {once:true});
-        try{ vid.currentTime = Math.min(t, D-0.0001); }catch(_){ setTimeout(()=>res(vid.currentTime), 50); } });
-    }
-
-    // drawContain
-    function drawContain(srcCanvas, dstCtx, dstW, dstH){
-      const sw=srcCanvas.width, sh=srcCanvas.height; const s=Math.min(dstW/sw,dstH/sh);
-      const dw=Math.round(sw*s), dh=Math.round(sh*s), dx=Math.floor((dstW-dw)/2), dy=Math.floor((dstH-dh)/2);
-      dstCtx.clearRect(0,0,dstW,dstH); dstCtx.drawImage(srcCanvas,dx,dy,dw,dh);
-    }
-
-    // frame loop without playing
-    for(let t=0; exporting && t<=D; t+=step){
-      await seekTo(t);
-
-      const W=can.final.width, H=can.final.height;
-      // same pipeline as live
       const grey=+el.grey.value; fctx.clearRect(0,0,W,H); fctx.fillStyle=`rgb(${grey},${grey},${grey})`; fctx.fillRect(0,0,W,H);
 
       drawVideoContained(pctx, vid, W, H, +el.preblur.value);
       const curr=pctx.getImageData(0,0,W,H); pushFrame(curr, vid.currentTime);
+
       const past=getPastFrame(+el.dt.value);
       if(past){
-        const c=curr.data,pd=past.data,ghostImg=gctx.createImageData(W,H),gd=ghostImg.data,thr=+el.thr.value,mask=new Uint8ClampedArray(W*H);
-        for(let i=0,j=0;i<c.length;i+=4,j++){ const r=c[i], g=c[i+1], b=c[i+2], pr=pd[i], pg=pd[i+1], pb=pd[i+2];
+        const c=curr.data,p=past.data,ghostImg=gctx.createImageData(W,H),gd=ghostImg.data,thr=+el.thr.value,mask=new Uint8ClampedArray(W*H);
+        for(let i=0,j=0;i<c.length;i+=4,j++){
+          const r=c[i],g=c[i+1],b=c[i+2], pr=p[i],pg=p[i+1],pb=p[i+2];
           const lc=r*.2126+g*.7152+b*.0722, lp=pr*.2126+pg*.7152+pb*.0722, d=Math.abs(lc-lp);
-          if(d>thr){ mask[j]=255; if(gUseColor.checked){ const [cr,cg,cb]=hexToRgb(gColor.value); const a=Math.max(40,Math.min(255,(d-thr)*8)); gd[i]=cr; gd[i+1]=cg; gd[i+2]=cb; gd[i+3]=a; }
-          else { gd[i]=(r+(255-pr))*0.5; gd[i+1]=(g+(255-pg))*0.5; gd[i+2]=(b+(255-pb))*0.5; gd[i+3]=255; } }
-          else { gd[i]=gd[i+1]=gd[i+2]=0; gd[i+3]=0; } }
+          if(d>thr){
+            mask[j]=255;
+            if(gUseColor.checked){ const [cr,cg,cb]=hexToRgb(gColor.value); const a=Math.max(40,Math.min(255,(d-thr)*8)); gd[i]=cr;gd[i+1]=cg;gd[i+2]=cb;gd[i+3]=a; }
+            else { gd[i]=(r+(255-pr))*0.5; gd[i+1]=(g+(255-pg))*0.5; gd[i+2]=(b+(255-pb))*0.5; gd[i+3]=255; }
+          } else { gd[i]=gd[i+1]=gd[i+2]=0; gd[i+3]=0; }
+        }
         gctx.putImageData(ghostImg,0,0);
 
         if(stainOn.checked){
           const decay=+el.decay.value; sctx.globalCompositeOperation='destination-out'; sctx.fillStyle=`rgba(0,0,0,${1-decay})`; sctx.fillRect(0,0,W,H); sctx.globalCompositeOperation='source-over';
-          const mImg=maskCtx.createImageData(W,H), mdat=mImg.data; for(let j=0,k=0;j<mask.length;j++,k+=4){ const v=mask[j]; mdat[k]=mdat[k+1]=mdat[k+2]=v; mdat[k+3]=v; }
+          const mImg=maskCtx.createImageData(W,H), mdat=mImg.data;
+          for(let j=0,k=0;j<mask.length;j++,k+=4){ const v=mask[j]; mdat[k]=mdat[k+1]=mdat[k+2]=v; mdat[k+3]=v; }
           maskCtx.putImageData(mImg,0,0);
           colCtx.clearRect(0,0,W,H); const expand=+el.expand.value; if(expand>0) colCtx.filter=`blur(${expand}px)`; colCtx.drawImage(maskCanvas,0,0); colCtx.filter='none';
           colCtx.globalCompositeOperation='source-in'; colCtx.fillStyle=sColor.value; colCtx.globalAlpha=+el.strength.value; colCtx.fillRect(0,0,W,H); colCtx.globalCompositeOperation='source-over'; colCtx.globalAlpha=1;
@@ -453,21 +348,69 @@ changed = ${pct.toFixed(1)}%`;
 
       if(stainOn.checked){ fctx.globalCompositeOperation='multiply'; fctx.drawImage(can.stain,0,0); fctx.globalCompositeOperation='source-over'; }
       fctx.globalAlpha=+el.gAlpha.value; fctx.globalCompositeOperation=gBlend.value; fctx.drawImage(can.ghost,0,0); fctx.globalAlpha=1; fctx.globalCompositeOperation='source-over';
-
-      if(matchPreview.checked) drawContain(can.final, octx, vw, vh); else { octx.clearRect(0,0,vw,vh); octx.drawImage(can.final,0,0,vw,vh); }
     }
 
-    await finalizeExport(false, vw, vh);
+    function stepAndBlit(){
+      const W=can.final.width, H=can.final.height;
+      processOneFrame(W,H);
+      if(matchPreview.checked) drawContain(can.final, octx, vw, vh);
+      else { octx.clearRect(0,0,vw,vh); octx.drawImage(can.final,0,0,vw,vh); }
+    }
+
+    // robust finish: ended OR time >= duration-ε OR stall 5s OR wallclock > duration+12s
+    const D = vid.duration, eps=0.035;
+    let lastCT=-1, stalledMs=0, startWall=performance.now();
+    endHandler=()=> finalize(false,vw,vh);
+    vid.addEventListener('ended', endHandler, {once:true});
+    watchId=setInterval(()=>{
+      const ct=vid.currentTime;
+      const wall=performance.now()-startWall;
+      if(isFinite(D) && D>0 && ct >= D-eps) finalize(false,vw,vh);
+      else if(Math.abs(ct-lastCT)<1e-4 && !vid.paused){ stalledMs+=500; if(stalledMs>5000) finalize(false,vw,vh); }
+      else { stalledMs=0; lastCT=ct; }
+      if(isFinite(D) && wall > (D*1000 + 12000)) finalize(false,vw,vh);
+    }, 500);
+
+    const hasVFC = typeof vid.requestVideoFrameCallback === 'function';
+    function driveVFC(){ if(!exporting) return; stepAndBlit(); vfcId=vid.requestVideoFrameCallback(()=>driveVFC()); }
+    function driveRAF(){ if(!exporting) return; stepAndBlit(); rafId=requestAnimationFrame(driveRAF); }
+
+    try{ await vid.play(); if(hasVFC) vfcId=vid.requestVideoFrameCallback(()=>driveVFC()); else rafId=requestAnimationFrame(driveRAF); }
+    catch(e){ console.error(e); finalize(true,vw,vh); }
+
+    async function finalize(cancelled,vw,vh){
+      if(!exporting) return; exporting=false;
+      if(vfcId && vid.cancelVideoFrameCallback){ try{ vid.cancelVideoFrameCallback(vfcId); }catch(_){} }
+      if(rafId){ try{ cancelAnimationFrame(rafId); }catch(_){} } vfcId=null; rafId=null;
+      if(watchId){ clearInterval(watchId); watchId=null; }
+      if(endHandler){ try{ vid.removeEventListener('ended', endHandler); }catch(_){} endHandler=null; }
+
+      try{ if(expRecorder && expRecorder.state==='recording') expRecorder.stop(); }catch(_){} await 0;
+      try{ await expDone; }catch(_){}
+      if(!cancelled && expChunks.length){
+        const blob=new Blob(expChunks,{type:expRecMime});
+        const a=document.createElement('a');
+        const tag=matchPreview.checked?'match':'native';
+        a.download=`wind_on_wall_1x_${vw}x${vh}_${tag}_${Date.now()}.${expRecExt}`;
+        a.href=URL.createObjectURL(blob); a.click();
+      }
+      if(restoreSizes && !matchPreview.checked) restoreSizes();
+
+      vid.loop=prevState.loop; try{ vid.currentTime=prevState.t; }catch(_){}
+      if(!prevState.paused){ try{ await vid.play(); }catch(_){ } }
+
+      suspendLive=false; exportOneBtn.disabled=false; recStartBtn.disabled=false;
+    }
   }
 
-  // ---------- small utils ----------
+  // ---------- Utilities ----------
   function once(el,ev){ return new Promise(res=>el.addEventListener(ev,res,{once:true})); }
-  function pickMime(){ const s=bestSupported(), sel=formatSel.value; let mime=''; if(sel==='mp4') mime=s.canMp4?s.mp4:''; else if(sel==='webm') mime=s.canWebm?s.webm:''; else mime=s.canMp4?s.mp4:(s.canWebm?s.webm:''); return {mime,ext:mime.startsWith('video/mp4')?'mp4':'webm'}; }
-  function lockExportUI(){ exportOneBtn.disabled=true; exportHeadlessBtn.disabled=true; recStartBtn.disabled=true; exportCancelBtn.disabled=false; }
-  function startCanvasRecorder(vw,vh,mime){ const outCanvas=document.createElement('canvas'); outCanvas.width=vw; outCanvas.height=vh; const octx=outCanvas.getContext('2d');
-    const chunks=[]; const stream=outCanvas.captureStream?outCanvas.captureStream(30):outCanvas.mozCaptureStream(30);
-    const rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:8_000_000}); const done=new Promise(r=>{ rec.ondataavailable=e=>{ if(e.data&&e.data.size) chunks.push(e.data); }; rec.onstop=()=>r(); }); rec.start(250);
-    return {outCanvas,octx,expRecorder:rec,expDone:done,expRecMime:mime,expRecExt:mime.startsWith('video/mp4')?'mp4':'webm',expChunks:chunks}; }
+  function pickMime(){
+    const s=bestSupported(), sel=formatSel.value; let mime='';
+    if(sel==='mp4') mime=s.canMp4?s.mp4:''; else if(sel==='webm') mime=s.canWebm?s.webm:''; else mime=s.canMp4?s.mp4:(s.canWebm?s.webm:'');
+    return {mime,ext:mime.startsWith('video/mp4')?'mp4':'webm'};
+  }
+  function resetState(){ buf.length=0; sctx.clearRect(0,0,can.stain.width,can.stain.height); gctx.clearRect(0,0,can.ghost.width,can.ghost.height); }
   function snapshotSizes(){ return {W:can.final.width,H:can.final.height,sW:can.stain.width,sH:can.stain.height,gW:can.ghost.width,gH:can.ghost.height,pW:proc.width,pH:proc.height,mW:maskCanvas.width,mH:maskCanvas.height,cW:colCanvas.width,cH:colCanvas.height}; }
   function applySizes(s){ can.final.width=s.W; can.final.height=s.H; can.stain.width=s.sW; can.stain.height=s.sH; can.ghost.width=s.gW; can.ghost.height=s.gH; proc.width=s.pW; proc.height=s.pH; maskCanvas.width=s.mW; maskCanvas.height=s.mH; colCanvas.width=s.cW; colCanvas.height=s.cH; }
   function resizePipeline(w,h){ [can.stain,can.ghost,can.final,proc,maskCanvas,colCanvas].forEach(c=>{ c.width=w; c.height=h; }); }

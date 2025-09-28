@@ -3,25 +3,22 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Wind-on-Wall — Invert-Blend + Residual Staining (Hi-Res)</title>
+<title>Wind-on-Wall — Ghost Lines + Stain (Minimal)</title>
 <style>
-  :root{--bg:#0b0e12;--fg:#e6eeff;--mut:#90a1bb}
-  html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:14px/1.35 system-ui,Segoe UI,Roboto,Helvetica,Arial}
-  .wrap{display:grid;grid-template-columns:320px 1fr;gap:14px;height:100%}
-  aside{padding:14px 12px 16px;border-right:1px solid #1a2233;overflow:auto}
+  html,body{height:100%;margin:0;background:#0b0e12;color:#e6eeff;font:14px system-ui,Segoe UI,Roboto,Helvetica,Arial}
+  .wrap{display:grid;grid-template-columns:320px 1fr;gap:12px;height:100%}
+  aside{padding:12px;border-right:1px solid #182133;overflow:auto}
   main{position:relative}
   canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
-  h1{font-size:16px;margin:0 0 10px}
+  h1{font-size:16px;margin:0 0 8px}
   fieldset{border:1px solid #1a2233;border-radius:10px;margin:10px 0;padding:10px}
   legend{padding:0 6px;color:#9fb7e8}
   .row{display:flex;align-items:center;gap:8px;margin:8px 0}
-  .row label{flex:1;color:var(--mut)}
+  .row label{flex:1;color:#8ea0ba}
   .row input[type="range"]{flex:2}
   .btn{appearance:none;border:1px solid #2a3754;background:#121826;color:#cfe1ff;border-radius:8px;padding:6px 10px;cursor:pointer}
-  .btn:active{transform:translateY(1px)}
-  .kbd{font:12px ui-monospace;background:#121520;border:1px solid #1f2736;border-radius:6px;padding:1px 6px;color:#b8c7e8}
-  .small{font-size:12px;color:#93a6c4}
   .hud{position:absolute;top:10px;left:10px;background:rgba(0,0,0,.45);padding:6px 8px;border-radius:8px;font:12px ui-monospace;white-space:pre}
+  .kbd{font:12px ui-monospace;background:#121520;border:1px solid #1f2736;border-radius:6px;padding:1px 6px;color:#b8c7e8}
 </style>
 </head>
 <body>
@@ -30,276 +27,278 @@
     <h1>Wind-on-Wall — Live</h1>
     <div class="row">
       <input id="file" type="file" accept="video/*">
-      <button id="webcam" class="btn">Webcam</button>
       <button id="play" class="btn">Play/Pause</button>
     </div>
-    <div class="row small">Or URL param: <span class="kbd">?src=clip.mp4</span> (same-origin or CORS)</div>
+    <div class="row">Or URL: <span class="kbd">?src=clip.mp4</span></div>
 
     <fieldset>
-      <legend>Temporal window</legend>
-      <div class="row"><label>Δt (seconds)</label><input id="dt" type="range" min="2" max="10" step="0.5" value="6"><span id="dtV">6.0</span></div>
+      <legend>Temporal</legend>
+      <div class="row"><label>Δt (sec)</label><input id="dt" type="range" min="2" max="10" step="0.5" value="6"><span id="dtV">6.0</span></div>
       <div class="row"><label>Diff threshold</label><input id="thr" type="range" min="4" max="60" value="18"><span id="thrV">18</span></div>
-      <div class="row"><label>Blur (px)</label><input id="blur" type="range" min="0" max="3" value="0"><span id="blurV">0</span></div>
       <div class="row"><label>Grey level</label><input id="grey" type="range" min="60" max="200" value="120"><span id="greyV">120</span></div>
     </fieldset>
 
     <fieldset>
-      <legend>Residual staining</legend>
-      <div class="row"><label>Enable stain</label><input id="stainOn" type="checkbox" checked></div>
-      <div class="row"><label>Stain decay</label><input id="decay" type="range" min="0.90" max="0.995" step="0.001" value="0.970"><span id="decayV">0.970</span></div>
-      <div class="row"><label>Stain strength</label><input id="strength" type="range" min="0.1" max="1" step="0.05" value="0.50"><span id="strengthV">0.50</span></div>
-      <div class="row"><label>Stain color</label><input id="color" type="color" value="#223b7a"></div>
+      <legend>Stain</legend>
+      <div class="row"><label>Enable</label><input id="stainOn" type="checkbox" checked></div>
+      <div class="row"><label>Decay</label><input id="decay" type="range" min="0.90" max="0.995" step="0.001" value="0.970"><span id="decayV">0.970</span></div>
+      <div class="row"><label>Strength</label><input id="strength" type="range" min="0.1" max="1" step="0.05" value="0.50"><span id="strengthV">0.50</span></div>
+      <div class="row"><label>Color</label><input id="sColor" type="color" value="#223b7a"></div>
     </fieldset>
 
     <fieldset>
       <legend>Export</legend>
       <div class="row">
-        <button id="shot" class="btn">Export PNG</button>
+        <button id="shot" class="btn">PNG</button>
         <button id="rec" class="btn">Start/Stop Video</button>
       </div>
-      <div class="row small" id="dbg">buffer: 0 | fps —</div>
+      <div class="row" id="dbg" style="color:#93a6c4;font-size:12px">buffer: 0 | fps —</div>
     </fieldset>
   </aside>
 
   <main>
-    <canvas id="view"></canvas>
+    <!-- layers: ghosts (lines), stain (blotches), final composite -->
+    <canvas id="ghost"></canvas>
     <canvas id="stain"></canvas>
+    <canvas id="final"></canvas>
     <div id="hud" class="hud"></div>
   </main>
 </div>
 
 <script>
 (function(){
-  // --- Elements & UI ---
-  const view = document.getElementById('view');
-  const vctx = view.getContext('2d');
-  const stain = document.getElementById('stain');
-  const sctx = stain.getContext('2d');
+  // ---- Elements ----
+  const can = {
+    ghost: document.getElementById('ghost'),
+    stain: document.getElementById('stain'),
+    final: document.getElementById('final'),
+  };
+  const gctx = can.ghost.getContext('2d');
+  const sctx = can.stain.getContext('2d');
+  const fctx = can.final.getContext('2d');
 
   const file = document.getElementById('file');
-  const webcamBtn = document.getElementById('webcam');
   const playBtn = document.getElementById('play');
-  const recBtn = document.getElementById('rec');
   const shotBtn = document.getElementById('shot');
+  const recBtn  = document.getElementById('rec');
   const hud = document.getElementById('hud');
   const dbg = document.getElementById('dbg');
 
-  const ids = ["dt","thr","blur","grey","decay","strength"];
+  const ids = ["dt","thr","grey","decay","strength"];
   const el  = Object.fromEntries(ids.map(id=>[id, document.getElementById(id)]));
   const out = Object.fromEntries(ids.map(id=>[id+"V", document.getElementById(id+"V")]));
   const stainOn = document.getElementById('stainOn');
-  const colorPick = document.getElementById('color');
+  const sColor  = document.getElementById('sColor');
 
   function sync(){
     out.dtV.textContent = (+el.dt.value).toFixed(1);
     out.thrV.textContent = el.thr.value;
-    out.blurV.textContent = el.blur.value;
     out.greyV.textContent = el.grey.value;
     out.decayV.textContent = (+el.decay.value).toFixed(3);
     out.strengthV.textContent = (+el.strength.value).toFixed(2);
   }
-  [...ids.map(id=>el[id]), stainOn, colorPick].forEach(x=>x.addEventListener('input', sync));
+  [...ids.map(id=>el[id]), stainOn, sColor].forEach(x=>x.addEventListener('input', sync));
   sync();
 
-  // --- Video source ---
+  // ---- Video ----
   const vid = document.createElement('video');
-  vid.crossOrigin = "anonymous";
-  vid.playsInline = true; vid.muted = true; vid.loop = true; vid.preload = "auto";
+  vid.crossOrigin="anonymous"; vid.playsInline=true; vid.muted=true; vid.loop=true; vid.preload="auto";
 
   const qs = new URLSearchParams(location.search);
   const src = qs.get('src'); if(src){ vid.src = src; }
 
   file.addEventListener('change', e=>{
-    const f = e.target.files[0]; if(!f) return;
-    stopWebcam();
-    vid.src = URL.createObjectURL(f);
-    vid.play();
+    const f=e.target.files[0]; if(!f) return;
+    vid.src = URL.createObjectURL(f); vid.play();
   });
   playBtn.addEventListener('click', ()=> vid.paused ? vid.play() : vid.pause());
 
-  let mediaStream = null;
-  async function startWebcam(){
-    stopWebcam();
-    mediaStream = await navigator.mediaDevices.getUserMedia({video:true, audio:false});
-    vid.srcObject = mediaStream; await vid.play();
-  }
-  function stopWebcam(){ if(mediaStream){ mediaStream.getTracks().forEach(t=>t.stop()); mediaStream=null; } }
-  webcamBtn.addEventListener('click', ()=> startWebcam().catch(e=>alert('Webcam failed: '+e.message)));
-
-  // --- HiDPI resize ---
+  // ---- HiDPI sizing (ensure non-zero) ----
   function fit(){
-    const dpr = Math.max(1, window.devicePixelRatio || 1);
-    const rect = view.getBoundingClientRect();
-    const w = Math.max(2, Math.round(rect.width  * dpr));
-    const h = Math.max(2, Math.round(rect.height * dpr));
-    [view, stain].forEach(c=>{ c.width = w; c.height = h; });
-    // also resize offscreens
-    proc.width = w; proc.height = h;
-    maskCanvas.width = w; maskCanvas.height = h;
+    const dpr = Math.max(1, window.devicePixelRatio||1);
+    const r = can.final.getBoundingClientRect();
+    // fallback if layout not measured yet
+    const W = Math.max(640, Math.round((r.width  || window.innerWidth-360)*dpr));
+    const H = Math.max(360, Math.round((r.height || window.innerHeight  )*dpr));
+    for(const k in can){ can[k].width=W; can[k].height=H; }
+    proc.width=W; proc.height=H;
+    maskCanvas.width=W; maskCanvas.height=H;
+    colCanvas.width=W; colCanvas.height=H;
   }
-  new ResizeObserver(fit).observe(view);
+  window.addEventListener('load', fit);
+  new ResizeObserver(fit).observe(can.final);
 
-  // --- Processing buffers ---
+  // ---- Offscreens ----
   const proc = document.createElement('canvas');
   const pctx = proc.getContext('2d', {willReadFrequently:true});
   const maskCanvas = document.createElement('canvas');
   const maskCtx = maskCanvas.getContext('2d');
+  const colCanvas = document.createElement('canvas');
+  const colCtx = colCanvas.getContext('2d');
 
-  // ring buffer of past frames (full-res)
-  const buf = []; const MAX_SEC = 14;
-  function pushFrame(imgData, t){ // store a copy
-    buf.push({t, data: new Uint8ClampedArray(imgData.data), w: imgData.width, h: imgData.height});
-    const cutoff = t - (MAX_SEC + 2);
-    while(buf.length && buf[0].t < cutoff) buf.shift();
+  // Ring buffer of full-res frames
+  const buf=[]; const MAX_SEC=14;
+  function pushFrame(img,t){ buf.push({t, data:new Uint8ClampedArray(img.data), w:img.width, h:img.height});
+    const cutoff=t-(MAX_SEC+2); while(buf.length && buf[0].t<cutoff) buf.shift();
   }
-  function getPastFrame(delta){
+  function getPast(delta){
     const target = vid.currentTime - delta;
     for(let i=buf.length-1;i>=0;i--){ if(buf[i].t <= target) return buf[i]; }
-    return buf[0] || null;
+    return null;
   }
 
-  // helpers: draw video with "contain" fit (no distortion)
-  function drawVideoContained(ctx, video, W, H, blurPx){
-    ctx.save();
+  function drawContained(ctx, video, W, H){
     ctx.clearRect(0,0,W,H);
-    if(blurPx>0) ctx.filter = `blur(${blurPx}px)`;
-    const vw = video.videoWidth || 0, vh = video.videoHeight || 0;
+    const vw=video.videoWidth||0, vh=video.videoHeight||0;
     if(vw && vh){
       const s = Math.min(W/vw, H/vh);
-      const dw = Math.round(vw*s), dh = Math.round(vh*s);
-      const dx = Math.floor((W - dw)/2), dy = Math.floor((H - dh)/2);
-      ctx.drawImage(video, dx, dy, dw, dh);
+      const dw=(vw*s)|0, dh=(vh*s)|0;
+      const dx=((W-dw)/2)|0, dy=((H-dh)/2)|0;
+      ctx.drawImage(video, dx,dy,dw,dh);
     }
-    ctx.restore();
   }
 
-  // --- Recording ---
+  function hexRGB(hex){const m=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return m?[parseInt(m[1],16),parseInt(m[2],16),parseInt(m[3],16)]:[255,255,255];}
+
+  // ---- Export ----
   let recorder=null, chunks=[];
   recBtn.addEventListener('click', ()=>{
     if(recorder && recorder.state==='recording'){ recorder.stop(); return; }
-    chunks = [];
-    const stream = view.captureStream ? view.captureStream(30) : view.mozCaptureStream(30);
-    recorder = new MediaRecorder(stream, {mimeType:'video/webm;codecs=vp9'});
-    recorder.ondataavailable = e=>{ if(e.data.size) chunks.push(e.data); };
-    recorder.onstop = ()=>{
-      const blob = new Blob(chunks, {type:'video/webm'});
-      const a = document.createElement('a');
-      a.download = 'wind_on_wall_'+Date.now()+'.webm';
-      a.href = URL.createObjectURL(blob);
-      a.click();
+    chunks=[];
+    const stream = can.final.captureStream ? can.final.captureStream(30) : can.final.mozCaptureStream(30);
+    recorder=new MediaRecorder(stream,{mimeType:'video/webm;codecs=vp9'});
+    recorder.ondataavailable=e=>{ if(e.data.size) chunks.push(e.data); };
+    recorder.onstop=()=>{
+      const blob=new Blob(chunks,{type:'video/webm'});
+      const a=document.createElement('a'); a.download='wind_on_wall_'+Date.now()+'.webm';
+      a.href=URL.createObjectURL(blob); a.click();
     };
     recorder.start();
   });
-
-  shotBtn.addEventListener('click', ()=>{
-    // view already contains composite with stain (multiply)
-    const a = document.createElement('a');
-    a.download = 'still_'+Date.now()+'.png';
-    a.href = view.toDataURL('image/png');
-    a.click();
+  document.getElementById('shot').addEventListener('click', ()=>{
+    const a=document.createElement('a'); a.download='still_'+Date.now()+'.png';
+    a.href=can.final.toDataURL('image/png'); a.click();
   });
 
-  // --- Main loop ---
-  let lastT=0, fpsEMA=0;
+  // ---- Main loop ----
+  let lastT=0,fpsEMA=0;
   function tick(now){
     requestAnimationFrame(tick);
-    if(vid.readyState < 2) return;
+    if(vid.readyState<2) return;
 
-    const W = view.width, H = view.height;
+    const W = can.final.width, H = can.final.height;
 
-    // 1) draw current frame at full-res into proc
-    drawVideoContained(pctx, vid, W, H, +el.blur.value);
+    // draw current frame → analysis buffer
+    drawContained(pctx, vid, W, H);
     const curr = pctx.getImageData(0,0,W,H);
     pushFrame(curr, vid.currentTime);
 
-    // 2) fetch past frame at t-Δt
-    const past = getPastFrame(+el.dt.value);
-    if(!past) return;
+    const past = getPast(+el.dt.value);
+    // If not enough history yet: draw plain grey (no “mystery black”)
+    if(!past){
+      fctx.fillStyle = `rgb(${el.grey.value},${el.grey.value},${el.grey.value})`;
+      fctx.fillRect(0,0,W,H);
+      hud.textContent = `Δt = ${(+el.dt.value).toFixed(1)} s\nwarming up…`;
+      return;
+    }
 
-    // 3) per-pixel compute: masked invert-blend; build mask for staining
-    const c = curr.data, p = past.data;
-    const out = vctx.createImageData(W,H);
-    const od = out.data;
-    const md = new Uint8ClampedArray(W*H); // binary mask 0/255
-    const thr = +el.thr.value, grey = +el.grey.value;
+    const c=curr.data, p=past.data;
+    const thr=+el.thr.value, grey=+el.grey.value;
+    const [sr,sg,sb] = hexRGB(sColor.value);
 
-    let changedCount = 0;
-    for(let i=0, j=0; i<c.length; i+=4, j++){
-      const r=c[i], g=c[i+1], b=c[i+2];
-      const pr=p[i], pg=p[i+1], pb=p[i+2];
+    // 1) CHANGE MASK (by luminance diff)
+    const mask = new Uint8ClampedArray(W*H);
+    let changed=0;
+    for(let i=0,j=0;i<c.length;i+=4,j++){
+      const lc = c[i]*0.2126 + c[i+1]*0.7152 + c[i+2]*0.0722;
+      const lp = p[i]*0.2126 + p[i+1]*0.7152 + p[i+2]*0.0722;
+      if(Math.abs(lc - lp) > thr){ mask[j]=255; changed++; }
+      else { mask[j]=0; }
+    }
 
-      const lc = r*0.2126 + g*0.7152 + b*0.0722;
-      const lp = pr*0.2126 + pg*0.7152 + pb*0.0722;
-      const d = Math.abs(lc - lp);
-
-      if(d > thr){
-        changedCount++; md[j]=255;
-        od[i]   = (r + (255 - pr)) * 0.5;
-        od[i+1] = (g + (255 - pg)) * 0.5;
-        od[i+2] = (b + (255 - pb)) * 0.5;
-        od[i+3] = 255;
-      } else {
-        md[j]=0;
-        od[i]=od[i+1]=od[i+2]=grey; od[i+3]=255;
+    // 2) GHOST LINES = Sobel edges on mask (gives thin lines)
+    const edge = new Uint8ClampedArray(W*H);
+    for(let y=1;y<H-1;y++){
+      for(let x=1;x<W-1;x++){
+        const j=y*W+x;
+        const a=mask[j-W-1], b=mask[j-W], c1=mask[j-W+1];
+        const d1=mask[j-1],   f=mask[j+1];
+        const g1=mask[j+W-1], h=mask[j+W], i1=mask[j+W+1];
+        const Gx = -a -2*d1 - g1 + c1 + 2*f + i1;
+        const Gy = -a -2*b - c1 + g1 + 2*h + i1;
+        const mag = Math.sqrt(Gx*Gx + Gy*Gy);
+        edge[j] = mag>128 ? Math.min(255, mag/1.5) : 0; // single, fixed gain
       }
     }
 
-    // 4) paint output
-    vctx.putImageData(out, 0, 0);
+    // 3) BUILD FINAL IMAGE (grey base + ghost lines; per-pixel)
+    const out = fctx.createImageData(W,H);
+    const od = out.data;
+    for(let i=0,j=0;i<c.length;i+=4,j++){
+      // Base = grey
+      let R=grey, G=grey, B=grey;
 
-    // 5) residual staining
+      const a = edge[j]/255; // 0..1 ghost alpha at edges
+      if(a>0){
+        // AE-style ghost color at this pixel
+        const gR = (c[i]   + (255 - p[i]))   * 0.5;
+        const gG = (c[i+1] + (255 - p[i+1])) * 0.5;
+        const gB = (c[i+2] + (255 - p[i+2])) * 0.5;
+        // simple over grey with alpha a
+        R = R*(1-a) + gR*a;
+        G = G*(1-a) + gG*a;
+        B = B*(1-a) + gB*a;
+      }
+
+      od[i]=R; od[i+1]=G; od[i+2]=B; od[i+3]=255;
+    }
+    fctx.putImageData(out,0,0);
+
+    // 4) STAIN (solid blotches): accumulate full mask
     if(stainOn.checked){
-      // decay existing stain uniformly
-      const decay = +el.decay.value;
-      sctx.globalCompositeOperation = 'destination-out';
+      // decay existing stain
+      const decay=+el.decay.value;
+      sctx.globalCompositeOperation='destination-out';
       sctx.fillStyle = `rgba(0,0,0,${1-decay})`;
       sctx.fillRect(0,0,W,H);
-      sctx.globalCompositeOperation = 'source-over';
+      sctx.globalCompositeOperation='source-over';
 
-      // draw new stain where mask=1 (colorized)
-      // reuse maskCanvas
+      // draw mask → colorize → add with strength
       const mImg = maskCtx.createImageData(W,H);
       const mdat = mImg.data;
-      for(let j=0, k=0; j<md.length; j++, k+=4){
-        const v = md[j];
+      for(let j=0,k=0;j<mask.length;j++,k+=4){
+        const v=mask[j];
         mdat[k]=mdat[k+1]=mdat[k+2]=v; mdat[k+3]=v;
       }
-      maskCtx.putImageData(mImg, 0, 0);
+      maskCtx.putImageData(mImg,0,0);
 
-      // colorize mask on offscreen then add to stain
-      const col = colorPick.value;
-      const colCtx = maskCtx; // reuse same context via composite ops
-      colCtx.globalCompositeOperation = 'source-in';
-      colCtx.fillStyle = col;
+      colCtx.clearRect(0,0,W,H);
+      colCtx.drawImage(maskCanvas,0,0);
+      colCtx.globalCompositeOperation='source-in';
+      colCtx.fillStyle = `rgb(${sr},${sg},${sb})`;
       colCtx.globalAlpha = +el.strength.value;
       colCtx.fillRect(0,0,W,H);
-      // draw onto stain
-      sctx.drawImage(maskCanvas, 0, 0);
-      // reset maskCtx state
-      colCtx.globalAlpha = 1;
-      colCtx.globalCompositeOperation = 'source-over';
+      colCtx.globalAlpha=1; colCtx.globalCompositeOperation='source-over';
+
+      sctx.drawImage(colCanvas,0,0);
+
+      // multiply stain on top of final
+      fctx.globalCompositeOperation='multiply';
+      fctx.drawImage(can.stain,0,0);
+      fctx.globalCompositeOperation='source-over';
     }
 
-    // 6) composite stain over view (multiply)
-    if(stainOn.checked){
-      vctx.globalCompositeOperation = 'multiply';
-      vctx.drawImage(stain,0,0);
-      vctx.globalCompositeOperation = 'source-over';
-    }
-
-    // HUD/debug
+    // HUD / debug
     const dt = now - lastT; lastT = now;
     const inst = dt>0 ? 1000/dt : 0; fpsEMA = fpsEMA? fpsEMA*0.9 + inst*0.1 : inst;
-    const totalPix = W*H;
-    const pct = 100 * (changedCount / totalPix);
-    hud.textContent = `Δt = ${(+el.dt.value).toFixed(1)} s\nthr = ${el.thr.value}, blur = ${el.blur.value}, grey = ${el.grey.value}\nchanged = ${pct.toFixed(1)}%`;
+    const pct = 100*(changed/(W*H));
+    hud.textContent = `Δt=${(+el.dt.value).toFixed(1)}s  thr=${el.thr.value}  grey=${el.grey.value}\nchanged≈${pct.toFixed(1)}%`;
     dbg.textContent = `buffer: ${buf.length} | fps ~ ${fpsEMA.toFixed(1)}`;
   }
   requestAnimationFrame(tick);
 
-  // start playback on load
   vid.addEventListener('loadeddata', ()=>{ vid.play().catch(()=>{}); });
-
 })();
 </script>
 </body>

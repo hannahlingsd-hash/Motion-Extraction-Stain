@@ -61,7 +61,9 @@
         <select id="gBlend">
           <option value="normal">Normal</option>
           <option value="screen" selected>Screen</option>
-          <option value="lighter">Lighter</option>
+          <option value="lighter">Lighter (Add)</option>
+          <option value="multiply">Multiply</option>
+          <option value="difference">Difference</option>
         </select>
       </div>
       <div class="row">
@@ -436,14 +438,14 @@
       sctx.drawImage(colCanvas,0,0);
     }
 
-    // 5) compose: base grey → stain (multiply) → ghosts
+    // 5) compose: base grey → stain (multiply) → ghosts (selected blend)
     if(stainOn.checked){
       fctx.globalCompositeOperation='multiply';
       fctx.drawImage(can.stain,0,0);
       fctx.globalCompositeOperation='source-over';
     }
     fctx.globalAlpha = +el.gAlpha.value;
-    fctx.globalCompositeOperation = gBlend.value;
+    fctx.globalCompositeOperation = gBlend.value; // normal/screen/lighter/multiply/difference
     fctx.drawImage(can.ghost,0,0);
     fctx.globalAlpha = 1;
     fctx.globalCompositeOperation='source-over';

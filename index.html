@@ -25,8 +25,6 @@
   .hud{position:absolute;top:10px;left:10px;background:rgba(0,0,0,.45);padding:6px 8px;border-radius:8px;font:12px ui-monospace;white-space:pre}
   .rec{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.55);padding:6px 10px;border-radius:999px;font:12px ui-monospace;display:flex;align-items:center;gap:8px}
   .dot{width:8px;height:8px;background:var(--accent);border-radius:50%;box-shadow:0 0 8px var(--accent)}
-  .warn{color:#ffb86b}
-  .ok{color:#6be77a}
   .nosrc{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#aac; font:12px ui-monospace; pointer-events:none}
   .fab{position:absolute;top:46px;right:10px;z-index:5;border:1px solid #2a3754;background:#121826;color:#cfe1ff;border-radius:999px;padding:6px 10px;cursor:pointer}
 </style>
@@ -82,7 +80,7 @@
       <div class="row"><label>Stain color</label><input id="sColor" type="color" value="#223b7a"></div>
     </fieldset>
 
-    <!-- Recall controls -->
+    <!-- NEW: Recall controls (minimal) -->
     <fieldset>
       <legend>Recall (random memory)</legend>
       <div class="row"><label>Enable recall</label><input id="recallOn" type="checkbox" checked></div>
@@ -90,7 +88,7 @@
       <div class="row"><label>Recall opacity</label><input id="recallAlpha" type="range" min="0" max="0.6" step="0.01" value="0.14"><span id="recallAlphaV">0.14</span></div>
       <div class="row">
         <button id="recallOnce" class="btn secondary">Recall now</button>
-        <span class="small">Force one reappearance</span>
+        <span class="small">Force one resurfacing</span>
       </div>
     </fieldset>
 
@@ -171,10 +169,10 @@
   const gUseColor = document.getElementById('gUseColor');
   const gColor    = document.getElementById('gColor');
 
-  // Recall UI
   const recallOnEl   = document.getElementById('recallOn');
   const recallOnceEl = document.getElementById('recallOnce');
 
+  // ---------- Controls readouts ----------
   function sync(){
     out.dtV.textContent      = (+el.dt.value).toFixed(1);
     out.thrV.textContent     = el.thr.value;
@@ -184,11 +182,14 @@
     out.decayV.textContent   = (+el.decay.value).toFixed(3);
     out.strengthV.textContent= (+el.strength.value).toFixed(2);
     out.expandV.textContent  = el.expand.value;
-    out.recallProbV.textContent = (+el.recallProb.value).toFixed(3);
-    out.recallAlphaV.textContent= (+el.recallAlpha.value).toFixed(2);
+    if(out.recallProbV)  out.recallProbV.textContent  = (+el.recallProb.value).toFixed(3);
+    if(out.recallAlphaV) out.recallAlphaV.textContent = (+el.recallAlpha.value).toFixed(2);
   }
-  [...ids.map(id=>el[id]), stainOn, sColor, gBlend, formatSel, gUseColor, gColor, recallOnEl]
-    .forEach(x=>x.addEventListener('input', sync));
+  const controls = [
+    ...ids.map(id=>el[id]),
+    stainOn, sColor, gBlend, formatSel, gUseColor, gColor, recallOnEl
+  ].filter(Boolean);
+  ['input','change'].forEach(evt => controls.forEach(c => c.addEventListener(evt, sync)));
   sync();
 
   // ---------- Source ----------
@@ -204,24 +205,22 @@
     const f = e.target.files[0]; if(!f) return;
     stopWebcam();
     resetState();
+    vid.srcObject = null;
     vid.src = URL.createObjectURL(f);
-    // ensure paint starts as soon as we have pixels
-    vid.addEventListener('loadeddata', () => { vid.play().catch(()=>{}); }, {once:true});
+    vid.addEventListener('loadedmetadata', ()=>{ vid.currentTime=0; vid.muted=true; vid.play().catch(()=>{}); }, {once:true});
   });
   playBtn.addEventListener('click', ()=> vid.paused ? vid.play() : vid.pause());
 
-  webcamBtn.addEventListener('click', ()=> startWebcam().catch(e=>alert('Webcam failed: '+(e && e.message ? e.message : e))));
-
-  async function startWebcam(){
-    const secure = (location.protocol === 'https:' ||
-                    location.hostname === 'localhost' ||
-                    location.hostname === '127.0.0.1');
-    if (!secure) throw new Error('Camera requires HTTPS or localhost.');
+  webcamBtn.addEventListener('click', async ()=>{
+    const secure = (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+    if (!secure) { alert('Camera requires HTTPS or localhost.'); return; }
     stopWebcam(); resetState();
-    mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    mediaStream = await navigator.mediaDevices.getUserMedia({ video:true, audio:false });
     vid.srcObject = mediaStream;
-    await vid.play();
-  }
+    await new Promise(res => (vid.readyState>=1 ? res() : vid.addEventListener('loadedmetadata', res, {once:true})));
+    vid.muted = true; vid.play().catch(()=>{});
+  });
+
   function stopWebcam(){
     if(mediaStream){ try{ mediaStream.getTracks().forEach(t=>t.stop()); }catch(_){} mediaStream=null; }
     if(vid && vid.srcObject){ try{ vid.srcObject = null; }catch(_){} }
@@ -258,7 +257,7 @@
   function getPastFrame(delta){
     const target = vid.currentTime - delta;
     for(let i=buf.length-1;i>=0;i--){ if(buf[i].t <= target) return buf[i]; }
-    return null; // explicit: may be missing during warm-up
+    return buf[0] || null; // earliest available during warm-up
   }
 
   function drawVideoContained(ctx, video, W, H, blurPx){
@@ -275,7 +274,7 @@
     ctx.restore();
   }
 
-  // ---------- Recording ----------
+  // ---------- Recording (unchanged) ----------
   let recorder=null, chunks=[], recStartTime=0, recTimer=null, recMime="", recExt="webm";
   function bestSupported(){
     const mp4='video/mp4;codecs=avc1.42E01E,mp4a.40.2';
@@ -289,10 +288,10 @@
     const s=bestSupported();
     const fmt=document.getElementById('format').value;
     let msg='';
-    if(fmt==='mp4'){ msg = s.canMp4 ? '<span class="ok">MP4 recording supported ✓</span>' : '<span class="warn">MP4 not supported here. Use Safari/WebKit or switch to WebM.</span>'; }
-    else if(fmt==='webm'){ msg = s.canWebm ? 'WebM recording supported ✓' : '<span class="warn">WebM not supported.</span>'; }
-    else { msg = s.canMp4 ? 'Auto → MP4' : (s.canWebm ? 'Auto → WebM' : '<span class="warn">Recording unsupported.</span>'); }
-    supportNote.innerHTML = msg;
+    if(fmt==='mp4'){ msg = s.canMp4 ? 'MP4 recording supported ✓' : 'MP4 not supported here. Use Safari/WebKit or switch to WebM.'; }
+    else if(fmt==='webm'){ msg = s.canWebm ? 'WebM recording supported ✓' : 'WebM not supported.'; }
+    else { msg = s.canMp4 ? 'Auto → MP4' : (s.canWebm ? 'Auto → WebM' : 'Recording unsupported.'); }
+    supportNote.textContent = msg;
   }
   refreshSupportNote();
   document.getElementById('format').addEventListener('change', refreshSupportNote);
@@ -342,13 +341,12 @@
     a.click();
   });
 
-  // ---------- Replay ----------
+  // ---------- Replay (unchanged) ----------
   function resetState(){
     buf.length = 0;
     sctx.clearRect(0,0,can.stain.width,can.stain.height);
     gctx.clearRect(0,0,can.ghost.width,can.ghost.height);
-    recallBank.length = 0;
-    lastSnapT = 0;
+    recallBank.length = 0; lastSnapT = 0;
   }
   function replay(){
     if(vid.srcObject){
@@ -378,19 +376,19 @@
   });
 
   // ---------- Helpers ----------
-  function hexToRgbFull(hex){
+  function hexToRgb(hex){
     const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
     return m ? [parseInt(m[1],16), parseInt(m[2],16), parseInt(m[3],16)] : [255,255,255];
   }
 
-  // ---------- Recall memory ----------
+  // ---------- NEW: Recall memory ----------
   const recallBank = [];
   let lastSnapT = 0;
-  const RECALL_INTERVAL_SEC = 1.5;
-  const RECALL_MAX = 24;
+  const RECALL_INTERVAL_SEC = 1.5;   // snapshot cadence
+  const RECALL_MAX = 24;             // cap memory
 
   function maybeSnapshotStain(W,H, t){
-    if(!recallOnEl.checked) return;
+    if(!document.getElementById('recallOn').checked) return;
     if(t - lastSnapT < RECALL_INTERVAL_SEC) return;
     lastSnapT = t;
     const c = document.createElement('canvas');
@@ -410,16 +408,16 @@
     sctx.restore();
   }
   function maybeRecallStain(W,H){
-    if(!recallOnEl.checked) return;
-    const prob = parseFloat(el.recallProb.value);
+    if(!document.getElementById('recallOn').checked) return;
+    const prob = parseFloat(el.recallProb.value || 0);
     if(recallBank.length===0 || Math.random() > prob) return;
-    recallStainOnce(W,H, parseFloat(el.recallAlpha.value));
+    recallStainOnce(W,H, parseFloat(el.recallAlpha.value || 0.14));
   }
-  document.getElementById('recallOnce').addEventListener('click', ()=>{
-    recallStainOnce(can.final.width, can.final.height, parseFloat(el.recallAlpha.value));
+  recallOnceEl.addEventListener('click', ()=>{
+    recallStainOnce(can.final.width, can.final.height, parseFloat(el.recallAlpha.value || 0.14));
   });
 
-  // ---------- Main loop (with warm-up) ----------
+  // ---------- Main loop (unchanged visuals; recall hooks added) ----------
   let lastT=0, fpsEMA=0, suspendLive=false;
   requestAnimationFrame(function tick(now){
     requestAnimationFrame(tick);
@@ -434,33 +432,26 @@
     fctx.fillRect(0,0,W,H);
 
     if(vid.readyState < 2){
-      nosrc.style.display = 'block';
+      document.getElementById('nosrc').style.display = 'block';
       return;
     } else {
-      nosrc.style.display = 'none';
+      document.getElementById('nosrc').style.display = 'none';
     }
 
-    // current frame → analysis buffer
+    // 1) current frame → analysis
     drawVideoContained(pctx, vid, W, H, +el.preblur.value);
     const curr = pctx.getImageData(0,0,W,H);
     pushFrame(curr, vid.currentTime);
 
-    // try to get a past frame (warm-up aware)
-    let past = getPastFrame(+el.dt.value);
-    const warming = !past;
-    if(!past && buf.length){ past = buf[0]; } // fallback to earliest available
-
-    if(warming){
-      // show source while buffering; faint label
-      fctx.save();
-      fctx.globalCompositeOperation = 'source-over';
+    // 2) past frame
+    const past = getPastFrame(+el.dt.value);
+    if(!past){ // warm-up: show source until buffer ready
       fctx.drawImage(pctx.canvas, 0, 0);
-      fctx.restore();
       hud.textContent = `buffering Δt ≈ ${(+el.dt.value).toFixed(1)} s…`;
       return;
     }
 
-    // motion mask + ghosts
+    // 3) motion mask + ghosts
     const c = curr.data, p = past.data;
     const ghostImg = gctx.createImageData(W,H);
     const gd = ghostImg.data;
@@ -478,8 +469,8 @@
       if(d > thr){
         changedCount++; mask[j]=255;
 
-        if (gUseColor.checked) {
-          const [cr,cg,cb] = hexToRgbFull(gColor.value);
+        if (document.getElementById('gUseColor').checked) {
+          const [cr,cg,cb] = hexToRgb(document.getElementById('gColor').value);
           const a = Math.max(40, Math.min(255, (d - thr) * 8));
           gd[i]=cr; gd[i+1]=cg; gd[i+2]=cb; gd[i+3]=a;
         } else {
@@ -494,7 +485,7 @@
     }
     gctx.putImageData(ghostImg,0,0);
 
-    // stain accumulation + recall
+    // 4) stain accumulation (+ recall)
     if(stainOn.checked){
       const decay = +el.decay.value;
       sctx.globalCompositeOperation='destination-out';
@@ -522,12 +513,12 @@
       colCtx.globalAlpha = 1;
       sctx.drawImage(colCanvas,0,0);
 
-      // remember & maybe recall
+      // NEW hooks:
       maybeSnapshotStain(W,H, vid.currentTime);
       maybeRecallStain(W,H);
     }
 
-    // compose
+    // 5) compose: base grey → stain (multiply) → ghosts
     if(stainOn.checked){
       fctx.globalCompositeOperation='multiply';
       fctx.drawImage(can.stain,0,0);
@@ -543,21 +534,22 @@
     const dt = now - lastT; lastT = now;
     const inst = dt>0 ? 1000/dt : 0; fpsEMA = fpsEMA? fpsEMA*0.9 + inst*0.1 : inst;
     const pct = 100*(changedCount/(W*H));
+    const rp = el.recallProb ? (+el.recallProb.value).toFixed(3) : '—';
+    const ra = el.recallAlpha ? (+el.recallAlpha.value).toFixed(2) : '—';
     hud.textContent = `Δt = ${(+el.dt.value).toFixed(1)} s
 thr = ${el.thr.value}, pre-blur = ${el.preblur.value}, grey = ${el.grey.value}
-ghost: ${gBlend.value}, α=${(+el.gAlpha.value).toFixed(2)}${gUseColor.checked?`, color=${gColor.value}`:''}
+ghost: ${gBlend.value}, α=${(+el.gAlpha.value).toFixed(2)}${document.getElementById('gUseColor').checked?`, color=${document.getElementById('gColor').value}`:''}
 stain: decay=${(+el.decay.value).toFixed(3)}, expand=${el.expand.value}, strength=${(+el.strength.value).toFixed(2)}
-recall: on=${recallOnEl.checked}, p=${(+el.recallProb.value).toFixed(3)}, α=${(+el.recallAlpha.value).toFixed(2)}
+recall: on=${document.getElementById('recallOn').checked}, p=${rp}, α=${ra}
 changed = ${pct.toFixed(1)}%`;
 
     const s = bestSupported();
     dbg.textContent = `buffer: ${buf.length} | fps ~ ${fpsEMA.toFixed(1)} | support: ${s.canMp4?'MP4✓':'MP4×'}/${s.canWebm?'WebM✓':'WebM×'}`;
   });
 
-  // make sure file loads also start play if user didn’t click elsewhere
   vid.addEventListener('loadeddata', ()=>{ vid.play().catch(()=>{}); });
 
-  // ---------- Export 1:1 (source) ----------
+  // ---------- Export 1:1 (source) — unchanged ----------
   exportOneBtn.addEventListener('click', exportSourceOnce);
 
   async function exportSourceOnce(){
@@ -580,8 +572,6 @@ changed = ${pct.toFixed(1)}%`;
 
     exportOneBtn.disabled = true;
     recStartBtn.disabled = true;
-    const prevSuspend = suspendLive; suspendLive = true;
-
     const outCanvas = document.createElement('canvas');
     outCanvas.width = vw; outCanvas.height = vh;
     const octx = outCanvas.getContext('2d');
@@ -633,9 +623,7 @@ changed = ${pct.toFixed(1)}%`;
       const curr = pctx.getImageData(0,0,W,H);
       pushFrame(curr, vid.currentTime);
 
-      let past = getPastFrame(+el.dt.value);
-      if(!past && buf.length){ past = buf[0]; } // warm-up fallback
-
+      const past = getPastFrame(+el.dt.value);
       if(past){
         const c = curr.data, p = past.data;
         const ghostImg = gctx.createImageData(W,H);
@@ -652,8 +640,8 @@ changed = ${pct.toFixed(1)}%`;
 
           if(d > thr){
             mask[j]=255;
-            if (gUseColor.checked) {
-              const [cr,cg,cb] = hexToRgbFull(gColor.value);
+            if (document.getElementById('gUseColor').checked) {
+              const [cr,cg,cb] = hexToRgb(document.getElementById('gColor').value);
               const a = Math.max(40, Math.min(255, (d - thr) * 8));
               gd[i]=cr; gd[i+1]=cg; gd[i+2]=cb; gd[i+3]=a;
             } else {
@@ -695,11 +683,11 @@ changed = ${pct.toFixed(1)}%`;
           colCtx.globalAlpha = 1;
           sctx.drawImage(colCanvas,0,0);
 
+          // snapshot & maybe recall also during export
           maybeSnapshotStain(W,H, vid.currentTime);
           maybeRecallStain(W,H);
         }
       } else {
-        // still warming: just show the raw frame
         fctx.drawImage(pctx.canvas, 0, 0);
       }
 
@@ -758,7 +746,7 @@ changed = ${pct.toFixed(1)}%`;
     a.href = URL.createObjectURL(blob);
     a.click();
 
-    // restore (omitted for brevity in this export helper)
+    // (restore omitted for brevity)
   }
 })();
 </script>

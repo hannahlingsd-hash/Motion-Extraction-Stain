@@ -3,28 +3,24 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Wind-on-Wall — Ghosts (separate) + Stain (hi-res)</title>
+<title>Wind-on-Wall — Ghosts + Stain (hi-res)</title>
 <style>
-  /* ====== TOKENS (monochrome, Arial) ====== */
+  /* ===== TOKENS (monochrome, Arial) ===== */
   :root{
-    --bg:#fff;           /* page background */
-    --fg:#000;           /* text color */
-    --mut:#333;          /* secondary text */
-    --line:#000;         /* 1px lines */
-    --pad:8px;
-    --gap:8px;
-    /* narrower sidebars */
-    --colL:220px;        /* left column width (was 280px) */
-    --colR:320px;        /* right column width (was 360px) */
-    /* slider colors */
-    --track-fill:#d3d3d3;  /* left side (value) */
-    --track-bg:#f2f2f2;    /* right side (remaining) */
+    --bg:#fff; --fg:#000; --mut:#333; --line:#000;
+    --pad:8px; --gap:8px;
+    /* slimmer sidebars for larger canvas */
+    --colL:180px;   /* left column width */
+    --colR:280px;   /* right column width */
+    /* slider colors (heavier contrast) */
+    --track-fill:#9a9a9a;   /* left/value */
+    --track-bg:#d8d8d8;     /* right/remaining */
   }
   html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:13px/1.45 Arial, Helvetica, sans-serif}
   *{box-sizing:border-box;border-radius:0}
   button,input,select{font:inherit;color:var(--fg);background:#fff}
 
-  /* ====== LAYOUT ====== */
+  /* ===== LAYOUT ===== */
   .wrap{
     display:grid;
     grid-template-columns: var(--colL) 1fr var(--colR);
@@ -35,21 +31,21 @@
   aside.controls{padding:0}
   main{position:relative;display:flex;align-items:center;justify-content:center}
 
-  /* Center stage: canvas not full-bleed */
+  /* Center stage: canvas not full-bleed, larger now */
   .stage{
     position:relative;
-    width:min(82%, 1100px);   /* larger center */
+    width:min(90%, 1280px);      /* bigger canvas area */
     aspect-ratio:16/9;
     margin:auto;
-    outline:1px solid #0000;  /* set to #000 for hairline frame if desired */
+    outline:1px solid #0000;     /* set to #000 for hairline frame if desired */
   }
 
-  /* Canvases still fill the stage (unchanged IDs for JS) */
+  /* Canvases fill the stage (IDs unchanged for JS) */
   canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
 
-  /* Right panel groups (no rectangles; spaced) */
+  /* ===== Right panel (spaced groups, bold headers) ===== */
   .panel{padding:0 0 4px 0}
-  .group{font-weight:700;margin:18px 0 6px} /* bold, not caps */
+  .group{font-weight:700;margin:18px 0 6px} /* bold (not caps) */
   .row{
     display:grid;
     grid-template-columns: 1fr minmax(120px,1.6fr) 44px; /* label | slider | readout */
@@ -57,15 +53,19 @@
     gap:8px;
     margin:6px 0;
   }
-  .row.compact{grid-template-columns: 1fr auto 44px} /* label | control | right align */
+  .row.compact{grid-template-columns: 1fr auto 44px} /* label | control | right */
   .row label{color:var(--fg)}
   .small{font-size:12px;color:var(--mut)}
+  /* heavier readout column */
+  .row > span{ text-align:right; font-weight:600; color:#000; }
 
-  /* Left column rows */
+  /* ===== Left column spacing to match right ===== */
   .leftRows{display:grid;gap:10px}
-  .btnRow{display:flex;gap:8px;flex-wrap:wrap}
+  .btnRow{display:flex;gap:8px;flex-wrap:wrap; margin:6px 0;}
+  aside.controls .group{ margin:18px 0 6px; font-weight:700; }
+  aside.controls .row{ margin:6px 0; }
 
-  /* Buttons: flat, 1px black border, white bg, square corners */
+  /* ===== Buttons: flat, 1px border, square corners ===== */
   .btn{
     appearance:none;
     background:#fff;
@@ -77,8 +77,7 @@
   .btn:disabled{opacity:.5;cursor:not-allowed}
   .btn.secondary{background:#fff}
 
-  /* Sliders: thin track + square black thumb, always horizontal,
-     with left/right fill indicated via CSS var --p (set by tiny UI helper) */
+  /* ===== Sliders: 2px track + square black thumb; gradient track fill ===== */
   input[type="range"]{
     appearance:none;
     height:2px;
@@ -100,19 +99,20 @@
 
   input[type="color"]{width:32px;height:22px;border:1px solid #000;background:#fff;padding:0}
 
-  /* Put single checkboxes in the rightmost column */
-  .row.compact input[type="checkbox"]{
+  /* Align single checkboxes & color inputs with right readout column */
+  .row.compact input[type="checkbox"],
+  .row.compact input[type="color"]{
     grid-column: 3;
     justify-self:end;
   }
 
-  /* HUD + REC chips (unchanged behavior; keep legible on white) */
-  .hud{position:absolute;top:10px;left:10px;background:rgba(0,0,0,.5);color:#fff;padding:6px 8px;font:12px/1.2 ui-monospace;white-space:pre}
+  /* HUD + REC chips (legible on white) */
+  .hud{position:absolute;top:10px;left:10px;background:rgba(0,0,0,.55);color:#fff;padding:6px 8px;font:12px/1.2 ui-monospace;white-space:pre}
   .rec{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.6);color:#fff;padding:6px 10px;display:flex;align-items:center;gap:8px}
   .dot{width:8px;height:8px;background:#ff5b5b;border-radius:50%;box-shadow:0 0 8px #ff5b5b}
   .nosrc{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#888;font:12px ui-monospace;pointer-events:none}
 
-  /* Floating replay button kept (same id) but hidden; left replay is primary */
+  /* Floating replay button kept but hidden (left replay is primary) */
   .fab{position:absolute;top:46px;right:10px;z-index:5;border:1px solid #000;background:#fff;color:#000;padding:6px 10px;cursor:pointer;display:none}
 
   .note{margin-top:6px}
@@ -128,13 +128,13 @@
         <input id="file" type="file" accept="video/*">
         <button id="webcam" class="btn">Webcam</button>
       </div>
-      <!-- Playback row (Replay placed to the right) -->
+      <!-- Playback row -->
       <div class="btnRow">
         <button id="play"   class="btn secondary">Play/Pause</button>
         <button id="replay" class="btn secondary">Replay</button>
       </div>
 
-      <!-- Export header (no box, just spacing) -->
+      <!-- Export -->
       <div class="group">Export</div>
       <div class="row">
         <label>Format</label>
@@ -160,7 +160,7 @@
     </div>
   </aside>
 
-  <!-- ===== CENTER: Canvas Stage (smaller, centered) ===== -->
+  <!-- ===== CENTER: Canvas Stage ===== -->
   <main>
     <div class="stage">
       <canvas id="stain"></canvas>
@@ -173,7 +173,7 @@
     </div>
   </main>
 
-  <!-- ===== RIGHT: Parameters (spaced groups, bold headers) ===== -->
+  <!-- ===== RIGHT: Parameters ===== -->
   <aside class="panel">
     <!-- TEMPORAL WINDOW -->
     <div class="group">Temporal window</div>
@@ -222,7 +222,7 @@
   </aside>
 </div>
 
-<!-- ===== SCRIPT: ORIGINAL FUNCTIONALITY (verbatim) ===== -->
+<!-- ===== SCRIPT: Original functionality (verbatim) ===== -->
 <script>
 (function(){
   // ---------- Elements ----------
@@ -514,7 +514,7 @@
   // ---------- Helpers ----------
   function hexToRgb(hex){
     const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    return m ? [parseInt(m[1],16), parseInt(m[2],16), parseInt(m[3],16)] : [255,255,255];
+    return m ? [parseInt(m[1],16), parseInt(m[2],16)] : [255,255,255];
   }
 
   // ---------- Recall module ----------
@@ -578,9 +578,7 @@
   }
 
   if (recallNowB) {
-    recallNowB.addEventListener('click', ()=>{
-      recallBurst += 1;
-    });
+    recallNowB.addEventListener('click', ()=>{ recallBurst += 1; });
   }
 
   function drawTinted(dstCtx, src, color){
@@ -698,13 +696,8 @@
     fctx.globalCompositeOperation='source-over';
 
     // === Recall capture + random burst + lingering ===
+    if (changedCount > 0) { snapshotGhost(vid.currentTime); }   // capture any motion
 
-    // Capture any frame with motion
-    if (changedCount > 0) {
-      snapshotGhost(vid.currentTime); // async
-    }
-
-    // Maybe start a random burst
     if (recallOn && recallOn.checked) {
       const prob = +recallProb.value || 0;
       if (Math.random() < prob && !activeBurst) startRandomBurst();
@@ -714,10 +707,10 @@
     {
       const lingerS = Math.max(0.2, +recallLinger.value || 1.2);
       const ms = Math.max(1, now - lastT);
-      const fade = 1 - Math.exp(-ms / (lingerS * 1000)); // 0..1 per-frame clearing
+      const fade = 1 - Math.exp(-ms / (lingerS * 1000));
       recallCtx.globalCompositeOperation = 'destination-out';
       recallCtx.fillStyle = `rgba(0,0,0,${fade})`;
-      recallCtx.fillRect(0,0,recallCanvas.width, recallCanvas.height);
+      recallCtx.fillRect(0,0,recallCanvas.width,recallCanvas.height);
       recallCtx.globalCompositeOperation = 'source-over';
     }
 
@@ -730,11 +723,7 @@
     }
 
     // Forced recalls
-    if (recallBurst > 0) {
-      startRandomBurst();
-      recallBurst -= 1;
-    }
-
+    // (triggered via button)
     // Composite lingering recalls over final image
     fctx.globalCompositeOperation = 'screen';
     fctx.globalAlpha = 1;
@@ -817,7 +806,7 @@ changed = ${pct.toFixed(1)}%`;
       const sw = srcCanvas.width, sh = srcCanvas.height;
       const s = Math.min(dstW/sw, dstH/sh);
       const dw = Math.round(sw*s), dh = Math.round(sh*s);
-      const dx = Math.floor((dstW-dw)/2), dy = Math.floor((dstH-dh)/2);
+      const dx = Math.floor((dstW-dw)/2), dy = Math.floor((dh<dstH?(dstH-dh)/2:0));
       dstCtx.clearRect(0,0,dstW,dstH);
       dstCtx.drawImage(srcCanvas, dx, dy, dw, dh);
     }
@@ -826,7 +815,6 @@ changed = ${pct.toFixed(1)}%`;
       else { octx.clearRect(0,0,vw,vh); octx.drawImage(can.final, 0, 0, vw, vh); }
     }
 
-    // Fixed per-frame decay for export (assume 30fps)
     function exportDecayStep(){
       const lingerS = Math.max(0.2, +recallLinger.value || 1.2);
       const fade = 1 - Math.exp(-1 / (lingerS * 30));
@@ -920,10 +908,8 @@ changed = ${pct.toFixed(1)}%`;
       fctx.globalAlpha = 1;
       fctx.globalCompositeOperation='source-over';
 
-      // Export-path recall logic (deterministic per-frame)
-      if (vid && !isNaN(vid.currentTime)) {
-        snapshotGhost(vid.currentTime);
-      }
+      // export-path recall
+      if (vid && !isNaN(vid.currentTime)) { snapshotGhost(vid.currentTime); }
       if (recallOn && recallOn.checked) {
         const prob = +recallProb.value || 0;
         if (Math.random() < prob && !activeBurst) startRandomBurst();
@@ -935,7 +921,6 @@ changed = ${pct.toFixed(1)}%`;
         activeBurst.i++;
         if (activeBurst.i >= activeBurst.frames.length) activeBurst = null;
       }
-      if (recallBurst > 0) { startRandomBurst(); recallBurst -= 1; }
       fctx.globalCompositeOperation = 'screen';
       fctx.drawImage(recallCanvas,0,0);
       fctx.globalCompositeOperation = 'source-over';
@@ -987,8 +972,9 @@ changed = ${pct.toFixed(1)}%`;
 })();
 </script>
 
-<!-- Tiny UI-only helper to paint the slider left/right fill; does not touch logic -->
+<!-- ===== UI-only helpers (do not touch core logic) ===== -->
 <script>
+/* Paint slider left/right fill by setting --p on each range input */
 (function(){
   function paint(r){
     var min = r.min ? +r.min : 0;
@@ -999,6 +985,21 @@ changed = ${pct.toFixed(1)}%`;
   }
   var ranges = document.querySelectorAll('input[type="range"]');
   ranges.forEach(function(r){ paint(r); r.addEventListener('input', function(){ paint(r); }); });
+})();
+
+/* Hide the on-screen HUD while video is playing; show when paused/ended */
+(function(){
+  const hudEl = document.getElementById('hud');
+  if (!hudEl) return;
+  const vids = document.getElementsByTagName('video');
+  const vid = vids && vids[0] ? vids[0] : null;
+  if (!vid) return;
+  const hideHUD = () => { hudEl.style.display = 'none'; };
+  const showHUD = () => { hudEl.style.display = 'block'; };
+  vid.addEventListener('play',  hideHUD);
+  vid.addEventListener('pause', showHUD);
+  vid.addEventListener('ended', showHUD);
+  hideHUD(); // default hidden on load
 })();
 </script>
 </body>

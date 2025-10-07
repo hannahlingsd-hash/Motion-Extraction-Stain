@@ -82,6 +82,26 @@ aside.controls{ overflow:hidden; }        /* safety clip for any stray overflow 
 /* safety: normalize control margins */
 button, input, select, label { margin:0; }
 
+/* --- Fix: Recording row vertical & compact Format select --- */
+
+/* Stack Start/Stop vertically (only that row) */
+aside.controls .btnRow:has(#recStart){
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+/* Make the left-panel "Format" row two columns (label + control) */
+aside.controls .row{
+  grid-template-columns: auto auto;   /* label | control */
+}
+
+/* Compact select to button-like width; no column overflow */
+aside.controls select#format{
+  width: auto;          /* stop stretching */
+  max-width: 100%;
+  padding-right: 20px;  /* avoids text clipping with native arrows */
+}
 
 
   /* Inline label + checkbox */

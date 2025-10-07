@@ -5,22 +5,19 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Wind-on-Wall — Ghosts + Stain (hi-res)</title>
 <style>
-  /* ===== TOKENS (monochrome + slight blue on fill), Arial ===== */
+  /* ===== Tokens (monochrome, Arial) ===== */
   :root{
     --bg:#fff; --fg:#000; --mut:#333; --line:#000;
-    --pad:8px; --gap:8px;
-    /* slimmer sidebars for larger canvas */
-    --colL:180px;
-    --colR:280px;
-    /* slider colors */
-    --track-fill:#4576c6;   /* slightly darker blue */
-    --track-bg:#d8d8d8;     /* right/remaining (heavier grey) */
+    --colL:180px;     /* left column width */
+    --colR:280px;     /* right column width */
+    --track-fill:#111;   /* slider left/value (very dark grey) */
+    --track-bg:#cfcfcf;  /* slider remainder (light grey) */
   }
   html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:13px/1.45 Arial, Helvetica, sans-serif}
   *{box-sizing:border-box;border-radius:0}
   button,input,select{font:inherit;color:var(--fg);background:#fff}
 
-  /* ===== LAYOUT ===== */
+  /* ===== Layout ===== */
   .wrap{
     display:grid;
     grid-template-columns: var(--colL) 1fr var(--colR);
@@ -31,39 +28,45 @@
   aside.controls{padding:0}
   main{position:relative;display:flex;align-items:center;justify-content:center}
 
-  /* Center stage larger, not full-bleed */
+  /* Center stage: larger, not full-bleed; no borders/shadows (prevents hairlines) */
   .stage{
     position:relative;
     width:min(90%, 1280px);
     aspect-ratio:16/9;
     margin:auto;
-    outline:1px solid #0000;
+    border:0; outline:0; box-shadow:none; background:transparent;
   }
-  canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+  /* Canvases: no borders/outlines/shadows */
+  canvas{
+    position:absolute; inset:0;
+    width:100%; height:100%;
+    object-fit:contain;
+    background:#000;
+    border:0; outline:0; box-shadow:none;
+  }
 
-  /* ===== Right panel ===== */
+  /* ===== Right panel rhythm ===== */
   .panel{padding:0 0 4px 0}
   .group{font-weight:700;margin:18px 0 6px}
   .row{
     display:grid;
-    grid-template-columns: 1fr minmax(120px,1.6fr) 44px; /* label | slider/control | readout */
+    grid-template-columns: 1fr minmax(120px,1.6fr) 44px; /* label | control | readout */
     align-items:center;
     gap:8px;
     margin:6px 0;
   }
   .row.compact{grid-template-columns: 1fr auto 44px}
   .row label{color:var(--fg)}
-  .small{font-size:12px;color:var(--mut)}
-  /* numeric readouts: regular weight */
-  .row > span{ text-align:right; font-weight:400; color:#000; }
+  .row > span{ text-align:right; font-weight:400; color:#000; } /* regular weight */
 
-  /* ===== Left column spacing ===== */
-  .leftRows{display:grid;gap:10px}
+  /* ===== Left column: match right spacing ===== */
+  .leftRows{display:grid;gap:8px}
   .btnRow{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0;}
   aside.controls .group{ margin:18px 0 6px; font-weight:700; }
   aside.controls .row{ margin:6px 0; }
+  input[type="file"]{ line-height:1; } /* prevents weird row height */
 
-  /* ===== Buttons ===== */
+  /* ===== Buttons: flat, square ===== */
   .btn{
     appearance:none;
     background:#fff;
@@ -96,22 +99,16 @@
   input[type="range"]::-moz-range-progress{height:2px;background:var(--track-fill)}
 
   input[type="color"]{width:32px;height:22px;border:1px solid #000;background:#fff;padding:0}
-
-  /* align single checkboxes & color inputs to the readout column */
   .row.compact input[type="checkbox"],
-  .row.compact input[type="color"]{
-    grid-column: 3;
-    justify-self:end;
-  }
+  .row.compact input[type="color"]{ grid-column:3; justify-self:end; }
 
-  /* HUD + REC chips */
-  .hud{position:absolute;top:10px;left:10px;background:rgba(0,0,0,.55);color:#fff;padding:6px 8px;font:12px/1.2 ui-monospace;white-space:pre}
+  /* HUD is kept for logic, but hidden */
+  .hud{ display:none !important; }
   .rec{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.6);color:#fff;padding:6px 10px;display:flex;align-items:center;gap:8px}
   .dot{width:8px;height:8px;background:#ff5b5b;border-radius:50%;box-shadow:0 0 8px #ff5b5b}
   .nosrc{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#888;font:12px ui-monospace;pointer-events:none}
-  .fab{position:absolute;top:46px;right:10px;z-index:5;border:1px solid #000;background:#fff;color:#000;padding:6px 10px;cursor:pointer;display:none}
-
-  .note{margin-top:6px}
+  .fab{display:none}
+  .small{font-size:12px;color:#333}
 </style>
 </head>
 <body>
@@ -148,8 +145,8 @@
         <label style="align-self:center">Match preview</label>
         <input id="matchPreview" type="checkbox" checked>
       </div>
-      <div class="note small" id="supportNote"></div>
-      <div class="note small" id="dbg">buffer: 0 | fps —</div>
+      <div class="small" id="supportNote"></div>
+      <div class="small" id="dbg">buffer: 0 | fps —</div>
     </div>
   </aside>
 
@@ -189,7 +186,7 @@
       </select>
       <span></span>
     </div>
-    <!-- Replace 'Use custom color' with 'Ghost color' (keep the checkbox hidden+checked to preserve logic) -->
+    <!-- Ghost color: simple color picker; checkbox is hidden+checked to preserve logic -->
     <div class="row compact">
       <label>Ghost color</label>
       <input id="gUseColor" type="checkbox" checked style="display:none">
@@ -216,7 +213,7 @@
   </aside>
 </div>
 
-<!-- ===== SCRIPT: Original functionality preserved ===== -->
+<!-- ===== Original functionality (intact) ===== -->
 <script>
 (function(){
   // ---------- Elements ----------
@@ -348,8 +345,9 @@
   function fit(){
     const dpr = Math.max(1, window.devicePixelRatio || 1);
     const r = can.final.getBoundingClientRect();
-    const W = Math.max(2, Math.round(r.width*dpr));
-    const H = Math.max(2, Math.round(r.height*dpr));
+    /* use ceil to avoid sub-pixel seams that can show as hairlines */
+    const W = Math.max(2, Math.ceil(r.width  * dpr));
+    const H = Math.max(2, Math.ceil(r.height * dpr));
     for(const k in can){ can[k].width=W; can[k].height=H; }
     proc.width=W; proc.height=H;
     maskCanvas.width=W; maskCanvas.height=H;
@@ -518,14 +516,11 @@
     .forEach(x=>x && x.addEventListener('input', syncRecall));
   syncRecall();
 
-  // Store ghost frames with timestamps for span selection
-  const recallBank = []; // {img: ImageBitmap|Canvas, t: number}
+  const recallBank = []; // {img, t}
   let recallBurst = 0;
   let activeBurst = null; // {frames:[img,...], i:number}
 
-  function capRecallBank(max){
-    while(recallBank.length > max) recallBank.shift();
-  }
+  function capRecallBank(max){ while(recallBank.length > max) recallBank.shift(); }
 
   async function snapshotGhost(tNow){
     try {
@@ -547,17 +542,11 @@
     const span = Math.max(0, +recallSpan.value || 0);
     const r = (Math.random()*recallBank.length)|0;
     const t0 = recallBank[r].t, t1 = t0 + span;
-
-    const frames = recallBank
-      .filter(f => f.t >= t0 && f.t <= t1)
-      .map(f => f.img);
-
+    const frames = recallBank.filter(f => f.t >= t0 && f.t <= t1).map(f => f.img);
     activeBurst = { frames: frames.length ? frames : [recallBank[r].img], i: 0 };
   }
 
-  if (recallNowB) {
-    recallNowB.addEventListener('click', ()=>{ recallBurst += 1; });
-  }
+  if (recallNowB) recallNowB.addEventListener('click', ()=>{ recallBurst += 1; });
 
   function drawTinted(dstCtx, src, color){
     dstCtx.globalCompositeOperation = 'source-over';
@@ -582,23 +571,19 @@
     fctx.fillStyle = `rgb(${grey},${grey},${grey})`;
     fctx.fillRect(0,0,W,H);
 
-    if(vid.readyState < 2){
-      nosrc.style.display = 'block';
-      return;
-    } else {
-      nosrc.style.display = 'none';
-    }
+    if(vid.readyState < 2){ nosrc.style.display='block'; return; }
+    else { nosrc.style.display='none'; }
 
-    // 1) current frame → analysis
+    // current frame
     drawVideoContained(pctx, vid, W, H, +el.preblur.value);
     const curr = pctx.getImageData(0,0,W,H);
     pushFrame(curr, vid.currentTime);
 
-    // 2) past frame
+    // past frame
     const past = getPastFrame(+el.dt.value);
     if(!past){ return; }
 
-    // 3) motion mask + ghosts
+    // motion mask + ghosts
     const c = curr.data, p = past.data;
     const ghostImg = gctx.createImageData(W,H);
     const gd = ghostImg.data;
@@ -615,7 +600,6 @@
 
       if(d > thr){
         changedCount++; mask[j]=255;
-
         if (gUseColor.checked) {
           const [cr,cg,cb] = hexToRgb(gColor.value);
           const a = Math.max(40, Math.min(255, (d - thr) * 8));
@@ -632,7 +616,7 @@
     }
     gctx.putImageData(ghostImg,0,0);
 
-    // 4) stain accumulation
+    // stain accumulation
     if(stainOn.checked){
       const decay = +el.decay.value;
       sctx.globalCompositeOperation='destination-out';
@@ -661,7 +645,7 @@
       sctx.drawImage(colCanvas,0,0);
     }
 
-    // 5) compose: base grey → stain → ghosts
+    // compose
     if(stainOn.checked){
       fctx.globalCompositeOperation='multiply';
       fctx.drawImage(can.stain,0,0);
@@ -673,7 +657,7 @@
     fctx.globalAlpha = 1;
     fctx.globalCompositeOperation='source-over';
 
-    // Recalls
+    // recalls
     if (changedCount > 0) { snapshotGhost(vid.currentTime); }
     if (recallOn && recallOn.checked) {
       const prob = +recallProb.value || 0;
@@ -698,7 +682,7 @@
     fctx.drawImage(recallCanvas,0,0);
     fctx.globalCompositeOperation = 'source-over';
 
-    // HUD
+    // HUD text still computed (element hidden by CSS)
     const dt = now - lastT; lastT = now;
     const inst = dt>0 ? 1000/dt : 0; fpsEMA = fpsEMA? fpsEMA*0.9 + inst*0.1 : inst;
     const pct = 100*(changedCount/(W*H));
@@ -939,9 +923,8 @@ changed = ${pct.toFixed(1)}%`;
 })();
 </script>
 
-<!-- ===== UI-only helpers ===== -->
+<!-- ===== UI helper: paints slider fill by updating --p ===== -->
 <script>
-/* Paint slider fill by setting --p on each range input */
 (function(){
   function paint(r){
     var min = r.min ? +r.min : 0;
@@ -952,21 +935,6 @@ changed = ${pct.toFixed(1)}%`;
   }
   var ranges = document.querySelectorAll('input[type="range"]');
   ranges.forEach(function(r){ paint(r); r.addEventListener('input', function(){ paint(r); }); });
-})();
-
-/* Hide HUD while video plays; show when paused/ended */
-(function(){
-  const hudEl = document.getElementById('hud');
-  if (!hudEl) return;
-  const vids = document.getElementsByTagName('video');
-  const vid = vids && vids[0] ? vids[0] : null;
-  if (!vid) return;
-  const hideHUD = () => { hudEl.style.display = 'none'; };
-  const showHUD = () => { hudEl.style.display = 'block'; };
-  vid.addEventListener('play',  hideHUD);
-  vid.addEventListener('pause', showHUD);
-  vid.addEventListener('ended', showHUD);
-  hideHUD();
 })();
 </script>
 </body>

@@ -48,11 +48,21 @@
   .row > span{ text-align:right; font-weight:400; color:#000; }
   .row label{color:var(--fg)}
 
-  /* Left panel uses the same rhythm */
-  .leftRows{display:grid;gap:6px}
-  .btnRow{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0;}
-  aside.controls .group{ margin:18px 0 6px; font-weight:700; }
-  aside.controls .row{ margin:6px 0; }
+/* LEFT column – unify vertical rhythm, remove double spacing */
+.leftRows{
+  display:grid;
+  row-gap:6px;            /* same rhythm as right */
+}
+
+aside.controls .row{ margin:0; }            /* kill extra margins */
+.btnRow{ display:flex; gap:8px; margin:0; }  /* Webcam / Play-Pause rows */
+.inlineRow{ display:flex; align-items:center; gap:8px; margin:0; }
+
+aside.controls .group{ margin:12px 0 4px; } /* section headings, tighter */
+
+#supportNote, #dbg{ margin-top:6px; }       /* small notes */
+button, input, select, label { margin:0; }  /* safety */
+
 
   /* Inline label + checkbox */
   .inlineRow{display:flex;align-items:center;gap:8px;margin:6px 0;}

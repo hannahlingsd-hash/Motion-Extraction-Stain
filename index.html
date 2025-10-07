@@ -5,16 +5,16 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Wind-on-Wall — Ghosts + Stain (hi-res)</title>
 <style>
-  /* ===== TOKENS (monochrome, Arial) ===== */
+  /* ===== TOKENS (monochrome + slight blue on fill), Arial ===== */
   :root{
     --bg:#fff; --fg:#000; --mut:#333; --line:#000;
     --pad:8px; --gap:8px;
     /* slimmer sidebars for larger canvas */
-    --colL:180px;   /* left column width */
-    --colR:280px;   /* right column width */
-    /* slider colors (heavier contrast) */
-    --track-fill:#9a9a9a;   /* left/value */
-    --track-bg:#d8d8d8;     /* right/remaining */
+    --colL:180px;
+    --colR:280px;
+    /* slider colors */
+    --track-fill:#4576c6;   /* slightly darker blue */
+    --track-bg:#d8d8d8;     /* right/remaining (heavier grey) */
   }
   html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:13px/1.45 Arial, Helvetica, sans-serif}
   *{box-sizing:border-box;border-radius:0}
@@ -31,41 +31,39 @@
   aside.controls{padding:0}
   main{position:relative;display:flex;align-items:center;justify-content:center}
 
-  /* Center stage: canvas not full-bleed, larger now */
+  /* Center stage larger, not full-bleed */
   .stage{
     position:relative;
-    width:min(90%, 1280px);      /* bigger canvas area */
+    width:min(90%, 1280px);
     aspect-ratio:16/9;
     margin:auto;
-    outline:1px solid #0000;     /* set to #000 for hairline frame if desired */
+    outline:1px solid #0000;
   }
-
-  /* Canvases fill the stage (IDs unchanged for JS) */
   canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
 
-  /* ===== Right panel (spaced groups, bold headers) ===== */
+  /* ===== Right panel ===== */
   .panel{padding:0 0 4px 0}
-  .group{font-weight:700;margin:18px 0 6px} /* bold (not caps) */
+  .group{font-weight:700;margin:18px 0 6px}
   .row{
     display:grid;
-    grid-template-columns: 1fr minmax(120px,1.6fr) 44px; /* label | slider | readout */
+    grid-template-columns: 1fr minmax(120px,1.6fr) 44px; /* label | slider/control | readout */
     align-items:center;
     gap:8px;
     margin:6px 0;
   }
-  .row.compact{grid-template-columns: 1fr auto 44px} /* label | control | right */
+  .row.compact{grid-template-columns: 1fr auto 44px}
   .row label{color:var(--fg)}
   .small{font-size:12px;color:var(--mut)}
-  /* heavier readout column */
-  .row > span{ text-align:right; font-weight:600; color:#000; }
+  /* numeric readouts: regular weight */
+  .row > span{ text-align:right; font-weight:400; color:#000; }
 
-  /* ===== Left column spacing to match right ===== */
+  /* ===== Left column spacing ===== */
   .leftRows{display:grid;gap:10px}
-  .btnRow{display:flex;gap:8px;flex-wrap:wrap; margin:6px 0;}
+  .btnRow{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0;}
   aside.controls .group{ margin:18px 0 6px; font-weight:700; }
   aside.controls .row{ margin:6px 0; }
 
-  /* ===== Buttons: flat, 1px border, square corners ===== */
+  /* ===== Buttons ===== */
   .btn{
     appearance:none;
     background:#fff;
@@ -77,7 +75,7 @@
   .btn:disabled{opacity:.5;cursor:not-allowed}
   .btn.secondary{background:#fff}
 
-  /* ===== Sliders: 2px track + square black thumb; gradient track fill ===== */
+  /* ===== Sliders (thin track + square thumb + gradient fill) ===== */
   input[type="range"]{
     appearance:none;
     height:2px;
@@ -99,20 +97,18 @@
 
   input[type="color"]{width:32px;height:22px;border:1px solid #000;background:#fff;padding:0}
 
-  /* Align single checkboxes & color inputs with right readout column */
+  /* align single checkboxes & color inputs to the readout column */
   .row.compact input[type="checkbox"],
   .row.compact input[type="color"]{
     grid-column: 3;
     justify-self:end;
   }
 
-  /* HUD + REC chips (legible on white) */
+  /* HUD + REC chips */
   .hud{position:absolute;top:10px;left:10px;background:rgba(0,0,0,.55);color:#fff;padding:6px 8px;font:12px/1.2 ui-monospace;white-space:pre}
   .rec{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.6);color:#fff;padding:6px 10px;display:flex;align-items:center;gap:8px}
   .dot{width:8px;height:8px;background:#ff5b5b;border-radius:50%;box-shadow:0 0 8px #ff5b5b}
   .nosrc{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#888;font:12px ui-monospace;pointer-events:none}
-
-  /* Floating replay button kept but hidden (left replay is primary) */
   .fab{position:absolute;top:46px;right:10px;z-index:5;border:1px solid #000;background:#fff;color:#000;padding:6px 10px;cursor:pointer;display:none}
 
   .note{margin-top:6px}
@@ -123,18 +119,15 @@
   <!-- ===== LEFT: Source/Playback + Export ===== -->
   <aside class="controls">
     <div class="leftRows">
-      <!-- Source row -->
       <div class="btnRow">
         <input id="file" type="file" accept="video/*">
         <button id="webcam" class="btn">Webcam</button>
       </div>
-      <!-- Playback row -->
       <div class="btnRow">
         <button id="play"   class="btn secondary">Play/Pause</button>
         <button id="replay" class="btn secondary">Replay</button>
       </div>
 
-      <!-- Export -->
       <div class="group">Export</div>
       <div class="row">
         <label>Format</label>
@@ -178,8 +171,8 @@
     <!-- TEMPORAL WINDOW -->
     <div class="group">Temporal window</div>
     <div class="row"><label>Δt (seconds)</label><input id="dt" type="range" min="2" max="10" step="0.5" value="6"><span id="dtV">6.0</span></div>
-    <div class="row"><label>Diff threshold</label><input id="thr" type="range" min="4" max="60" value="18"><span id="thrV">18</span></div>
-    <div class="row"><label>Grey level</label><input id="grey" type="range" min="60" max="200" value="120"><span id="greyV">120</span></div>
+    <div class="row"><label>Diff threshold</label><input id="thr" type="range" min="4" max="60" value="26"><span id="thrV">26</span></div>
+    <div class="row"><label>Grey level</label><input id="grey" type="range" min="60" max="200" value="200"><span id="greyV">200</span></div>
     <div class="row"><label>Pre-blur (px)</label><input id="preblur" type="range" min="0" max="3" value="0"><span id="preblurV">0</span></div>
 
     <!-- GHOSTS -->
@@ -188,17 +181,18 @@
     <div class="row">
       <label>Blend mode</label>
       <select id="gBlend">
-        <option value="normal">Normal</option>
-        <option value="screen" selected>Screen</option>
+        <option value="normal" selected>Normal</option>
+        <option value="screen">Screen</option>
         <option value="lighter">Lighter (Add)</option>
         <option value="multiply">Multiply</option>
         <option value="difference">Difference</option>
       </select>
       <span></span>
     </div>
+    <!-- Replace 'Use custom color' with 'Ghost color' (keep the checkbox hidden+checked to preserve logic) -->
     <div class="row compact">
-      <label>Use custom color</label>
-      <input id="gUseColor" type="checkbox">
+      <label>Ghost color</label>
+      <input id="gUseColor" type="checkbox" checked style="display:none">
       <input id="gColor" type="color" value="#ffffff">
     </div>
 
@@ -213,8 +207,8 @@
     <!-- RECALLS -->
     <div class="group">Recalls</div>
     <div class="row compact"><label>Enable recall</label><input id="recallOn" type="checkbox"></div>
-    <div class="row"><label>Recall probability</label><input id="recallProb" type="range" min="0" max="1" step="0.01" value="0.20"><span id="recallProbV">0.20</span></div>
-    <div class="row"><label>Recall capacity</label><input id="recallCap" type="range" min="0" max="120" step="5" value="40"><span id="recallCapV">40</span></div>
+    <div class="row"><label>Probability</label><input id="recallProb" type="range" min="0" max="1" step="0.01" value="0.20"><span id="recallProbV">0.20</span></div>
+    <div class="row"><label>Capacity</label><input id="recallCap" type="range" min="0" max="120" step="5" value="40"><span id="recallCapV">40</span></div>
     <div class="row compact"><label>Recall color</label><input id="recallColor" type="color" value="#00e7ff"></div>
     <div class="row"><label>Linger (s)</label><input id="recallLinger" type="range" min="0.2" max="3" step="0.1" value="1.2"><span id="recallLingerV">1.2</span></div>
     <div class="row"><label>Span (s)</label><input id="recallSpan" type="range" min="0" max="3" step="0.1" value="0.8"><span id="recallSpanV">0.8</span></div>
@@ -222,7 +216,7 @@
   </aside>
 </div>
 
-<!-- ===== SCRIPT: Original functionality (verbatim) ===== -->
+<!-- ===== SCRIPT: Original functionality preserved ===== -->
 <script>
 (function(){
   // ---------- Elements ----------
@@ -299,9 +293,7 @@
     const secure = (location.protocol === 'https:' ||
                     location.hostname === 'localhost' ||
                     location.hostname === '127.0.0.1');
-    if (!secure) {
-      throw new Error('Camera requires HTTPS or localhost. Serve this page over https:// or run on localhost.');
-    }
+    if (!secure) { throw new Error('Camera requires HTTPS or localhost.'); }
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       throw new Error('getUserMedia is not available in this browser.');
     }
@@ -316,21 +308,14 @@
 
     let errLast = null;
     for (const constraints of tries) {
-      try {
-        mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
-        break;
-      } catch (err) {
-        errLast = err;
-        mediaStream = null;
-      }
+      try { mediaStream = await navigator.mediaDevices.getUserMedia(constraints); break; }
+      catch (err) { errLast = err; mediaStream = null; }
     }
     if (!mediaStream) {
-      if (errLast && (errLast.name === 'NotAllowedError' || errLast.name === 'SecurityError')) {
+      if (errLast && (errLast.name === 'NotAllowedError' || errLast.name === 'SecurityError'))
         throw new Error('Camera permission was blocked. Check Site Settings → Camera and allow access.');
-      }
-      if (errLast && errLast.name === 'NotFoundError') {
+      if (errLast && errLast.name === 'NotFoundError')
         throw new Error('No camera device found.');
-      }
       throw errLast || new Error('Unable to access camera.');
     }
 
@@ -340,19 +325,13 @@
       vid.addEventListener('loadedmetadata', res, { once: true });
     });
 
-    try { await vid.play(); } catch (e) {
-      throw new Error('Camera stream ready but autoplay failed. Click Play or allow autoplay for this site.');
-    }
+    try { await vid.play(); }
+    catch (e) { throw new Error('Camera stream ready but autoplay failed. Click Play or allow autoplay.'); }
   }
 
   function stopWebcam(){
-    if(mediaStream){
-      try { mediaStream.getTracks().forEach(t=>t.stop()); } catch(_){}
-      mediaStream = null;
-    }
-    if (vid && vid.srcObject) {
-      try { vid.srcObject = null; } catch(_){}
-    }
+    if(mediaStream){ try { mediaStream.getTracks().forEach(t=>t.stop()); } catch(_){} mediaStream = null; }
+    if (vid && vid.srcObject){ try { vid.srcObject = null; } catch(_){} }
   }
 
   // ---------- HiDPI sizing ----------
@@ -363,7 +342,6 @@
   const colCanvas = document.createElement('canvas');
   const colCtx = colCanvas.getContext('2d');
 
-  // offscreen canvas for lingering recalls
   const recallCanvas = document.createElement('canvas');
   const recallCtx = recallCanvas.getContext('2d');
 
@@ -379,7 +357,7 @@
     recallCanvas.width=W; recallCanvas.height=H;
   }
   new ResizeObserver(fit).observe(can.final);
-  fit(); // initial size
+  fit();
 
   // ---------- Buffers ----------
   const buf = []; const MAX_SEC = 14;
@@ -514,7 +492,7 @@
   // ---------- Helpers ----------
   function hexToRgb(hex){
     const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    return m ? [parseInt(m[1],16), parseInt(m[2],16)] : [255,255,255];
+    return m ? [parseInt(m[1],16), parseInt(m[2],16), parseInt(m[3],16)] : [255,255,255];
   }
 
   // ---------- Recall module ----------
@@ -683,7 +661,7 @@
       sctx.drawImage(colCanvas,0,0);
     }
 
-    // 5) compose: base grey → stain (multiply) → ghosts
+    // 5) compose: base grey → stain → ghosts
     if(stainOn.checked){
       fctx.globalCompositeOperation='multiply';
       fctx.drawImage(can.stain,0,0);
@@ -695,16 +673,13 @@
     fctx.globalAlpha = 1;
     fctx.globalCompositeOperation='source-over';
 
-    // === Recall capture + random burst + lingering ===
-    if (changedCount > 0) { snapshotGhost(vid.currentTime); }   // capture any motion
-
+    // Recalls
+    if (changedCount > 0) { snapshotGhost(vid.currentTime); }
     if (recallOn && recallOn.checked) {
       const prob = +recallProb.value || 0;
       if (Math.random() < prob && !activeBurst) startRandomBurst();
     }
-
-    // Linger decay on recallCanvas (time-based)
-    {
+    { // linger decay
       const lingerS = Math.max(0.2, +recallLinger.value || 1.2);
       const ms = Math.max(1, now - lastT);
       const fade = 1 - Math.exp(-ms / (lingerS * 1000));
@@ -713,21 +688,14 @@
       recallCtx.fillRect(0,0,recallCanvas.width,recallCanvas.height);
       recallCtx.globalCompositeOperation = 'source-over';
     }
-
-    // If a burst is active, composite next frame tinted into recallCanvas
     if (activeBurst && activeBurst.frames && activeBurst.frames.length){
       const color = recallColor ? recallColor.value : '#00e7ff';
       drawTinted(recallCtx, activeBurst.frames[activeBurst.i], color);
       activeBurst.i++;
       if (activeBurst.i >= activeBurst.frames.length) activeBurst = null;
     }
-
-    // Forced recalls
-    // (triggered via button)
-    // Composite lingering recalls over final image
     fctx.globalCompositeOperation = 'screen';
-    fctx.globalAlpha = 1;
-    fctx.drawImage(recallCanvas, 0, 0);
+    fctx.drawImage(recallCanvas,0,0);
     fctx.globalCompositeOperation = 'source-over';
 
     // HUD
@@ -798,7 +766,7 @@ changed = ${pct.toFixed(1)}%`;
     };
     if (nativeProcessing) {
       [can.stain, can.ghost, can.final, proc, maskCanvas, colCanvas].forEach(c=>{ c.width = vw; c.height = vh; });
-      recallCanvas.width = vw; recallCanvas.height = vh; // align recall layer to export size
+      recallCanvas.width = vw; recallCanvas.height = vh;
       recallCtx.clearRect(0,0,recallCanvas.width,recallCanvas.height);
     }
 
@@ -908,7 +876,6 @@ changed = ${pct.toFixed(1)}%`;
       fctx.globalAlpha = 1;
       fctx.globalCompositeOperation='source-over';
 
-      // export-path recall
       if (vid && !isNaN(vid.currentTime)) { snapshotGhost(vid.currentTime); }
       if (recallOn && recallOn.checked) {
         const prob = +recallProb.value || 0;
@@ -972,9 +939,9 @@ changed = ${pct.toFixed(1)}%`;
 })();
 </script>
 
-<!-- ===== UI-only helpers (do not touch core logic) ===== -->
+<!-- ===== UI-only helpers ===== -->
 <script>
-/* Paint slider left/right fill by setting --p on each range input */
+/* Paint slider fill by setting --p on each range input */
 (function(){
   function paint(r){
     var min = r.min ? +r.min : 0;
@@ -987,7 +954,7 @@ changed = ${pct.toFixed(1)}%`;
   ranges.forEach(function(r){ paint(r); r.addEventListener('input', function(){ paint(r); }); });
 })();
 
-/* Hide the on-screen HUD while video is playing; show when paused/ended */
+/* Hide HUD while video plays; show when paused/ended */
 (function(){
   const hudEl = document.getElementById('hud');
   if (!hudEl) return;
@@ -999,7 +966,7 @@ changed = ${pct.toFixed(1)}%`;
   vid.addEventListener('play',  hideHUD);
   vid.addEventListener('pause', showHUD);
   vid.addEventListener('ended', showHUD);
-  hideHUD(); // default hidden on load
+  hideHUD();
 })();
 </script>
 </body>

@@ -48,20 +48,40 @@
   .row > span{ text-align:right; font-weight:400; color:#000; }
   .row label{color:var(--fg)}
 
-/* LEFT column – unify vertical rhythm, remove double spacing */
+/* LEFT column – one-shot fix: spacing, wrapping, no overflow */
 .leftRows{
   display:grid;
-  row-gap:6px;            /* same rhythm as right */
+  row-gap:6px;              /* same vertical rhythm as right */
 }
 
-aside.controls .row{ margin:0; }            /* kill extra margins */
-.btnRow{ display:flex; gap:8px; margin:0; }  /* Webcam / Play-Pause rows */
+aside.controls .row{ margin:0; }          /* remove double spacing */
+aside.controls .group{ margin:12px 0 4px; }   /* tighter section headers */
+
+/* Button rows: allow wrap so Webcam/Play-Pause don’t float */
+aside.controls .btnRow{
+  display:flex;
+  gap:8px;
+  margin:0;
+  flex-wrap:wrap;
+}
+
+/* Inline label + checkbox (Match preview) */
 .inlineRow{ display:flex; align-items:center; gap:8px; margin:0; }
 
-aside.controls .group{ margin:12px 0 4px; } /* section headings, tighter */
+/* Keep controls inside the left column; prevent overlap with stage */
+aside.controls select,
+aside.controls input[type="file"],
+aside.controls button{ max-width:100%; }
 
-#supportNote, #dbg{ margin-top:6px; }       /* small notes */
-button, input, select, label { margin:0; }  /* safety */
+aside.controls select{ width:100%; }      /* Format dropdown fills column */
+aside.controls{ overflow:hidden; }        /* safety clip for any stray overflow */
+
+/* small notes under Export */
+#supportNote, #dbg{ margin-top:6px; }
+
+/* safety: normalize control margins */
+button, input, select, label { margin:0; }
+
 
 
   /* Inline label + checkbox */

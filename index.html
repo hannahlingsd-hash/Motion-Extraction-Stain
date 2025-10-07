@@ -1,189 +1,41 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title></title>
-
+<title>Wind-on-Wall — Ghosts (separate) + Stain (hi-res)</title>
 <style>
-/* === UI ONLY — JS UNCHANGED === */
-:root{
-  --bg:#0b0e12;                 /* main area (canvas) stays dark */
-  --accent:#ff5b5b;
-
-  /* sidebar (light) */
-  --sb-bg:#ffffff;
-  --sb-fg:#111111;
-  --sb-muted:#5f6672;
-  --sb-border:#d0d5dd;          /* slightly deeper grey for fieldset borders */
-
-  /* buttons (dark grey) */
-  --btn-bg:#2c3138;
-  --btn-fg:#ffffff;
-  --btn-border:#3a4048;
-  --btn-bg-2:#2c3138;           /* secondary uses same dark tone for visibility */
-  --btn-fg-2:#ffffff;
-
-  /* slider thickness */
-  --track-h:4px;                /* slightly thinner */
-  --thumb-d:14px;               /* handle size */
-}
-
-html,body{
-  height:100%;margin:0;
-  background:var(--bg);
-  color:#e6eeff;                /* only affects the canvas area side */
-  font:14px/1.35 Arial, Helvetica, sans-serif;
-}
-
-/* Layout */
-.wrap{
-  display:grid;grid-template-columns:360px 1fr;gap:14px;height:100%;
-}
-
-/* Sidebar: white with black text + thin scrollbar */
-aside{
-  padding:14px 12px 16px;
-  border-right:1px solid var(--sb-border);
-  overflow:auto;
-  background:var(--sb-bg);
-  color:var(--sb-fg);
-  scrollbar-width:thin;                   /* Firefox */
-  scrollbar-color:#c7cbd3 transparent;    /* Firefox */
-}
-aside::-webkit-scrollbar{width:6px;height:6px}    /* WebKit */
-aside::-webkit-scrollbar-track{background:transparent}
-aside::-webkit-scrollbar-thumb{background:#c7cbd3;border-radius:4px}
-
-main{position:relative}
-canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
-
-/* (No visible title) */
-aside > h1{display:none}
-
-fieldset{
-  border:1px solid var(--sb-border);
-  border-radius:6px;
-  margin:10px 0;
-  padding:10px;
-}
-legend{padding:0 6px;color:#2b3240;font-weight:600}
-.row{display:flex;align-items:center;gap:8px;margin:8px 0;flex-wrap:wrap}
-.row label{flex:1;color:var(--sb-muted)}
-.row input[type="range"], .row select{flex:2}
-.small{font-size:12px;color:#6a7280}
-
-/* Dark grey rectangular buttons */
-.btn{
-  appearance:none;
-  border:1px solid var(--btn-border);
-  background:var(--btn-bg);
-  color:var(--btn-fg);
-  border-radius:4px;            /* rectangular */
-  padding:6px 10px;
-  cursor:pointer;
-  transition:filter .12s ease, transform .02s ease;
-}
-.btn:hover{filter:brightness(1.06)}
-.btn:active{transform:translateY(1px)}
-.btn.secondary{
-  background:var(--btn-bg-2);
-  border-color:var(--btn-border);
-  color:var(--btn-fg-2);
-}
-.btn:disabled{opacity:.55;cursor:not-allowed}
-
-/* File input label text */
-input[type="file"]{
-  font:13px Arial, Helvetica, sans-serif;
-  color:var(--sb-fg);
-}
-
-/* Keyboard chip */
-.kbd{
-  font:12px ui-monospace, Menlo, Consolas, monospace;
-  background:#f1f3f7;
-  border:1px solid #dde3ea;
-  border-radius:4px;
-  padding:1px 6px;
-  color:#2b3442;
-}
-
-/* HUD & REC badges (unchanged, dark over canvas) */
-.hud{
-  position:absolute;top:10px;left:10px;
-  background:rgba(0,0,0,.45);padding:6px 8px;border-radius:8px;
-  font:12px ui-monospace, Menlo, Consolas, monospace;white-space:pre
-}
-.rec{
-  position:absolute;top:10px;right:10px;
-  background:rgba(0,0,0,.55);padding:6px 10px;border-radius:10px;
-  font:12px ui-monospace, Menlo, Consolas, monospace;display:flex;align-items:center;gap:8px
-}
-.dot{width:8px;height:8px;background:var(--accent);border-radius:50%;box-shadow:0 0 8px var(--accent)}
-.warn{color:#cc7a2b}
-.ok{color:#38a657}
-.nosrc{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#9aa7bd;font:12px ui-monospace;pointer-events:none}
-
-/* Floating Replay button: rectangular dark */
-.fab{
-  position:absolute;top:46px;right:10px;z-index:5;
-  border:1px solid var(--btn-border);
-  background:var(--btn-bg);
-  color:var(--btn-fg);
-  border-radius:4px;
-  padding:6px 10px;
-  cursor:pointer
-}
-.fab:hover{filter:brightness(1.06)}
-
-/* === Sliders: slightly thinner tracks === */
-
-/* WebKit */
-input[type="range"]{
-  -webkit-appearance:none;appearance:none;background:transparent;height:var(--thumb-d);
-}
-input[type="range"]::-webkit-slider-runnable-track{
-  height:var(--track-h);
-  background:#e5e7ee;border-radius:999px;border:1px solid #d8dde6;
-}
-input[type="range"]::-webkit-slider-thumb{
-  -webkit-appearance:none;margin-top:calc((var(--track-h) - var(--thumb-d))/2);
-  width:var(--thumb-d);height:var(--thumb-d);
-  background:#ffffff;border:1px solid #c7cdd6;border-radius:50%;
-  box-shadow:0 1px 1px rgba(0,0,0,.05);
-}
-
-/* Firefox */
-input[type="range"]::-moz-range-track{
-  height:var(--track-h);
-  background:#e5e7ee;border-radius:999px;border:1px solid #d8dde6;
-}
-input[type="range"]::-moz-range-thumb{
-  width:var(--thumb-d);height:var(--thumb-d);
-  background:#ffffff;border:1px solid #c7cdd6;border-radius:50%;
-  box-shadow:0 1px 1px rgba(0,0,0,.05);
-}
-
-/* Edge/Chromium fallback */
-input[type="range"]::-ms-track{
-  height:var(--track-h);
-  background:transparent;border-color:transparent;color:transparent;
-}
-input[type="range"]::-ms-fill-lower,
-input[type="range"]::-ms-fill-upper{
-  background:#e5e7ee;border:1px solid #d8dde6;border-radius:999px;
-}
-input[type="range"]::-ms-thumb{
-  width:var(--thumb-d);height:var(--thumb-d);
-  background:#ffffff;border:1px solid #c7cdd6;border-radius:50%;
-}
+  :root{--bg:#0b0e12;--fg:#e6eeff;--mut:#90a1bb;--accent:#ff5b5b}
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:14px/1.35 system-ui,Segoe UI,Roboto,Helvetica,Arial}
+  .wrap{display:grid;grid-template-columns:380px 1fr;gap:14px;height:100%}
+  aside{padding:14px 12px 16px;border-right:1px solid #1a2233;overflow:auto}
+  main{position:relative}
+  canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+  h1{font-size:16px;margin:0 0 10px}
+  fieldset{border:1px solid #1a2233;border-radius:10px;margin:10px 0;padding:10px}
+  legend{padding:0 6px;color:#9fb7e8}
+  .row{display:flex;align-items:center;gap:8px;margin:8px 0;flex-wrap:wrap}
+  .row label{flex:1;color:var(--mut)}
+  .row input[type="range"], .row select{flex:2}
+  .btn{appearance:none;border:1px solid #2a3754;background:#121826;color:#cfe1ff;border-radius:8px;padding:6px 10px;cursor:pointer}
+  .btn.secondary{background:#0e1422;border-color:#1f2b44;color:#a8b7d6}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .kbd{font:12px ui-monospace;background:#121520;border:1px solid #1f2736;border-radius:6px;padding:1px 6px;color:#b8c7e8}
+  .small{font-size:12px;color:#93a6c4}
+  .hud{position:absolute;top:10px;left:10px;background:rgba(0,0,0,.45);padding:6px 8px;border-radius:8px;font:12px ui-monospace;white-space:pre}
+  .rec{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.55);padding:6px 10px;border-radius:999px;font:12px ui-monospace;display:flex;align-items:center;gap:8px}
+  .dot{width:8px;height:8px;background:var(--accent);border-radius:50%;box-shadow:0 0 8px var(--accent)}
+  .warn{color:#ffb86b}
+  .ok{color:#6be77a}
+  .nosrc{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#aac; font:12px ui-monospace; pointer-events:none}
+  .fab{position:absolute;top:46px;right:10px;z-index:5;border:1px solid #2a3754;background:#121826;color:#cfe1ff;border-radius:999px;padding:6px 10px;cursor:pointer}
 </style>
 </head>
 <body>
 <div class="wrap">
   <aside>
-    <!-- (title intentionally removed) -->
+    <h1>Wind-on-Wall — Live</h1>
     <div class="row">
       <input id="file" type="file" accept="video/*">
       <button id="webcam" class="btn">Webcam</button>
@@ -231,6 +83,7 @@ input[type="range"]::-ms-thumb{
       <div class="row"><label>Stain color</label><input id="sColor" type="color" value="#223b7a"></div>
     </fieldset>
 
+    <!-- Recall controls -->
     <fieldset>
       <legend>Recall (resurface past traces)</legend>
       <div class="row">
@@ -1038,11 +891,6 @@ changed = ${pct.toFixed(1)}%`;
     }
 
     await new Promise(res=>{ const h=()=>{vid.removeEventListener('seeked',h); res();}; vid.addEventListener('seeked',h); try{ vid.currentTime=0; }catch(_){ res(); } });
-    const stream = outCanvas.captureStream ? outCanvas.captureStream(30) : outCanvas.mozCaptureStream(30);
-    const expRecorder = new MediaRecorder(stream, {mimeType:mime, videoBitsPerSecond: 8_000_000});
-    expRecorder.ondataavailable = e=>{ if(e.data && e.data.size) expChunks.push(e.data); };
-    const recDone = new Promise(resolve=>{ expRecorder.onstop = resolve; });
-
     expRecorder.start(250);
     processOneFrame(can.final.width, can.final.height);
     blitToOut();

@@ -96,11 +96,14 @@ aside.controls .row{
   grid-template-columns: auto auto;   /* label | control */
 }
 
-/* Compact select to button-like width; no column overflow */
+/* Compact Format dropdown: fixed, shorter width */
 aside.controls select#format{
-  width: auto;          /* stop stretching */
-  max-width: 100%;
-  padding-right: 20px;  /* avoids text clipping with native arrows */
+  width:128px;          /* shorter than before */
+  max-width:128px;
+  box-sizing:border-box;
+  padding:4px 8px;      /* button-like feel */
+  -webkit-appearance: menulist;
+  appearance: menulist;
 }
 
 

@@ -11,10 +11,11 @@
     --colR:280px;     /* right column width */
     --track-fill:#111;   /* slider left/value (very dark grey) */
     --track-bg:#cfcfcf;  /* slider remainder (light grey) */
+    --topPad:8px;        /* unified top padding for L/R columns */
   }
   html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:13px/1.45 Arial, Helvetica, sans-serif}
   *{box-sizing:border-box;border-radius:0}
-  button,input,select{font:inherit;color:var(--fg);background:#fff}
+  button,input,select,label{font:inherit;color:var(--fg);background:#fff;margin:0}
 
   /* Layout */
   .wrap{
@@ -22,7 +23,8 @@
     grid-template-columns: var(--colL) 1fr var(--colR);
     gap:16px; height:100vh; padding:12px;
   }
-  aside.controls{padding:0}
+  aside.controls{padding-top:var(--topPad)}
+  aside.panel{padding-top:var(--topPad)}
   main{position:relative;display:flex;align-items:center;justify-content:center}
 
   /* Stage: no borders/outlines (prevents hairlines) */
@@ -36,8 +38,8 @@
   }
 
   /* Right panel rhythm */
-  .panel{padding:0 0 4px 0}
   .group{font-weight:700;margin:18px 0 6px}
+  .panel .group:first-of-type{ margin-top:6px; } /* aligns with left start */
   .row{
     display:grid; align-items:center; gap:8px; margin:6px 0;
     grid-template-columns: 1fr minmax(120px,1.6fr) 44px; /* label | control | readout */
@@ -46,12 +48,14 @@
   .row > span{ text-align:right; font-weight:400; color:#000; }
   .row label{color:var(--fg)}
 
-  /* Left panel uses same spacing */
-  .leftRows{display:grid;gap:8px}
+  /* Left panel uses the same rhythm */
+  .leftRows{display:grid;gap:6px}
   .btnRow{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0;}
   aside.controls .group{ margin:18px 0 6px; font-weight:700; }
   aside.controls .row{ margin:6px 0; }
-  input[type="file"]{ line-height:1; }
+
+  /* Inline label + checkbox */
+  .inlineRow{display:flex;align-items:center;gap:8px;margin:6px 0;}
 
   /* Buttons */
   .btn{appearance:none;background:#fff;color:#000;border:1px solid var(--line);padding:6px 10px;cursor:pointer}
@@ -69,8 +73,6 @@
   input[type="range"]::-moz-range-progress{height:2px;background:var(--track-fill)}
 
   input[type="color"]{width:32px;height:22px;border:1px solid #000;background:#fff;padding:0}
-  .row.compact input[type="checkbox"],
-  .row.compact input[type="color"]{ grid-column:3; justify-self:end; }
 
   .hud{ display:none !important; } /* keep element, hide overlay */
   .rec{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.6);color:#fff;padding:6px 10px;display:flex;align-items:center;gap:8px}
@@ -108,19 +110,11 @@
         <button id="recStart" class="btn">Start Recording</button>
         <button id="recStop"  class="btn" disabled>Stop &amp; Save</button>
       </div>
+      <div class="btnRow"><button id="shot" class="btn secondary">Export PNG</button></div>
+      <div class="btnRow"><button id="exportOne" class="btn">Export 1:1 (source)</button></div>
 
-      <!-- STACKED export buttons -->
-      <div class="btnRow">
-        <button id="shot" class="btn secondary">Export PNG</button>
-      </div>
-      <div class="btnRow">
-        <button id="exportOne" class="btn">Export 1:1 (source)</button>
-      </div>
-
-      <!-- Aligned "Match preview" row -->
-      <div class="row compact">
-        <label>Match preview</label>
-        <span></span>
+      <div class="inlineRow">
+        <label for="matchPreview">Match preview</label>
         <input id="matchPreview" type="checkbox" checked>
       </div>
 
@@ -511,7 +505,11 @@
     const span = Math.max(0, +recallSpan.value || 0);
     const r = (Math.random()*recallBank.length)|0;
     const t0 = recallBank[r].t, t1 = t0 + span;
-    const frames = recallBank.filter(f => f.t >= t0 && f.t <= t1).map(f => f.img);
+
+    const frames = recallBank
+      .filter(f => f.t >= t0 && f.t <= t1)
+      .map(f => f.img);
+
     activeBurst = { frames: frames.length ? frames : [recallBank[r].img], i: 0 };
   }
 
@@ -646,13 +644,6 @@
 
     const dt = now - lastT; lastT = now;
     const inst = dt>0 ? 1000/dt : 0; fpsEMA = fpsEMA? fpsEMA*0.9 + inst*0.1 : inst;
-    const pct = 100*(changedCount/(W*H));
-    hud.textContent = `Δt = ${(+el.dt.value).toFixed(1)} s
-thr = ${el.thr.value}, pre-blur = ${el.preblur.value}, grey = ${el.grey.value}
-ghost: ${gBlend.value}, α=${(+el.gAlpha.value).toFixed(2)}${gUseColor.checked?`, color=${gColor.value}`:''}
-stain: decay=${(+el.decay.value).toFixed(3)}, expand=${el.expand.value}, strength=${(+el.strength.value).toFixed(2)}
-changed = ${pct.toFixed(1)}%`;
-
     const s = bestSupported();
     dbg.textContent = `buffer: ${buf.length} | fps ~ ${fpsEMA.toFixed(1)} | support: ${s.canMp4?'MP4✓':'MP4×'}/${s.canWebm?'WebM✓':'WebM×'}`;
   });
@@ -874,9 +865,6 @@ changed = ${pct.toFixed(1)}%`;
       maskCanvas.width=prevSizes.mW; maskCanvas.height=prevSizes.mH;
       colCanvas.width=prevSizes.cW; colCanvas.height=prevSizes.cH;
     }
-    vid.loop = prev.loop; vid.playbackRate = prev.rate;
-    try{ vid.currentTime = prev.t; }catch(_){}
-    if(!prev.paused){ try{ await vid.play(); }catch(_){ } }
     suspendLive = prevSuspend;
     exportOneBtn.disabled = false;
     recStartBtn.disabled = false;

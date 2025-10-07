@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Time Inscriptions — Ghosts (separate) + Stain (hi-res)</title>
+<title>Wind-on-Wall — Ghosts (separate) + Stain (hi-res)</title>
 <style>
   :root{--bg:#0b0e12;--fg:#e6eeff;--mut:#90a1bb;--accent:#ff5b5b}
   html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:14px/1.35 system-ui,Segoe UI,Roboto,Helvetica,Arial}
@@ -25,6 +25,8 @@
   .hud{position:absolute;top:10px;left:10px;background:rgba(0,0,0,.45);padding:6px 8px;border-radius:8px;font:12px ui-monospace;white-space:pre}
   .rec{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.55);padding:6px 10px;border-radius:999px;font:12px ui-monospace;display:flex;align-items:center;gap:8px}
   .dot{width:8px;height:8px;background:var(--accent);border-radius:50%;box-shadow:0 0 8px var(--accent)}
+  .warn{color:#ffb86b}
+  .ok{color:#6be77a}
   .nosrc{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#aac; font:12px ui-monospace; pointer-events:none}
   .fab{position:absolute;top:46px;right:10px;z-index:5;border:1px solid #2a3754;background:#121826;color:#cfe1ff;border-radius:999px;padding:6px 10px;cursor:pointer}
 </style>
@@ -32,7 +34,7 @@
 <body>
 <div class="wrap">
   <aside>
-    <h1>Time Inscriptions — Live</h1>
+    <h1>Wind-on-Wall — Live</h1>
     <div class="row">
       <input id="file" type="file" accept="video/*">
       <button id="webcam" class="btn">Webcam</button>
@@ -78,18 +80,6 @@
       <div class="row"><label>Strength</label><input id="strength" type="range" min="0.1" max="1" step="0.05" value="0.50"><span id="strengthV">0.50</span></div>
       <div class="row"><label>Expand (px)</label><input id="expand" type="range" min="0" max="8" step="1" value="2"><span id="expandV">2</span></div>
       <div class="row"><label>Stain color</label><input id="sColor" type="color" value="#223b7a"></div>
-    </fieldset>
-
-    <!-- NEW: Recall controls (minimal) -->
-    <fieldset>
-      <legend>Recall (random memory)</legend>
-      <div class="row"><label>Enable recall</label><input id="recallOn" type="checkbox" checked></div>
-      <div class="row"><label>Recall probability</label><input id="recallProb" type="range" min="0" max="0.05" step="0.001" value="0.012"><span id="recallProbV">0.012</span></div>
-      <div class="row"><label>Recall opacity</label><input id="recallAlpha" type="range" min="0" max="0.6" step="0.01" value="0.14"><span id="recallAlphaV">0.14</span></div>
-      <div class="row">
-        <button id="recallOnce" class="btn secondary">Recall now</button>
-        <span class="small">Force one resurfacing</span>
-      </div>
     </fieldset>
 
     <fieldset>
@@ -159,7 +149,7 @@
   const supportNote = document.getElementById('supportNote');
   const nosrc = document.getElementById('nosrc');
 
-  const ids = ["dt","thr","grey","preblur","gAlpha","decay","strength","expand","recallProb","recallAlpha"];
+  const ids = ["dt","thr","grey","preblur","gAlpha","decay","strength","expand"];
   const el  = Object.fromEntries(ids.map(id=>[id, document.getElementById(id)]));
   const out = Object.fromEntries(ids.map(id=>[id+"V", document.getElementById(id+"V")]));
   const stainOn = document.getElementById('stainOn');
@@ -169,10 +159,6 @@
   const gUseColor = document.getElementById('gUseColor');
   const gColor    = document.getElementById('gColor');
 
-  const recallOnEl   = document.getElementById('recallOn');
-  const recallOnceEl = document.getElementById('recallOnce');
-
-  // ---------- Controls readouts ----------
   function sync(){
     out.dtV.textContent      = (+el.dt.value).toFixed(1);
     out.thrV.textContent     = el.thr.value;
@@ -182,12 +168,11 @@
     out.decayV.textContent   = (+el.decay.value).toFixed(3);
     out.strengthV.textContent= (+el.strength.value).toFixed(2);
     out.expandV.textContent  = el.expand.value;
-    if(out.recallProbV)  out.recallProbV.textContent  = (+el.recallProb.value).toFixed(3);
-    if(out.recallAlphaV) out.recallAlphaV.textContent = (+el.recallAlpha.value).toFixed(2);
   }
+  // robust: update on both input & change
   const controls = [
     ...ids.map(id=>el[id]),
-    stainOn, sColor, gBlend, formatSel, gUseColor, gColor, recallOnEl
+    stainOn, sColor, gBlend, formatSel, gUseColor, gColor
   ].filter(Boolean);
   ['input','change'].forEach(evt => controls.forEach(c => c.addEventListener(evt, sync)));
   sync();
@@ -201,29 +186,51 @@
   const src = qs.get('src'); if(src){ vid.src = src; }
 
   let mediaStream = null;
+
+  // FIX: wait metadata, show frame immediately, then play
   file.addEventListener('change', e=>{
     const f = e.target.files[0]; if(!f) return;
     stopWebcam();
     resetState();
     vid.srcObject = null;
     vid.src = URL.createObjectURL(f);
-    vid.addEventListener('loadedmetadata', ()=>{ vid.currentTime=0; vid.muted=true; vid.play().catch(()=>{}); }, {once:true});
+    vid.addEventListener('loadedmetadata', ()=>{
+      try { vid.currentTime = 0; } catch(_) {}
+      // draw one frame so UI isn't blank even if autoplay blocked
+      drawFirstFrameOnce();
+      vid.play().catch(()=>{}); // user gesture (file picker) usually allows
+    }, { once:true });
   });
+
   playBtn.addEventListener('click', ()=> vid.paused ? vid.play() : vid.pause());
 
-  webcamBtn.addEventListener('click', async ()=>{
-    const secure = (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1');
-    if (!secure) { alert('Camera requires HTTPS or localhost.'); return; }
-    stopWebcam(); resetState();
-    mediaStream = await navigator.mediaDevices.getUserMedia({ video:true, audio:false });
+  webcamBtn.addEventListener('click', ()=> startWebcam().catch(e=>alert('Webcam failed: '+(e && e.message ? e.message : e))));
+
+  async function startWebcam(){
+    const secure = (location.protocol === 'https:' ||
+                    location.hostname === 'localhost' ||
+                    location.hostname === '127.0.0.1');
+    if (!secure) throw new Error('Camera requires HTTPS or localhost.');
+    stopWebcam();
+    resetState();
+    mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
     vid.srcObject = mediaStream;
-    await new Promise(res => (vid.readyState>=1 ? res() : vid.addEventListener('loadedmetadata', res, {once:true})));
-    vid.muted = true; vid.play().catch(()=>{});
-  });
+    await new Promise(res => {
+      if (vid.readyState >= 1) return res();
+      vid.addEventListener('loadedmetadata', res, { once: true });
+    });
+    drawFirstFrameOnce();
+    await vid.play().catch(()=>{});
+  }
 
   function stopWebcam(){
-    if(mediaStream){ try{ mediaStream.getTracks().forEach(t=>t.stop()); }catch(_){} mediaStream=null; }
-    if(vid && vid.srcObject){ try{ vid.srcObject = null; }catch(_){} }
+    if(mediaStream){
+      try { mediaStream.getTracks().forEach(t=>t.stop()); } catch(_){}
+      mediaStream = null;
+    }
+    if (vid && vid.srcObject) {
+      try { vid.srcObject = null; } catch(_){}
+    }
   }
 
   // ---------- HiDPI sizing ----------
@@ -245,7 +252,7 @@
     colCanvas.width=W; colCanvas.height=H;
   }
   new ResizeObserver(fit).observe(can.final);
-  fit();
+  fit(); // initial size
 
   // ---------- Buffers ----------
   const buf = []; const MAX_SEC = 14;
@@ -257,7 +264,7 @@
   function getPastFrame(delta){
     const target = vid.currentTime - delta;
     for(let i=buf.length-1;i>=0;i--){ if(buf[i].t <= target) return buf[i]; }
-    return buf[0] || null; // earliest available during warm-up
+    return buf[0] || null;
   }
 
   function drawVideoContained(ctx, video, W, H, blurPx){
@@ -274,7 +281,16 @@
     ctx.restore();
   }
 
-  // ---------- Recording (unchanged) ----------
+  // draw one frame to preview if available
+  function drawFirstFrameOnce(){
+    const W = can.final.width, H = can.final.height;
+    drawVideoContained(pctx, vid, W, H, +el.preblur.value);
+    fctx.clearRect(0,0,W,H);
+    fctx.drawImage(pctx.canvas, 0, 0);
+    nosrc.style.display = 'none';
+  }
+
+  // ---------- Recording ----------
   let recorder=null, chunks=[], recStartTime=0, recTimer=null, recMime="", recExt="webm";
   function bestSupported(){
     const mp4='video/mp4;codecs=avc1.42E01E,mp4a.40.2';
@@ -288,10 +304,10 @@
     const s=bestSupported();
     const fmt=document.getElementById('format').value;
     let msg='';
-    if(fmt==='mp4'){ msg = s.canMp4 ? 'MP4 recording supported ✓' : 'MP4 not supported here. Use Safari/WebKit or switch to WebM.'; }
-    else if(fmt==='webm'){ msg = s.canWebm ? 'WebM recording supported ✓' : 'WebM not supported.'; }
-    else { msg = s.canMp4 ? 'Auto → MP4' : (s.canWebm ? 'Auto → WebM' : 'Recording unsupported.'); }
-    supportNote.textContent = msg;
+    if(fmt==='mp4'){ msg = s.canMp4 ? '<span class="ok">MP4 recording supported ✓</span>' : '<span class="warn">MP4 not supported here. Use Safari/WebKit or switch to WebM.</span>'; }
+    else if(fmt==='webm'){ msg = s.canWebm ? 'WebM recording supported ✓' : '<span class="warn">WebM not supported.</span>'; }
+    else { msg = s.canMp4 ? 'Auto → MP4' : (s.canWebm ? 'Auto → WebM' : '<span class="warn">Recording unsupported.</span>'); }
+    supportNote.innerHTML = msg;
   }
   refreshSupportNote();
   document.getElementById('format').addEventListener('change', refreshSupportNote);
@@ -312,7 +328,7 @@
     recorder.onstop = ()=>{
       const blob = new Blob(chunks, {type: recMime});
       const a = document.createElement('a');
-      a.download = `time_inscriptions_${Date.now()}.${recExt}`;
+      a.download = `wind_on_wall_${Date.now()}.${recExt}`;
       a.href = URL.createObjectURL(blob);
       a.click();
       stopRecUI();
@@ -341,12 +357,11 @@
     a.click();
   });
 
-  // ---------- Replay (unchanged) ----------
+  // ---------- Replay ----------
   function resetState(){
     buf.length = 0;
     sctx.clearRect(0,0,can.stain.width,can.stain.height);
     gctx.clearRect(0,0,can.ghost.width,can.ghost.height);
-    recallBank.length = 0; lastSnapT = 0;
   }
   function replay(){
     if(vid.srcObject){
@@ -381,47 +396,14 @@
     return m ? [parseInt(m[1],16), parseInt(m[2],16), parseInt(m[3],16)] : [255,255,255];
   }
 
-  // ---------- NEW: Recall memory ----------
-  const recallBank = [];
-  let lastSnapT = 0;
-  const RECALL_INTERVAL_SEC = 1.5;   // snapshot cadence
-  const RECALL_MAX = 24;             // cap memory
-
-  function maybeSnapshotStain(W,H, t){
-    if(!document.getElementById('recallOn').checked) return;
-    if(t - lastSnapT < RECALL_INTERVAL_SEC) return;
-    lastSnapT = t;
-    const c = document.createElement('canvas');
-    c.width = W; c.height = H;
-    c.getContext('2d').drawImage(can.stain, 0, 0);
-    recallBank.push(c);
-    if(recallBank.length > RECALL_MAX) recallBank.shift();
-  }
-  function recallStainOnce(W,H, alpha){
-    if(recallBank.length===0) return;
-    const idx = (Math.random()*recallBank.length)|0;
-    const snap = recallBank[idx];
-    sctx.save();
-    sctx.globalAlpha = alpha;
-    sctx.globalCompositeOperation = 'source-over';
-    sctx.drawImage(snap, 0, 0, W, H);
-    sctx.restore();
-  }
-  function maybeRecallStain(W,H){
-    if(!document.getElementById('recallOn').checked) return;
-    const prob = parseFloat(el.recallProb.value || 0);
-    if(recallBank.length===0 || Math.random() > prob) return;
-    recallStainOnce(W,H, parseFloat(el.recallAlpha.value || 0.14));
-  }
-  recallOnceEl.addEventListener('click', ()=>{
-    recallStainOnce(can.final.width, can.final.height, parseFloat(el.recallAlpha.value || 0.14));
-  });
-
-  // ---------- Main loop (unchanged visuals; recall hooks added) ----------
+  // ---------- Main loop (unchanged visuals; warm-up preview + always-sync) ----------
   let lastT=0, fpsEMA=0, suspendLive=false;
   requestAnimationFrame(function tick(now){
     requestAnimationFrame(tick);
     if (suspendLive) return;
+
+    // keep UI numbers in sync even if some 'input' events are swallowed
+    sync();
 
     const W = can.final.width, H = can.final.height;
 
@@ -432,10 +414,10 @@
     fctx.fillRect(0,0,W,H);
 
     if(vid.readyState < 2){
-      document.getElementById('nosrc').style.display = 'block';
+      nosrc.style.display = 'block';
       return;
     } else {
-      document.getElementById('nosrc').style.display = 'none';
+      nosrc.style.display = 'none';
     }
 
     // 1) current frame → analysis
@@ -445,7 +427,8 @@
 
     // 2) past frame
     const past = getPastFrame(+el.dt.value);
-    if(!past){ // warm-up: show source until buffer ready
+    if(!past){
+      // warm-up: show current frame so user sees video immediately
       fctx.drawImage(pctx.canvas, 0, 0);
       hud.textContent = `buffering Δt ≈ ${(+el.dt.value).toFixed(1)} s…`;
       return;
@@ -469,8 +452,8 @@
       if(d > thr){
         changedCount++; mask[j]=255;
 
-        if (document.getElementById('gUseColor').checked) {
-          const [cr,cg,cb] = hexToRgb(document.getElementById('gColor').value);
+        if (gUseColor.checked) {
+          const [cr,cg,cb] = hexToRgb(gColor.value);
           const a = Math.max(40, Math.min(255, (d - thr) * 8));
           gd[i]=cr; gd[i+1]=cg; gd[i+2]=cb; gd[i+3]=a;
         } else {
@@ -485,7 +468,7 @@
     }
     gctx.putImageData(ghostImg,0,0);
 
-    // 4) stain accumulation (+ recall)
+    // 4) stain accumulation
     if(stainOn.checked){
       const decay = +el.decay.value;
       sctx.globalCompositeOperation='destination-out';
@@ -512,10 +495,6 @@
       colCtx.globalCompositeOperation='source-over';
       colCtx.globalAlpha = 1;
       sctx.drawImage(colCanvas,0,0);
-
-      // NEW hooks:
-      maybeSnapshotStain(W,H, vid.currentTime);
-      maybeRecallStain(W,H);
     }
 
     // 5) compose: base grey → stain (multiply) → ghosts
@@ -534,13 +513,10 @@
     const dt = now - lastT; lastT = now;
     const inst = dt>0 ? 1000/dt : 0; fpsEMA = fpsEMA? fpsEMA*0.9 + inst*0.1 : inst;
     const pct = 100*(changedCount/(W*H));
-    const rp = el.recallProb ? (+el.recallProb.value).toFixed(3) : '—';
-    const ra = el.recallAlpha ? (+el.recallAlpha.value).toFixed(2) : '—';
     hud.textContent = `Δt = ${(+el.dt.value).toFixed(1)} s
 thr = ${el.thr.value}, pre-blur = ${el.preblur.value}, grey = ${el.grey.value}
-ghost: ${gBlend.value}, α=${(+el.gAlpha.value).toFixed(2)}${document.getElementById('gUseColor').checked?`, color=${document.getElementById('gColor').value}`:''}
+ghost: ${gBlend.value}, α=${(+el.gAlpha.value).toFixed(2)}${gUseColor.checked?`, color=${gColor.value}`:''}
 stain: decay=${(+el.decay.value).toFixed(3)}, expand=${el.expand.value}, strength=${(+el.strength.value).toFixed(2)}
-recall: on=${document.getElementById('recallOn').checked}, p=${rp}, α=${ra}
 changed = ${pct.toFixed(1)}%`;
 
     const s = bestSupported();
@@ -549,33 +525,40 @@ changed = ${pct.toFixed(1)}%`;
 
   vid.addEventListener('loadeddata', ()=>{ vid.play().catch(()=>{}); });
 
-  // ---------- Export 1:1 (source) — unchanged ----------
+  // ---------- Export 1:1 (source) — exact size & duration ----------
   exportOneBtn.addEventListener('click', exportSourceOnce);
 
   async function exportSourceOnce(){
     if(vid.srcObject){ alert('1:1 export is for file/URL clips, not webcam.'); return; }
     if(!(vid.currentSrc || vid.src)){ alert('Load a clip first.'); return; }
 
+    // Ensure metadata
     if(vid.readyState < 1){
       await new Promise(res=>vid.addEventListener('loadedmetadata', res, {once:true}));
     }
     const vw = vid.videoWidth|0, vh = vid.videoHeight|0;
     if(!vw || !vh){ alert('Video metadata unavailable.'); return; }
 
+    // Choose format
     const s=bestSupported();
-    const sel=formatSel.value;
+    const sel=document.getElementById('format').value;
     let mime='', ext='webm';
     if(sel==='mp4'){ if(s.canMp4){ mime=s.mp4; ext='mp4'; } }
     else if(sel==='webm'){ if(s.canWebm){ mime=s.webm; ext='webm'; } }
     else { if(s.canMp4){ mime=s.mp4; ext='mp4'; } else if(s.canWebm){ mime=s.webm; ext='webm'; } }
-    if(!mime){ alert('Export not supported on this browser.'); return; }
+    if(!mime){ alert('Export not supported on this browser. Try Safari (MP4) or Chrome/Firefox (WebM).'); return; }
 
+    // Lock UI & pause live loop
     exportOneBtn.disabled = true;
     recStartBtn.disabled = true;
+    const prevSuspend = false; // unchanged live loop in this minimal fix
+
+    // Output canvas exactly source-sized
     const outCanvas = document.createElement('canvas');
     outCanvas.width = vw; outCanvas.height = vh;
     const octx = outCanvas.getContext('2d');
 
+    // Local recorder
     const expChunks = [];
     const stream = outCanvas.captureStream ? outCanvas.captureStream(30) : outCanvas.mozCaptureStream(30);
     const expRecorder = new MediaRecorder(stream, {mimeType:mime, videoBitsPerSecond: 8_000_000});
@@ -584,23 +567,12 @@ changed = ${pct.toFixed(1)}%`;
       expRecorder.onstop = resolve;
     });
 
+    // Prepare video state
     const prev = { loop: vid.loop, rate: vid.playbackRate, paused: vid.paused, t: vid.currentTime };
     resetState();
     vid.pause(); vid.loop = false; vid.playbackRate = 1;
 
-    const nativeProcessing = !matchPreview.checked;
-    const prevSizes = {
-      W: can.final.width, H: can.final.height,
-      sW: can.stain.width, sH: can.stain.height,
-      gW: can.ghost.width, gH: can.ghost.height,
-      pW: proc.width, pH: proc.height,
-      mW: maskCanvas.width, mH: maskCanvas.height,
-      cW: colCanvas.width, cH: colCanvas.height
-    };
-    if (nativeProcessing) {
-      [can.stain, can.ghost, can.final, proc, maskCanvas, colCanvas].forEach(c=>{ c.width = vw; c.height = vh; });
-    }
-
+    // Drawing helpers
     function drawContain(srcCanvas, dstCtx, dstW, dstH){
       const sw = srcCanvas.width, sh = srcCanvas.height;
       const s = Math.min(dstW/sw, dstH/sh);
@@ -609,10 +581,8 @@ changed = ${pct.toFixed(1)}%`;
       dstCtx.clearRect(0,0,dstW,dstH);
       dstCtx.drawImage(srcCanvas, dx, dy, dw, dh);
     }
-    function blitToOut(){
-      if (matchPreview.checked) drawContain(can.final, octx, vw, vh);
-      else { octx.clearRect(0,0,vw,vh); octx.drawImage(can.final, 0, 0, vw, vh); }
-    }
+    function blitToOut(){ drawContain(can.final, octx, vw, vh); }
+
     function processOneFrame(W,H){
       const grey = +el.grey.value;
       fctx.clearRect(0,0,W,H);
@@ -640,8 +610,8 @@ changed = ${pct.toFixed(1)}%`;
 
           if(d > thr){
             mask[j]=255;
-            if (document.getElementById('gUseColor').checked) {
-              const [cr,cg,cb] = hexToRgb(document.getElementById('gColor').value);
+            if (gUseColor.checked) {
+              const [cr,cg,cb] = hexToRgb(gColor.value);
               const a = Math.max(40, Math.min(255, (d - thr) * 8));
               gd[i]=cr; gd[i+1]=cg; gd[i+2]=cb; gd[i+3]=a;
             } else {
@@ -682,10 +652,6 @@ changed = ${pct.toFixed(1)}%`;
           colCtx.globalCompositeOperation='source-over';
           colCtx.globalAlpha = 1;
           sctx.drawImage(colCanvas,0,0);
-
-          // snapshot & maybe recall also during export
-          maybeSnapshotStain(W,H, vid.currentTime);
-          maybeRecallStain(W,H);
         }
       } else {
         fctx.drawImage(pctx.canvas, 0, 0);
@@ -704,49 +670,44 @@ changed = ${pct.toFixed(1)}%`;
     }
 
     await new Promise(res=>{ const h=()=>{vid.removeEventListener('seeked',h); res();}; vid.addEventListener('seeked',h); try{ vid.currentTime=0; }catch(_){ res(); } });
-    const s=bestSupported();
-    const sel=formatSel.value;
-    let mime='', ext='webm';
-    if(sel==='mp4'){ if(s.canMp4){ mime=s.mp4; ext='mp4'; } }
-    else if(sel==='webm'){ if(s.canWebm){ mime=s.webm; ext='webm'; } }
-    else { if(s.canMp4){ mime=s.mp4; ext='mp4'; } else if(s.canWebm){ mime=s.webm; ext='webm'; } }
 
-    const outCanvas = document.createElement('canvas');
-    outCanvas.width = vw; outCanvas.height = vh;
-    const octx = outCanvas.getContext('2d');
-
+    const expChunks = [];
     const stream = outCanvas.captureStream ? outCanvas.captureStream(30) : outCanvas.mozCaptureStream(30);
     const expRecorder = new MediaRecorder(stream, {mimeType:mime, videoBitsPerSecond: 8_000_000});
-    const expChunks=[]; expRecorder.ondataavailable=e=>{ if(e.data&&e.data.size) expChunks.push(e.data); };
-    const done = new Promise(r=>expRecorder.onstop=r);
+    const recDone = new Promise(resolve=>{
+      expRecorder.ondataavailable = e=>{ if(e.data && e.data.size) expChunks.push(e.data); };
+      expRecorder.onstop = resolve;
+    });
+
     expRecorder.start(250);
     processOneFrame(can.final.width, can.final.height);
-    const drawContain=(srcCanvas,dstCtx,dstW,dstH)=>{const sw=srcCanvas.width,sh=srcCanvas.height;const s=Math.min(dstW/sw,dstH/sh);const dw=Math.round(sw*s),dh=Math.round(sh*s);const dx=Math.floor((dstW-dw)/2),dy=Math.floor((dstH-dh)/2);dstCtx.clearRect(0,0,dstW,dstH);dstCtx.drawImage(srcCanvas,dx,dy,dw,dh);};
-    drawContain(can.final,octx,vw,vh);
+    blitToOut();
 
     const hasVFC = typeof vid.requestVideoFrameCallback === 'function';
     let vfcId=null, rafId=null;
     function stopDrivers(){ if(vfcId && vid.cancelVideoFrameCallback) try{vid.cancelVideoFrameCallback(vfcId);}catch(_){}
-                            if(rafId) cancelAnimationFrame(rafId); }
-    function loop(){ processOneFrame(can.final.width, can.final.height); drawContain(can.final,octx,vw,vh);
+                            if(rafId) cancelAnimationFrame(rafId); vfcId=rafId=null; }
+    function loop(){ processOneFrame(can.final.width, can.final.height); blitToOut();
                      if(hasVFC) vfcId = vid.requestVideoFrameCallback(()=>loop());
                      else rafId = requestAnimationFrame(loop); }
+
     const safety = setTimeout(()=>{ try{ vid.pause(); }catch(_){}; finalize(); }, (isFinite(vid.duration)?vid.duration:60)*1000 + 15000);
     function finalize(){ clearTimeout(safety); stopDrivers(); try{ expRecorder.stop(); }catch(_){} }
 
     vid.addEventListener('ended', finalize, {once:true});
     await vid.play().catch(()=>{});
     loop();
-    await done;
+    await recDone;
 
     const blob = new Blob(expChunks, {type: mime});
     const a = document.createElement('a');
     const tag = matchPreview.checked ? 'match' : 'native';
-    a.download = `time_inscriptions_1x_${vw}x${vh}_${tag}_${Date.now()}.${ext}`;
+    a.download = `wind_on_wall_1x_${vw}x${vh}_${tag}_${Date.now()}.${ext}`;
     a.href = URL.createObjectURL(blob);
     a.click();
 
-    // (restore omitted for brevity)
+    exportOneBtn.disabled = false;
+    recStartBtn.disabled = false;
   }
 })();
 </script>

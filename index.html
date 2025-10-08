@@ -140,7 +140,11 @@
 <script>
 (function(){
   /* ---------- Elements ---------- */
-  const can = { stain:stain, ghost:ghost, final:final };
+  const can = {
+    stain: document.getElementById('stain'),
+    ghost: document.getElementById('ghost'),
+    final: document.getElementById('final'),
+  };
   const sctx = can.stain.getContext('2d');
   const gctx = can.ghost.getContext('2d');
   const fctx = can.final.getContext('2d');
@@ -158,6 +162,7 @@
   const recHUD = document.getElementById('recHUD');
   const recTime = document.getElementById('recTime');
   const dbg = document.getElementById('dbg');
+  const supportNote = document.getElementById('supportNote');   // <-- missing before
   const nosrc = document.getElementById('nosrc');
 
   const ids = ["dt","thr","grey","preblur","gAlpha","decay","strength","expand"];
@@ -224,15 +229,20 @@
   const colCanvas = document.createElement('canvas'); const colCtx = colCanvas.getContext('2d');
   const recallCanvas = document.createElement('canvas'); const recallCtx = recallCanvas.getContext('2d');
 
-  // target rect for drawing video with COVER (computed once per resize/metadata)
+  // recall state (declare BEFORE any function uses it)
+  let activeBurst = null;
+  const recallBank = [];
+  let recallBurst = 0;
+
+  // target rect for drawing video with COVER (computed on resize/metadata)
   let drawRect = {dx:0,dy:0,dw:0,dh:0};
 
   function computeCoverRect(dstW,dstH,srcW,srcH){
     if(!srcW||!srcH){ return {dx:0,dy:0,dw:dstW,dh:dstH}; }
     const scale = Math.max(dstW/srcW, dstH/srcH); // COVER
-    const dw = srcW*scale; const dh = srcH*scale;
-    const dx = (dstW - dw)/2; const dy = (dstH - dh)/2;
-    return {dx,dy,dw,dh}; // keep floats – no rounding jitter
+    const dw = srcW*scale, dh = srcH*scale;
+    const dx = (dstW - dw)/2, dy = (dstH - dh)/2;
+    return {dx,dy,dw,dh}; // floats → avoids rounding jitter
   }
 
   function fit(){
@@ -242,14 +252,10 @@
     const H = Math.max(2, Math.ceil(r.height*dpr));
     for(const k in can){ can[k].width=W; can[k].height=H; }
     proc.width=W; proc.height=H; maskCanvas.width=W; maskCanvas.height=H; colCanvas.width=W; colCanvas.height=H; recallCanvas.width=W; recallCanvas.height=H;
-
-    // recompute cover rect when preview size changes
     drawRect = computeCoverRect(W,H, vid.videoWidth||0, vid.videoHeight||0);
   }
   new ResizeObserver(fit).observe(can.final); fit();
-  vid.addEventListener('loadedmetadata', ()=>{ // recompute when source dims known
-    drawRect = computeCoverRect(can.final.width, can.final.height, vid.videoWidth||0, vid.videoHeight||0);
-  });
+  vid.addEventListener('loadedmetadata', ()=>{ drawRect = computeCoverRect(can.final.width, can.final.height, vid.videoWidth||0, vid.videoHeight||0); });
 
   /* ---------- Buffers ---------- */
   const buf=[]; const MAX_SEC=14;
@@ -263,7 +269,7 @@
     ctx.imageSmoothingQuality = 'high';
     if(blurPx>0) ctx.filter=`blur(${blurPx}px)`;
     const {dx,dy,dw,dh}=drawRect;
-    if(dw>0 && dh>0) ctx.drawImage(video, dx, dy, dw, dh); // stable floats
+    if(dw>0 && dh>0) ctx.drawImage(video, dx, dy, dw, dh);
     ctx.restore();
   }
 
@@ -327,7 +333,6 @@
   function syncRecall(){ if(recallProbV)recallProbV.textContent=(+recallProb.value).toFixed(2); if(recallCapV)recallCapV.textContent=recallCap.value; if(recallLingerV)recallLingerV.textContent=(+recallLinger.value).toFixed(1); if(recallSpanV)recallSpanV.textContent=(+recallSpan.value).toFixed(1); }
   [recallOn,recallProb,recallCap,recallColor,recallLinger,recallSpan].forEach(x=>x&&x.addEventListener('input',syncRecall)); syncRecall();
 
-  const recallBank=[]; let recallBurst=0; let activeBurst=null;
   function capRecallBank(max){ while(recallBank.length>max) recallBank.shift(); }
   async function snapshotGhost(tNow){
     try{
@@ -363,7 +368,7 @@
     const curr=pctx.getImageData(0,0,W,H); pushFrame(curr,vid.currentTime);
     const past=getPastFrame(+el.dt.value); if(!past) return;
 
-    // motion → ghost (unchanged math)
+    // motion → ghost
     const c=curr.data, p=past.data; const ghostImg=gctx.createImageData(W,H); const gd=ghostImg.data; const thr=+el.thr.value; const mask=new Uint8ClampedArray(W*H); let changedCount=0;
     for(let i=0,j=0;i<c.length;i+=4,j++){
       const r=c[i], g=c[i+1], b=c[i+2]; const pr=p[i], pg=p[i+1], pb=p[i+2];
@@ -424,10 +429,8 @@
     const prev={ loop:vid.loop, rate:vid.playbackRate, paused:vid.paused, t:vid.currentTime };
     vid.pause(); vid.loop=false; vid.playbackRate=1;
 
-    // native processing path at source size
     const prevSizes={W:can.final.width,H:can.final.height,sW:can.stain.width,sH:can.stain.height,gW:can.ghost.width,gH:can.ghost.height,pW:proc.width,pH:proc.height,mW:maskCanvas.width,mH:maskCanvas.height,cW:colCanvas.width,cH:colCanvas.height};
     [can.stain,can.ghost,can.final,proc,maskCanvas,colCanvas,recallCanvas].forEach(c=>{ c.width=vw; c.height=vh; });
-    // recompute cover rect for export canvas (cover against source canvas – here it will fill exactly)
     drawRect = computeCoverRect(vw,vh,vw,vh);
 
     function blit(){ octx.clearRect(0,0,vw,vh); octx.drawImage(can.final,0,0,vw,vh); }
@@ -451,7 +454,8 @@
         gctx.putImageData(ghostImg,0,0);
 
         if(stainOn.checked){
-          const decay=+el.decay.value; sctx.globalCompositeOperation='destination-out'; sctx.fillStyle=`rgba(0,0,0,${1-decay})`; sctx.fillRect(0,0,W,H); sctx.globalCompositeOperation='source-over';
+          const decay=+el.decay.value; sctx.globalCompositeOperation='destination-out'; sctx.fillStyle=`rgba(0,0,0,${1-decay})`; sctx.fillRect(0,0,W,H);
+          sctx.globalCompositeOperation='source-over';
           const mImg=maskCtx.createImageData(W,H); const mdat=mImg.data; for(let j=0,k=0;j<mask.length;j++,k+=4){ const v=mask[j]; mdat[k]=mdat[k+1]=mdat[k+2]=v; mdat[k+3]=v; } maskCtx.putImageData(mImg,0,0);
           colCtx.clearRect(0,0,W,H); const expand=+el.expand.value; if(expand>0) colCtx.filter=`blur(${expand}px)`; colCtx.drawImage(maskCanvas,0,0); colCtx.filter='none';
           colCtx.globalCompositeOperation='source-in'; colCtx.fillStyle=sColor.value; colCtx.globalAlpha=+el.strength.value; colCtx.fillRect(0,0,W,H);
@@ -470,8 +474,12 @@
     }
 
     await new Promise(res=>{ const h=()=>{vid.removeEventListener('seeked',h); res();}; vid.addEventListener('seeked',h); try{ vid.currentTime=0; }catch(_){ res(); } });
-    const hasVFC=typeof vid.requestVideoFrameCallback==='function'; let vfcId=null, rafId=null;
+    const expChunks=[]; const stream=outCanvas.captureStream?outCanvas.captureStream(30):outCanvas.mozCaptureStream(30);
+    const expRecorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:8_000_000});
+    const recDone=new Promise(resolve=>{ expRecorder.ondataavailable=e=>{ if(e.data && e.data.size) expChunks.push(e.data); }; expRecorder.onstop=resolve; });
     expRecorder.start(250);
+
+    const hasVFC=typeof vid.requestVideoFrameCallback==='function'; let vfcId=null, rafId=null;
     function stopDrivers(){ if(vfcId && vid.cancelVideoFrameCallback) try{vid.cancelVideoFrameCallback(vfcId);}catch(_){} if(rafId) cancelAnimationFrame(rafId); vfcId=rafId=null; }
     function step(){ processOneFrame(can.final.width,can.final.height); blit(); if(hasVFC) vfcId=vid.requestVideoFrameCallback(()=>step()); else rafId=requestAnimationFrame(step); }
     const safety=setTimeout(()=>{ try{vid.pause();}catch(_){} finalize(); }, (isFinite(vid.duration)?vid.duration:60)*1000+15000);
@@ -487,10 +495,6 @@
     if(!prev.paused){ try{ await vid.play(); }catch(_){ } }
     exportOneBtn.disabled=false; recStartBtn.disabled=false;
   }
-
-  // recall state holders
-  let activeBurst=null; const recallBank=[]; let recallBurst=0;
-
 })();
 </script>
 

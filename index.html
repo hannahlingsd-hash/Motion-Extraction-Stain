@@ -8,51 +8,56 @@
 <style>
   :root{
     --bg:#fff; --fg:#000; --mut:#333; --line:#000;
-    --colR:300px;                 /* right column width (controls) */
+    --colL:180px;                 /* left column width */
+    --colR:280px;                 /* right column width */
     --track-fill:#111;            /* slider left/value (very dark grey) */
     --track-bg:#cfcfcf;           /* slider remainder (light grey) */
+    --topPad:8px;                 /* unified top padding for L/R columns */
   }
-  html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:13px/1.45 Arial, Helvetica, sans-serif}
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:13px/1.45 Arial, Helvetica, sans-serif;overflow-x:hidden}
   *{box-sizing:border-box;border-radius:0}
   button,input,select,label{font:inherit;color:var(--fg);background:#fff;margin:0}
 
-  /* Layout: big stage + right control column */
+  /* Layout (unchanged) */
   .wrap{
     display:grid;
-    grid-template-columns: 1fr var(--colR);
+    grid-template-columns: var(--colL) 1fr var(--colR);
     gap:16px; height:100vh; padding:12px;
   }
+  aside.controls{padding-top:var(--topPad); overflow:hidden;}
+  aside.panel{padding-top:var(--topPad); overflow:auto; padding-right:10px;} /* slight right padding for number margins */
   main{position:relative;display:flex;align-items:center;justify-content:center}
-  /* Stage: no borders/hairlines; clip sub-pixel edges */
-  .stage{position:relative;width:100%;height:100%;max-width:1600px;aspect-ratio:16/9;margin:auto;overflow:hidden;background:#fff}
+
+  /* Stage (hide hairlines) */
+  .stage{position:relative;width:min(90%,1280px);aspect-ratio:16/9;margin:auto;overflow:hidden}
   canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;border:0;outline:0;box-shadow:none}
 
   /* Right column rhythm */
-  aside.panel{padding-top:4px;overflow:auto;scrollbar-width:thin;scrollbar-color:#b5b5b5 #fff}
-  aside.panel::-webkit-scrollbar{width:8px}
-  aside.panel::-webkit-scrollbar-thumb{background:#b5b5b5}
-  aside.panel::-webkit-scrollbar-track{background:#fff}
-
   .group{font-weight:700;margin:18px 0 6px}
   .panel .group:first-of-type{margin-top:6px}
-  .row{display:grid;align-items:center;gap:8px;margin:6px 0;grid-template-columns:1fr minmax(120px,1.6fr) 44px}
-  .row.compact{grid-template-columns:1fr auto 44px}
+  .row{display:grid;align-items:center;gap:8px;margin:6px 0;grid-template-columns:1fr minmax(120px,1.6fr) 48px}
+  .row.compact{grid-template-columns:1fr auto 48px}
   .row > span{text-align:right;color:#000}
   .row label{color:var(--fg)}
 
-  /* Buttons / button grids */
+  /* LEFT column – tight & consistent */
+  .leftRows{display:grid;row-gap:6px}
+  aside.controls .group{margin:12px 0 4px}
+  aside.controls .row{margin:0}
+  .btnRow{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
+  .btnRow .btn{flex:0 0 auto}
+  .btnRow.source .btn{flex:1 1 0}
+  .btnRow.export-top .btn{flex:1 1 0}
+  .btn.full{width:100%}
+  .inlineRow{display:flex;align-items:center;gap:8px;margin:0}
+
+  /* Buttons */
   .btn{appearance:none;background:#fff;color:#000;border:1px solid var(--line);padding:6px 10px;cursor:pointer}
   .btn.secondary{background:#fff}
   .btn:disabled{opacity:.5;cursor:not-allowed}
-  .btnRow{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
-  .btnGrid{display:grid;grid-template-columns:auto auto auto;gap:8px;align-items:stretch;margin:6px 0}
-  .btnGrid .wide{grid-column:1 / -1}
 
   /* Sliders (dark left, light right) */
-  input[type="range"]{
-    appearance:none;height:2px;outline:none;
-    background:linear-gradient(to right,var(--track-fill) 0 var(--p,0%),var(--track-bg) var(--p,0%) 100%)
-  }
+  input[type="range"]{appearance:none;height:2px;outline:none;background:linear-gradient(to right,var(--track-fill) 0 var(--p,0%),var(--track-bg) var(--p,0%) 100%)}
   input[type="range"]::-webkit-slider-thumb{appearance:none;width:10px;height:10px;background:#000;border:1px solid #000}
   input[type="range"]::-moz-range-thumb{width:10px;height:10px;background:#000;border:1px solid #000}
   input[type="range"]::-moz-range-track{height:2px;background:var(--track-bg)}
@@ -60,7 +65,16 @@
 
   input[type="color"]{width:32px;height:22px;border:1px solid #000;background:#fff;padding:0}
 
-  /* Hide debug HUD overlay by default (you asked to remove it during playback earlier) */
+  /* Slim vertical scrollbar (right panel & left controls) */
+  aside.panel, aside.controls{scrollbar-width:thin;scrollbar-color:#b5b5b5 #fff}
+  aside.panel::-webkit-scrollbar,
+  aside.controls::-webkit-scrollbar{width:8px}
+  aside.panel::-webkit-scrollbar-thumb,
+  aside.controls::-webkit-scrollbar-thumb{background:#b5b5b5}
+  aside.panel::-webkit-scrollbar-track,
+  aside.controls::-webkit-scrollbar-track{background:#fff}
+
+  /* Hide debug HUD overlay */
   .hud{display:none!important}
   .rec{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.6);color:#fff;padding:6px 10px;display:flex;align-items:center;gap:8px}
   .dot{width:8px;height:8px;background:#ff5b5b;border-radius:50%;box-shadow:0 0 8px #ff5b5b}
@@ -72,7 +86,41 @@
 
 <body>
 <div class="wrap">
-  <!-- CENTER: Stage -->
+  <!-- LEFT (unchanged content) -->
+  <aside class="controls">
+    <div class="leftRows">
+      <div class="btnRow">
+        <input id="file" type="file" accept="video/*">
+      </div>
+      <div class="btnRow source">
+        <button id="webcam" class="btn">Webcam</button>
+        <button id="play"   class="btn secondary">Play/Pause</button>
+        <button id="replay" class="btn secondary">Replay</button>
+      </div>
+
+      <div class="group">Export</div>
+
+      <!-- one horizontal row: Start | Stop&Save | Export PNG -->
+      <div class="btnRow export-top">
+        <button id="recStart" class="btn">Start Recording</button>
+        <button id="recStop"  class="btn" disabled>Stop &amp; Save</button>
+        <button id="shot"     class="btn secondary">Export PNG</button>
+      </div>
+
+      <!-- 1:1 on its own line -->
+      <div class="btnRow"><button id="exportOne" class="btn full">Export 1:1 (source)</button></div>
+
+      <div class="inlineRow">
+        <label for="matchPreview">Match preview</label>
+        <input id="matchPreview" type="checkbox" checked>
+      </div>
+
+      <div class="small" id="supportNote"></div>
+      <div class="small" id="dbg">buffer: 0 | fps —</div>
+    </div>
+  </aside>
+
+  <!-- CENTER (unchanged) -->
   <main>
     <div class="stage">
       <canvas id="stain"></canvas>
@@ -85,19 +133,8 @@
     </div>
   </main>
 
-  <!-- RIGHT: All controls (Source + params + Export) -->
+  <!-- RIGHT (parameters unchanged; only spacing via CSS) -->
   <aside class="panel">
-
-    <div class="group">Source</div>
-    <div class="btnRow">
-      <input id="file" type="file" accept="video/*">
-    </div>
-    <div class="btnRow">
-      <button id="webcam" class="btn">Webcam</button>
-      <button id="play"   class="btn secondary">Play/Pause</button>
-      <button id="replay" class="btn secondary">Replay</button>
-    </div>
-
     <div class="group">Temporal window</div>
     <div class="row"><label>Δt (seconds)</label><input id="dt" type="range" min="2" max="10" step="0.5" value="6"><span id="dtV">6.0</span></div>
     <div class="row"><label>Diff threshold</label><input id="thr" type="range" min="4" max="60" value="26"><span id="thrV">26</span></div>
@@ -138,25 +175,10 @@
     <div class="row"><label>Linger (s)</label><input id="recallLinger" type="range" min="0.2" max="3" step="0.1" value="1.2"><span id="recallLingerV">1.2</span></div>
     <div class="row"><label>Span (s)</label><input id="recallSpan" type="range" min="0" max="3" step="0.1" value="0.8"><span id="recallSpanV">0.8</span></div>
     <div class="btnRow"><button id="recallNow" class="btn">Recall now</button></div>
-
-    <!-- EXPORT at the very bottom -->
-    <div class="group">Export</div>
-    <div class="btnGrid">
-      <button id="recStart" class="btn">Start Recording</button>
-      <button id="recStop"  class="btn" disabled>Stop &amp; Save</button>
-      <button id="shot"     class="btn secondary">Export PNG</button>
-      <button id="exportOne" class="btn wide">Export 1:1 (source)</button>
-    </div>
-    <div class="row compact" style="grid-template-columns:auto auto;">
-      <label for="matchPreview">Match preview</label>
-      <input id="matchPreview" type="checkbox" checked>
-    </div>
-    <div class="small" id="supportNote"></div>
-    <div class="small" id="dbg">buffer: 0 | fps —</div>
   </aside>
 </div>
 
-<!-- ===== SCRIPT: functionality (Auto format; unchanged logic) ===== -->
+<!-- ===== SCRIPT: functionality (Auto format, unchanged) ===== -->
 <script>
 (function(){
   /* ---------- Elements ---------- */

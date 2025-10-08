@@ -8,43 +8,51 @@
 <style>
   :root{
     --bg:#fff; --fg:#000; --mut:#333; --line:#000;
-    --colR:320px;                /* single right column width */
-    --track-fill:#111;           /* slider left/value (very dark grey) */
-    --track-bg:#cfcfcf;          /* slider remainder (light grey) */
+    --colR:300px;                 /* right column width (controls) */
+    --track-fill:#111;            /* slider left/value (very dark grey) */
+    --track-bg:#cfcfcf;           /* slider remainder (light grey) */
   }
   html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:13px/1.45 Arial, Helvetica, sans-serif}
   *{box-sizing:border-box;border-radius:0}
   button,input,select,label{font:inherit;color:var(--fg);background:#fff;margin:0}
 
-  /* Layout: big stage + one right panel */
+  /* Layout: big stage + right control column */
   .wrap{
     display:grid;
     grid-template-columns: 1fr var(--colR);
     gap:16px; height:100vh; padding:12px;
   }
-  main{position:relative;display:flex;align-items:center;justify-content:center;min-width:0}
-  .stage{position:relative;width:100%;height:100%;max-width:1600px;max-height:100%;aspect-ratio:16/9}
+  main{position:relative;display:flex;align-items:center;justify-content:center}
+  /* Stage: no borders/hairlines; clip sub-pixel edges */
+  .stage{position:relative;width:100%;height:100%;max-width:1600px;aspect-ratio:16/9;margin:auto;overflow:hidden;background:#fff}
   canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;border:0;outline:0;box-shadow:none}
 
-  /* Right panel rhythm */
-  aside.panel{padding-top:4px; overflow:auto}
+  /* Right column rhythm */
+  aside.panel{padding-top:4px;overflow:auto;scrollbar-width:thin;scrollbar-color:#b5b5b5 #fff}
+  aside.panel::-webkit-scrollbar{width:8px}
+  aside.panel::-webkit-scrollbar-thumb{background:#b5b5b5}
+  aside.panel::-webkit-scrollbar-track{background:#fff}
+
   .group{font-weight:700;margin:18px 0 6px}
+  .panel .group:first-of-type{margin-top:6px}
   .row{display:grid;align-items:center;gap:8px;margin:6px 0;grid-template-columns:1fr minmax(120px,1.6fr) 44px}
   .row.compact{grid-template-columns:1fr auto 44px}
   .row > span{text-align:right;color:#000}
   .row label{color:var(--fg)}
 
-  /* Compact button rows */
-  .btnRow{display:flex;gap:8px;flex-wrap:wrap;margin:0}
-  .inlineRow{display:flex;align-items:center;gap:8px;margin:6px 0}
-
-  /* Buttons */
+  /* Buttons / button grids */
   .btn{appearance:none;background:#fff;color:#000;border:1px solid var(--line);padding:6px 10px;cursor:pointer}
   .btn.secondary{background:#fff}
   .btn:disabled{opacity:.5;cursor:not-allowed}
+  .btnRow{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
+  .btnGrid{display:grid;grid-template-columns:auto auto auto;gap:8px;align-items:stretch;margin:6px 0}
+  .btnGrid .wide{grid-column:1 / -1}
 
-  /* Sliders: darker left, light right, black knob */
-  input[type="range"]{appearance:none;height:2px;outline:none;background:linear-gradient(to right,var(--track-fill) 0 var(--p,0%),var(--track-bg) var(--p,0%) 100%)}
+  /* Sliders (dark left, light right) */
+  input[type="range"]{
+    appearance:none;height:2px;outline:none;
+    background:linear-gradient(to right,var(--track-fill) 0 var(--p,0%),var(--track-bg) var(--p,0%) 100%)
+  }
   input[type="range"]::-webkit-slider-thumb{appearance:none;width:10px;height:10px;background:#000;border:1px solid #000}
   input[type="range"]::-moz-range-thumb{width:10px;height:10px;background:#000;border:1px solid #000}
   input[type="range"]::-moz-range-track{height:2px;background:var(--track-bg)}
@@ -52,10 +60,10 @@
 
   input[type="color"]{width:32px;height:22px;border:1px solid #000;background:#fff;padding:0}
 
-  /* Hide debug HUD overlay (you asked to remove it during play) */
+  /* Hide debug HUD overlay by default (you asked to remove it during playback earlier) */
   .hud{display:none!important}
   .rec{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.6);color:#fff;padding:6px 10px;display:flex;align-items:center;gap:8px}
-  .dot{width:8px;height:8px;background:#ff5b5b}
+  .dot{width:8px;height:8px;background:#ff5b5b;border-radius:50%;box-shadow:0 0 8px #ff5b5b}
   .nosrc{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#888;font:12px ui-monospace;pointer-events:none}
   .fab{display:none}
   .small{font-size:12px;color:#333}
@@ -64,7 +72,7 @@
 
 <body>
 <div class="wrap">
-  <!-- CENTER: big stage -->
+  <!-- CENTER: Stage -->
   <main>
     <div class="stage">
       <canvas id="stain"></canvas>
@@ -77,33 +85,19 @@
     </div>
   </main>
 
-  <!-- RIGHT: ALL controls (import/play/export + parameters) -->
+  <!-- RIGHT: All controls (Source + params + Export) -->
   <aside class="panel">
-    <!-- Import / transport -->
+
     <div class="group">Source</div>
     <div class="btnRow">
       <input id="file" type="file" accept="video/*">
-      <button id="webcam" class="btn">Webcam</button>
     </div>
     <div class="btnRow">
-      <button id="play" class="btn secondary">Play/Pause</button>
+      <button id="webcam" class="btn">Webcam</button>
+      <button id="play"   class="btn secondary">Play/Pause</button>
       <button id="replay" class="btn secondary">Replay</button>
     </div>
 
-    <!-- Export -->
-    <div class="group">Export</div>
-    <div class="btnRow"><button id="recStart" class="btn">Start Recording</button></div>
-    <div class="btnRow"><button id="recStop" class="btn" disabled>Stop &amp; Save</button></div>
-    <div class="btnRow"><button id="shot" class="btn secondary">Export PNG</button></div>
-    <div class="btnRow"><button id="exportOne" class="btn">Export 1:1 (source)</button></div>
-    <div class="inlineRow">
-      <label for="matchPreview">Match preview</label>
-      <input id="matchPreview" type="checkbox" checked>
-    </div>
-    <div class="small" id="supportNote"></div>
-    <div class="small" id="dbg">buffer: 0 | fps —</div>
-
-    <!-- Parameters -->
     <div class="group">Temporal window</div>
     <div class="row"><label>Δt (seconds)</label><input id="dt" type="range" min="2" max="10" step="0.5" value="6"><span id="dtV">6.0</span></div>
     <div class="row"><label>Diff threshold</label><input id="thr" type="range" min="4" max="60" value="26"><span id="thrV">26</span></div>
@@ -144,10 +138,25 @@
     <div class="row"><label>Linger (s)</label><input id="recallLinger" type="range" min="0.2" max="3" step="0.1" value="1.2"><span id="recallLingerV">1.2</span></div>
     <div class="row"><label>Span (s)</label><input id="recallSpan" type="range" min="0" max="3" step="0.1" value="0.8"><span id="recallSpanV">0.8</span></div>
     <div class="btnRow"><button id="recallNow" class="btn">Recall now</button></div>
+
+    <!-- EXPORT at the very bottom -->
+    <div class="group">Export</div>
+    <div class="btnGrid">
+      <button id="recStart" class="btn">Start Recording</button>
+      <button id="recStop"  class="btn" disabled>Stop &amp; Save</button>
+      <button id="shot"     class="btn secondary">Export PNG</button>
+      <button id="exportOne" class="btn wide">Export 1:1 (source)</button>
+    </div>
+    <div class="row compact" style="grid-template-columns:auto auto;">
+      <label for="matchPreview">Match preview</label>
+      <input id="matchPreview" type="checkbox" checked>
+    </div>
+    <div class="small" id="supportNote"></div>
+    <div class="small" id="dbg">buffer: 0 | fps —</div>
   </aside>
 </div>
 
-<!-- ===== SCRIPT: functionality (unchanged, Auto format) ===== -->
+<!-- ===== SCRIPT: functionality (Auto format; unchanged logic) ===== -->
 <script>
 (function(){
   /* ---------- Elements ---------- */
@@ -204,7 +213,10 @@
   const src = qs.get('src'); if(src){ vid.src = src; }
 
   let mediaStream = null;
-  file.addEventListener('change', e=>{ const f = e.target.files[0]; if(!f) return; stopWebcam(); resetState(); vid.src = URL.createObjectURL(f); vid.play(); });
+  file.addEventListener('change', e=>{
+    const f = e.target.files[0]; if(!f) return;
+    stopWebcam(); resetState(); vid.src = URL.createObjectURL(f); vid.play();
+  });
   playBtn.addEventListener('click', ()=> vid.paused ? vid.play() : vid.pause());
   webcamBtn.addEventListener('click', ()=> startWebcam().catch(e=>alert('Webcam failed: '+(e && e.message ? e.message : e))));
 
@@ -256,7 +268,7 @@
     ctx.restore();
   }
 
-  /* ---------- Recording (Auto) ---------- */
+  /* ---------- Recording (Auto format) ---------- */
   let recorder=null, chunks=[], recStartTime=0, recTimer=null, recMime="", recExt="webm";
   function bestSupported(){
     const mp4='video/mp4;codecs=avc1.42E01E,mp4a.40.2', webm='video/webm;codecs=vp9,opus', webm2='video/webm;codecs=vp8,opus';
@@ -292,7 +304,6 @@
   recStartBtn.addEventListener('click', startRecording);
   recStopBtn.addEventListener('click',  stopRecording);
 
-  /* Still */
   shotBtn.addEventListener('click', ()=>{ const a=document.createElement('a'); a.download='still_'+Date.now()+'.png'; a.href=can.final.toDataURL('image/png'); a.click(); });
 
   /* ---------- Replay ---------- */
@@ -394,7 +405,7 @@
 
   vid.addEventListener('loadeddata', ()=>{ vid.play().catch(()=>{}); });
 
-  /* ---------- Export 1:1 (Auto) ---------- */
+  /* ---------- Export 1:1 (Auto format) ---------- */
   exportOneBtn.addEventListener('click', exportSourceOnce);
   async function exportSourceOnce(){
     if(vid.srcObject){ alert('1:1 export is for file/URL clips, not webcam.'); return; }
@@ -482,7 +493,7 @@
 })();
 </script>
 
-<!-- Slider fill % helper (for dark-left/light-right track) -->
+<!-- Slider fill % helper (for the dark-left / light-right track) -->
 <script>
 (function(){
   function paint(r){ var min=r.min?+r.min:0, max=r.max?+r.max:100, val=isNaN(+r.value)?min:+r.value, p=((val-min)/(max-min))*100; r.style.setProperty('--p', p+'%'); }

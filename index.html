@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -268,10 +267,32 @@
   function pushFrame(img,t){ buf.push({t,data:new Uint8ClampedArray(img.data),w:img.width,h:img.height}); const cutoff=t-(MAX_SEC+2); while(buf.length && buf[0].t<cutoff) buf.shift(); }
   function getPastFrame(delta){ const target=vid.currentTime-delta; for(let i=buf.length-1;i>=0;i--){ if(buf[i].t<=target) return buf[i]; } return buf[0]||null; }
 
+  /* === ONLY CHANGE: safer draw to avoid edge bleed === */
   function drawVideoContained(ctx, video, W, H, blurPx){
-    ctx.save(); ctx.clearRect(0,0,W,H); if(blurPx>0) ctx.filter=`blur(${blurPx}px)`;
+    ctx.save();
+
+    // Fill with a solid color so scaling kernels never sample transparent pixels
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0,0,W,H);
+
+    if(blurPx>0) ctx.filter=`blur(${blurPx}px)`; else ctx.filter='none';
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+
     const vw=video.videoWidth||0, vh=video.videoHeight||0;
-    if(vw && vh){ const s=Math.min(W/vw,H/vh); const dw=Math.round(vw*s), dh=Math.round(vh*s); const dx=Math.floor((W-dw)/2), dy=Math.floor((H-dh)/2); ctx.drawImage(video,dx,dy,dw,dh); }
+    if(vw && vh){
+      const s=Math.min(W/vw,H/vh);
+      const dw=Math.round(vw*s), dh=Math.round(vh*s);
+      const dx=Math.floor((W-dw)/2), dy=Math.floor((H-dh)/2);
+
+      // Crop 0.5px from all sides of the *source* to avoid sampler reading outside the video
+      // (common cause of faint halos with diff/blur pipelines).
+      const eps = 0.5;
+      const sx = eps, sy = eps, sw = Math.max(1, vw - eps*2), sh = Math.max(1, vh - eps*2);
+
+      ctx.drawImage(video, sx, sy, sw, sh, dx, dy, dw, dh);
+    }
     ctx.restore();
   }
 

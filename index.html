@@ -13,7 +13,7 @@
     --track-bg:#cfcfcf;          /* slider remainder (light grey) */
   }
   html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:13px/1.45 Arial, Helvetica, sans-serif}
-  body{overflow:hidden}
+  body{overflow:hidden;} /* prevent page from introducing extra seams */
   *{box-sizing:border-box;border-radius:0}
   button,input,select,label{font:inherit;color:var(--fg);background:#fff;margin:0}
 
@@ -21,36 +21,28 @@
   .wrap{
     display:grid;
     grid-template-columns: minmax(0,1fr) var(--colR);
-    gap:16px; height:100vh; padding:12px;
-    overflow:hidden; /* no horizontal scroll */
+    gap:16px; height:100vh; padding:12px; overflow:hidden;
   }
   main{position:relative;display:flex;align-items:center;justify-content:center;min-width:0}
-
-  /* Stage (no borders/hairlines) */
   .stage{
     position:relative;
-    width:100%;height:100%;
-    max-width:1600px;max-height:100%;
+    width:100%;
+    height:100%;
     aspect-ratio:16/9;
-    background:#000;   /* solid black frame area, hides any seams */
-    border:none;outline:none;box-shadow:none;
-    overflow:hidden;
+    background:#fff;           /* match page so borders “disappear” */
+    overflow:hidden;           /* hides any subpixel edges */
   }
   canvas{
-    position:absolute;inset:0;
-    width:100%;height:100%;
+    position:absolute; inset:0;
+    width:100%; height:100%;
     object-fit:contain;
-    background:transparent; /* layers are transparent; stage is black */
-    border:none;outline:none;box-shadow:none;
-    display:block;          /* avoid subpixel hairlines */
+    background:#000;           /* visible frame when idle */
+    border:0; outline:0; box-shadow:none; display:block;
+    transform:translateZ(0.001px); /* kills subpixel seams */
   }
 
   /* Right panel rhythm */
-  aside.panel{
-    padding:4px 14px 12px 4px; /* right pad keeps numbers off scrollbar */
-    overflow:auto;
-    scrollbar-width:thin;
-  }
+  aside.panel{padding-top:4px; padding-right:14px; padding-left:4px; overflow:auto; scrollbar-width:thin}
   aside.panel::-webkit-scrollbar{width:10px}
   aside.panel::-webkit-scrollbar-thumb{background:#bbb}
   aside.panel::-webkit-scrollbar-track{background:#eee}
@@ -64,6 +56,10 @@
   /* Compact button rows */
   .btnRow{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
   .inlineRow{display:flex;align-items:center;gap:8px;margin:6px 0}
+
+  /* Export buttons laid out horizontally, then full-width 1:1 */
+  .exportGrid{display:grid;gap:8px;margin:6px 0;grid-template-columns:1fr 1fr 1fr}
+  .exportGrid .full{grid-column:1 / -1}
 
   /* Buttons */
   .btn{appearance:none;background:#fff;color:#000;border:1px solid var(--line);padding:6px 10px;cursor:pointer}
@@ -110,25 +106,12 @@
     <div class="group">Source</div>
     <div class="btnRow">
       <input id="file" type="file" accept="video/*">
+    </div>
+    <div class="btnRow">
       <button id="webcam" class="btn">Webcam</button>
       <button id="play" class="btn secondary">Play/Pause</button>
       <button id="replay" class="btn secondary">Replay</button>
     </div>
-
-    <!-- Export (bottom cluster) -->
-    <div class="group">Export</div>
-    <div class="btnRow">
-      <button id="recStart" class="btn">Start Recording</button>
-      <button id="recStop" class="btn" disabled>Stop &amp; Save</button>
-      <button id="shot" class="btn secondary">Export PNG</button>
-    </div>
-    <div class="btnRow"><button id="exportOne" class="btn">Export 1:1 (source)</button></div>
-    <div class="inlineRow">
-      <label for="matchPreview">Match preview</label>
-      <input id="matchPreview" type="checkbox" checked>
-    </div>
-    <div class="small" id="supportNote"></div>
-    <div class="small" id="dbg">buffer: 0 | fps —</div>
 
     <!-- Parameters -->
     <div class="group">Temporal window</div>
@@ -171,18 +154,31 @@
     <div class="row"><label>Linger (s)</label><input id="recallLinger" type="range" min="0.2" max="3" step="0.1" value="1.2"><span id="recallLingerV">1.2</span></div>
     <div class="row"><label>Span (s)</label><input id="recallSpan" type="range" min="0" max="3" step="0.1" value="0.8"><span id="recallSpanV">0.8</span></div>
     <div class="btnRow"><button id="recallNow" class="btn">Recall now</button></div>
+
+    <!-- Export (at the very bottom) -->
+    <div class="group">Export</div>
+    <div class="row compact">
+      <label for="matchPreview">Match preview</label>
+      <input id="matchPreview" type="checkbox" checked>
+      <span></span>
+    </div>
+    <div class="exportGrid">
+      <button id="recStart" class="btn">Start Recording</button>
+      <button id="recStop" class="btn" disabled>Stop &amp; Save</button>
+      <button id="shot" class="btn secondary">Export PNG</button>
+      <button id="exportOne" class="btn full">Export 1:1 (source)</button>
+    </div>
+
+    <div class="small" id="supportNote"></div>
+    <div class="small" id="dbg">buffer: 0 | fps —</div>
   </aside>
 </div>
 
-<!-- ===== SCRIPT: functionality (unchanged except for one fix) ===== -->
+<!-- ===== SCRIPT: functionality (unchanged, Auto format) ===== -->
 <script>
 (function(){
   /* ---------- Elements ---------- */
-  const can = {
-    stain: document.getElementById('stain'),
-    ghost: document.getElementById('ghost'),
-    final: document.getElementById('final')
-  };
+  const can = { stain:stain, ghost:ghost, final:final };
   const sctx = can.stain.getContext('2d');
   const gctx = can.ghost.getContext('2d');
   const fctx = can.final.getContext('2d');
@@ -257,7 +253,7 @@
     await new Promise(res=>{ if(vid.readyState>=1) return res(); vid.addEventListener('loadedmetadata',res,{once:true}); });
     try{ await vid.play(); }catch(_){ throw new Error('Autoplay failed. Click Play or allow autoplay.'); }
   }
-  function stopWebcam(){ if(mediaStream){ try{mediaStream.getTracks().forEach(t=>t.stop());}catch(_){} mediaStream=null; } if(vid && vid.srcObject){ try{vid.srcObject=null;}catch(_){} }
+  function stopWebcam(){ if(mediaStream){ try{mediaStream.getTracks().forEach(t=>t.stop());}catch(_){} mediaStream=null; } if(vid && vid.srcObject){ try{vid.srcObject=null;}catch(_){} } }
 
   /* ---------- Sizing ---------- */
   const proc = document.createElement('canvas'); const pctx = proc.getContext('2d',{willReadFrequently:true});
@@ -365,7 +361,7 @@
     const span=Math.max(0,+recallSpan.value||0);
     const r=(Math.random()*recallBank.length)|0;
     const t0=recallBank[r].t, t1=t0+span;
-    const frames=recallBank.filter(f=>f.t>=t0 && f<=t1).map(f=>f.img);
+    const frames=recallBank.filter(f=>f.t>=t0 && f.t<=t1).map(f=>f.img);
     activeBurst={frames:frames.length?frames:[recallBank[r].img],i:0};
   }
   if(recallNowB) recallNowB.addEventListener('click', ()=>{ recallBurst+=1; });

@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -9,12 +8,12 @@
 <style>
   :root{
     --bg:#fff; --fg:#000; --mut:#333; --line:#000;
-    --colR:320px;                /* right column width */
-    --track-fill:#111;           /* slider value (very dark grey) */
+    --colR:320px;                /* single right column width */
+    --track-fill:#111;           /* slider left/value (very dark grey) */
     --track-bg:#cfcfcf;          /* slider remainder (light grey) */
   }
   html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:13px/1.45 Arial, Helvetica, sans-serif}
-  body{overflow:hidden;}
+  body{overflow:hidden}
   *{box-sizing:border-box;border-radius:0}
   button,input,select,label{font:inherit;color:var(--fg);background:#fff;margin:0}
 
@@ -22,38 +21,56 @@
   .wrap{
     display:grid;
     grid-template-columns: minmax(0,1fr) var(--colR);
-    gap:16px; height:100vh; padding:12px; overflow:hidden;
+    gap:16px; height:100vh; padding:12px;
+    overflow:hidden; /* no horizontal scroll */
   }
   main{position:relative;display:flex;align-items:center;justify-content:center;min-width:0}
-  .stage{position:relative;width:100%;height:100%;aspect-ratio:16/9;overflow:hidden;background:#fff}
+
+  /* Stage (no borders/hairlines) */
+  .stage{
+    position:relative;
+    width:100%;height:100%;
+    max-width:1600px;max-height:100%;
+    aspect-ratio:16/9;
+    background:#000;   /* solid black frame area, hides any seams */
+    border:none;outline:none;box-shadow:none;
+    overflow:hidden;
+  }
   canvas{
-    position:absolute; inset:0; width:100%; height:100%;
-    object-fit:contain; background:#000; border:0; outline:0; box-shadow:none; display:block;
-    /* kill sub-pixel seams without hiding player */
-    clip-path: inset(0.5px);
+    position:absolute;inset:0;
+    width:100%;height:100%;
+    object-fit:contain;
+    background:transparent; /* layers are transparent; stage is black */
+    border:none;outline:none;box-shadow:none;
+    display:block;          /* avoid subpixel hairlines */
   }
 
-  /* Right panel */
-  aside.panel{padding:4px 14px 12px 4px; overflow:auto; scrollbar-width:thin}
+  /* Right panel rhythm */
+  aside.panel{
+    padding:4px 14px 12px 4px; /* right pad keeps numbers off scrollbar */
+    overflow:auto;
+    scrollbar-width:thin;
+  }
   aside.panel::-webkit-scrollbar{width:10px}
   aside.panel::-webkit-scrollbar-thumb{background:#bbb}
   aside.panel::-webkit-scrollbar-track{background:#eee}
+
   .group{font-weight:700;margin:18px 0 6px}
   .row{display:grid;align-items:center;gap:8px;margin:6px 0;grid-template-columns:1fr minmax(120px,1.6fr) 44px}
   .row.compact{grid-template-columns:1fr auto 44px}
   .row > span{text-align:right;color:#000}
   .row label{color:var(--fg)}
 
+  /* Compact button rows */
   .btnRow{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
+  .inlineRow{display:flex;align-items:center;gap:8px;margin:6px 0}
+
+  /* Buttons */
   .btn{appearance:none;background:#fff;color:#000;border:1px solid var(--line);padding:6px 10px;cursor:pointer}
   .btn.secondary{background:#fff}
   .btn:disabled{opacity:.5;cursor:not-allowed}
 
-  /* Export buttons in a row; 1:1 lone on new line */
-  .exportGrid{display:grid;gap:8px;margin:6px 0;grid-template-columns:1fr 1fr 1fr}
-  .exportGrid .full{grid-column:1 / -1}
-
-  /* Sliders: very dark left, light right, black knob */
+  /* Sliders: darker left, light right, black knob */
   input[type="range"]{appearance:none;height:2px;outline:none;background:linear-gradient(to right,var(--track-fill) 0 var(--p,0%),var(--track-bg) var(--p,0%) 100%)}
   input[type="range"]::-webkit-slider-thumb{appearance:none;width:10px;height:10px;background:#000;border:1px solid #000}
   input[type="range"]::-moz-range-thumb{width:10px;height:10px;background:#000;border:1px solid #000}
@@ -62,6 +79,7 @@
 
   input[type="color"]{width:32px;height:22px;border:1px solid #000;background:#fff;padding:0}
 
+  /* Hide debug HUD overlay */
   .hud{display:none!important}
   .rec{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.6);color:#fff;padding:6px 10px;display:flex;align-items:center;gap:8px}
   .dot{width:8px;height:8px;background:#ff5b5b}
@@ -86,18 +104,33 @@
     </div>
   </main>
 
-  <!-- RIGHT: ALL controls (source + params + export) -->
+  <!-- RIGHT: ALL controls (import/play/export + parameters) -->
   <aside class="panel">
+    <!-- Import / transport -->
     <div class="group">Source</div>
     <div class="btnRow">
       <input id="file" type="file" accept="video/*">
-    </div>
-    <div class="btnRow">
       <button id="webcam" class="btn">Webcam</button>
       <button id="play" class="btn secondary">Play/Pause</button>
       <button id="replay" class="btn secondary">Replay</button>
     </div>
 
+    <!-- Export (bottom cluster) -->
+    <div class="group">Export</div>
+    <div class="btnRow">
+      <button id="recStart" class="btn">Start Recording</button>
+      <button id="recStop" class="btn" disabled>Stop &amp; Save</button>
+      <button id="shot" class="btn secondary">Export PNG</button>
+    </div>
+    <div class="btnRow"><button id="exportOne" class="btn">Export 1:1 (source)</button></div>
+    <div class="inlineRow">
+      <label for="matchPreview">Match preview</label>
+      <input id="matchPreview" type="checkbox" checked>
+    </div>
+    <div class="small" id="supportNote"></div>
+    <div class="small" id="dbg">buffer: 0 | fps —</div>
+
+    <!-- Parameters -->
     <div class="group">Temporal window</div>
     <div class="row"><label>Δt (seconds)</label><input id="dt" type="range" min="2" max="10" step="0.5" value="6"><span id="dtV">6.0</span></div>
     <div class="row"><label>Diff threshold</label><input id="thr" type="range" min="4" max="60" value="26"><span id="thrV">26</span></div>
@@ -138,30 +171,18 @@
     <div class="row"><label>Linger (s)</label><input id="recallLinger" type="range" min="0.2" max="3" step="0.1" value="1.2"><span id="recallLingerV">1.2</span></div>
     <div class="row"><label>Span (s)</label><input id="recallSpan" type="range" min="0" max="3" step="0.1" value="0.8"><span id="recallSpanV">0.8</span></div>
     <div class="btnRow"><button id="recallNow" class="btn">Recall now</button></div>
-
-    <div class="group">Export</div>
-    <div class="row compact">
-      <label for="matchPreview">Match preview</label>
-      <input id="matchPreview" type="checkbox" checked>
-      <span></span>
-    </div>
-    <div class="exportGrid">
-      <button id="recStart" class="btn">Start Recording</button>
-      <button id="recStop" class="btn" disabled>Stop &amp; Save</button>
-      <button id="shot" class="btn secondary">Export PNG</button>
-      <button id="exportOne" class="btn full">Export 1:1 (source)</button>
-    </div>
-
-    <div class="small" id="supportNote"></div>
-    <div class="small" id="dbg">buffer: 0 | fps —</div>
   </aside>
 </div>
 
-<!-- ===== SCRIPT: functionality (Auto format, unchanged core) ===== -->
+<!-- ===== SCRIPT: functionality (unchanged except for one fix) ===== -->
 <script>
 (function(){
   /* ---------- Elements ---------- */
-  const can = { stain:stain, ghost:ghost, final:final };
+  const can = {
+    stain: document.getElementById('stain'),
+    ghost: document.getElementById('ghost'),
+    final: document.getElementById('final')
+  };
   const sctx = can.stain.getContext('2d');
   const gctx = can.ghost.getContext('2d');
   const fctx = can.final.getContext('2d');
@@ -185,7 +206,7 @@
 
   const ids = ["dt","thr","grey","preblur","gAlpha","decay","strength","expand"];
   const el  = Object.fromEntries(ids.map(id=>[id, document.getElementById(id)]));
-  const out = Object.fromEntries(ids.map(id=>[id+"V", document.getElementById(id+"V")]));  
+  const out = Object.fromEntries(ids.map(id=>[id+"V", document.getElementById(id+"V")]));
   const stainOn = document.getElementById('stainOn');
   const sColor  = document.getElementById('sColor');
   const gBlend  = document.getElementById('gBlend');
@@ -236,7 +257,7 @@
     await new Promise(res=>{ if(vid.readyState>=1) return res(); vid.addEventListener('loadedmetadata',res,{once:true}); });
     try{ await vid.play(); }catch(_){ throw new Error('Autoplay failed. Click Play or allow autoplay.'); }
   }
-  function stopWebcam(){ if(mediaStream){ try{mediaStream.getTracks().forEach(t=>t.stop());}catch(_){} mediaStream=null; } if(vid && vid.srcObject){ try{vid.srcObject=null;}catch(_){} } }
+  function stopWebcam(){ if(mediaStream){ try{mediaStream.getTracks().forEach(t=>t.stop());}catch(_){} mediaStream=null; } if(vid && vid.srcObject){ try{vid.srcObject=null;}catch(_){} }
 
   /* ---------- Sizing ---------- */
   const proc = document.createElement('canvas'); const pctx = proc.getContext('2d',{willReadFrequently:true});
@@ -344,7 +365,7 @@
     const span=Math.max(0,+recallSpan.value||0);
     const r=(Math.random()*recallBank.length)|0;
     const t0=recallBank[r].t, t1=t0+span;
-    const frames=recallBank.filter(f=>f.t>=t0 && f.t<=t1).map(f=>f.img);
+    const frames=recallBank.filter(f=>f.t>=t0 && f<=t1).map(f=>f.img);
     activeBurst={frames:frames.length?frames:[recallBank[r].img],i:0};
   }
   if(recallNowB) recallNowB.addEventListener('click', ()=>{ recallBurst+=1; });
@@ -370,4 +391,135 @@
       const r=c[i], g=c[i+1], b=c[i+2]; const pr=p[i], pg=p[i+1], pb=p[i+2];
       const lc=r*0.2126+g*0.7152+b*0.0722; const lp=pr*0.2126+pg*0.7152+pb*0.0722; const d=Math.abs(lc-lp);
       if(d>thr){ changedCount++; mask[j]=255;
-        if(gUseColor.checked){ const a=Math.max(40,Math.min(255,(d-thr)*8)); const
+        if(gUseColor.checked){ const a=Math.max(40,Math.min(255,(d-thr)*8)); const m=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(gColor.value); const cr=m?parseInt(m[1],16):255, cg=m?parseInt(m[2],16):255, cb=m?parseInt(m[3],16):255; gd[i]=cr; gd[i+1]=cg; gd[i+2]=cb; gd[i+3]=a; }
+        else { gd[i]=(r+(255-pr))*0.5; gd[i+1]=(g+(255-pg))*0.5; gd[i+2]=(b+(255-pb))*0.5; gd[i+3]=255; }
+      } else { gd[i]=gd[i+1]=gd[i+2]=0; gd[i+3]=0; }
+    }
+    gctx.putImageData(ghostImg,0,0);
+
+    if(stainOn.checked){
+      const decay=+el.decay.value;
+      sctx.globalCompositeOperation='destination-out'; sctx.fillStyle=`rgba(0,0,0,${1-decay})`; sctx.fillRect(0,0,W,H);
+      sctx.globalCompositeOperation='source-over';
+      const mImg=maskCtx.createImageData(W,H); const mdat=mImg.data;
+      for(let j=0,k=0;j<mask.length;j++,k+=4){ const v=mask[j]; mdat[k]=mdat[k+1]=mdat[k+2]=v; mdat[k+3]=v; }
+      maskCtx.putImageData(mImg,0,0);
+
+      colCtx.clearRect(0,0,W,H); const expand=+el.expand.value; if(expand>0) colCtx.filter=`blur(${expand}px)`; colCtx.drawImage(maskCanvas,0,0); colCtx.filter='none';
+      colCtx.globalCompositeOperation='source-in'; colCtx.fillStyle=sColor.value; colCtx.globalAlpha=+el.strength.value; colCtx.fillRect(0,0,W,H);
+      colCtx.globalCompositeOperation='source-over'; colCtx.globalAlpha=1; sctx.drawImage(colCanvas,0,0);
+    }
+
+    if(stainOn.checked){ fctx.globalCompositeOperation='multiply'; fctx.drawImage(can.stain,0,0); fctx.globalCompositeOperation='source-over'; }
+    fctx.globalAlpha=+el.gAlpha.value; fctx.globalCompositeOperation=gBlend.value; fctx.drawImage(can.ghost,0,0); fctx.globalAlpha=1; fctx.globalCompositeOperation='source-over';
+
+    if(changedCount>0) snapshotGhost(vid.currentTime);
+    if(recallOn && recallOn.checked){ const prob=+recallProb.value||0; if(Math.random()<prob && !activeBurst) startRandomBurst(); }
+    { const lingerS=Math.max(0.2,+recallLinger.value||1.2); const ms=Math.max(1,now-lastT); const fade=1-Math.exp(-ms/(lingerS*1000)); recallCtx.globalCompositeOperation='destination-out'; recallCtx.fillStyle=`rgba(0,0,0,${fade})`; recallCtx.fillRect(0,0,recallCanvas.width,recallCanvas.height); recallCtx.globalCompositeOperation='source-over'; }
+    if(activeBurst && activeBurst.frames && activeBurst.frames.length){ const color=recallColor?recallColor.value:'#00e7ff'; drawTinted(recallCtx,activeBurst.frames[activeBurst.i],color); activeBurst.i++; if(activeBurst.i>=activeBurst.frames.length) activeBurst=null; }
+    fctx.globalCompositeOperation='screen'; fctx.drawImage(recallCanvas,0,0); fctx.globalCompositeOperation='source-over';
+
+    const dt=now-lastT; lastT=now; const inst=dt>0?1000/dt:0; fpsEMA=fpsEMA?fpsEMA*0.9+inst*0.1:inst;
+    const s=bestSupported(); dbg.textContent=`buffer: ${buf.length} | fps ~ ${fpsEMA.toFixed(1)} | support: ${s.canMp4?'MP4✓':'MP4×'}/${s.canWebm?'WebM✓':'WebM×'}`;
+  });
+
+  vid.addEventListener('loadeddata', ()=>{ vid.play().catch(()=>{}); });
+
+  /* ---------- Export 1:1 (Auto) ---------- */
+  exportOneBtn.addEventListener('click', exportSourceOnce);
+  async function exportSourceOnce(){
+    if(vid.srcObject){ alert('1:1 export is for file/URL clips, not webcam.'); return; }
+    if(!(vid.currentSrc || vid.src)){ alert('Load a clip first.'); return; }
+    if(vid.readyState<1){ await new Promise(res=>vid.addEventListener('loadedmetadata',res,{once:true})); }
+    const vw=vid.videoWidth|0, vh=vid.videoHeight|0; if(!vw||!vh){ alert('Video metadata unavailable.'); return; }
+
+    const s=bestSupported(); let mime='',ext='webm';
+    if(s.canMp4){ mime=s.mp4; ext='mp4'; }
+    else if(s.canWebm){ mime=s.webm; ext='webm'; }
+    else { alert('Export not supported on this browser. Try Safari (MP4) or Chrome/Firefox (WebM).'); return; }
+
+    exportOneBtn.disabled=true; recStartBtn.disabled=true; const prevSuspend=false; let suspendLive=prevSuspend;
+
+    const outCanvas=document.createElement('canvas'); outCanvas.width=vw; outCanvas.height=vh; const octx=outCanvas.getContext('2d');
+    const expChunks=[]; const stream=outCanvas.captureStream?outCanvas.captureStream(30):outCanvas.mozCaptureStream(30);
+    const expRecorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:8_000_000});
+    const recDone=new Promise(resolve=>{ expRecorder.ondataavailable=e=>{ if(e.data && e.data.size) expChunks.push(e.data); }; expRecorder.onstop=resolve; });
+
+    const prev={ loop:vid.loop, rate:vid.playbackRate, paused:vid.paused, t:vid.currentTime };
+    vid.pause(); vid.loop=false; vid.playbackRate=1;
+
+    const nativeProcessing=!matchPreview.checked;
+    const prevSizes={W:can.final.width,H:can.final.height,sW:can.stain.width,sH:can.stain.height,gW:can.ghost.width,gH:can.ghost.height,pW:proc.width,pH:proc.height,mW:maskCanvas.width,mH:maskCanvas.height,cW:colCanvas.width,cH:colCanvas.height};
+    if(nativeProcessing){ [can.stain,can.ghost,can.final,proc,maskCanvas,colCanvas].forEach(c=>{ c.width=vw; c.height=vh; }); recallCanvas.width=vw; recallCanvas.height=vh; recallCtx.clearRect(0,0,recallCanvas.width,recallCanvas.height); }
+
+    function drawContain(srcCanvas,dstCtx,dstW,dstH){ const sw=srcCanvas.width, sh=srcCanvas.height; const s=Math.min(dstW/sw,dstH/sh); const dw=Math.round(sw*s), dh=Math.round(sh*s); const dx=Math.floor((dstW-dw)/2), dy=Math.floor((dstH-dh)/2); dstCtx.clearRect(0,0,dstW,dstH); dstCtx.drawImage(srcCanvas,dx,dy,dw,dh); }
+    function blitToOut(){ if(matchPreview.checked) drawContain(can.final,octx,vw,vh); else { octx.clearRect(0,0,vw,vh); octx.drawImage(can.final,0,0,vw,vh); } }
+    function exportDecayStep(){ const lingerS=Math.max(0.2,+recallLinger.value||1.2); const fade=1-Math.exp(-1/(lingerS*30)); recallCtx.globalCompositeOperation='destination-out'; recallCtx.fillStyle=`rgba(0,0,0,${fade})`; recallCtx.fillRect(0,0,recallCanvas.width,recallCanvas.height); recallCtx.globalCompositeOperation='source-over'; }
+
+    function processOneFrame(W,H){
+      const grey=+el.grey.value; fctx.clearRect(0,0,W,H); fctx.fillStyle=`rgb(${grey},${grey},${grey})`; fctx.fillRect(0,0,W,H);
+      drawVideoContained(pctx,vid,W,H,+el.preblur.value); const curr=pctx.getImageData(0,0,W,H); pushFrame(curr,vid.currentTime);
+      const past=getPastFrame(+el.dt.value);
+      if(past){
+        const c=curr.data, p=past.data; const ghostImg=gctx.createImageData(W,H); const gd=ghostImg.data; const thr=+el.thr.value; const mask=new Uint8ClampedArray(W*H);
+        for(let i=0,j=0;i<c.length;i+=4,j++){
+          const r=c[i],g=c[i+1],b=c[i+2]; const pr=p[i],pg=p[i+1],pb=p[i+2];
+          const lc=r*0.2126+g*0.7152+b*0.0722; const lp=pr*0.2126+pg*0.7152+pb*0.0722; const d=Math.abs(lc-lp);
+          if(d>thr){ mask[j]=255;
+            if(gUseColor.checked){ const m=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(gColor.value); const cr=m?parseInt(m[1],16):255,cg=m?parseInt(m[2],16):255,cb=m?parseInt(m[3],16):255; const a=Math.max(40,Math.min(255,(d-thr)*8)); gd[i]=cr; gd[i+1]=cg; gd[i+2]=cb; gd[i+3]=a; }
+            else { gd[i]=(r+(255-pr))*0.5; gd[i+1]=(g+(255-pg))*0.5; gd[i+2]=(b+(255-pb))*0.5; gd[i+3]=255; }
+          } else { gd[i]=gd[i+1]=gd[i+2]=0; gd[i+3]=0; }
+        }
+        gctx.putImageData(ghostImg,0,0);
+
+        if(stainOn.checked){
+          const decay=+el.decay.value; sctx.globalCompositeOperation='destination-out'; sctx.fillStyle=`rgba(0,0,0,${1-decay})`; sctx.fillRect(0,0,W,H); sctx.globalCompositeOperation='source-over';
+          const mImg=maskCtx.createImageData(W,H); const mdat=mImg.data; for(let j=0,k=0;j<mask.length;j++,k+=4){ const v=mask[j]; mdat[k]=mdat[k+1]=mdat[k+2]=v; mdat[k+3]=v; } maskCtx.putImageData(mImg,0,0);
+          colCtx.clearRect(0,0,W,H); const expand=+el.expand.value; if(expand>0) colCtx.filter=`blur(${expand}px)`; colCtx.drawImage(maskCanvas,0,0); colCtx.filter='none';
+          colCtx.globalCompositeOperation='source-in'; colCtx.fillStyle=sColor.value; colCtx.globalAlpha=+el.strength.value; colCtx.fillRect(0,0,W,H);
+          colCtx.globalCompositeOperation='source-over'; colCtx.globalAlpha=1; sctx.drawImage(colCanvas,0,0);
+        }
+      }
+
+      if(stainOn.checked){ fctx.globalCompositeOperation='multiply'; fctx.drawImage(can.stain,0,0); fctx.globalCompositeOperation='source-over'; }
+      fctx.globalAlpha=+el.gAlpha.value; fctx.globalCompositeOperation=gBlend.value; fctx.drawImage(can.ghost,0,0); fctx.globalAlpha=1; fctx.globalCompositeOperation='source-over';
+
+      if(vid && !isNaN(vid.currentTime)) snapshotGhost(vid.currentTime);
+      if(recallOn && recallOn.checked){ const prob=+recallProb.value||0; if(Math.random()<prob && !activeBurst) startRandomBurst(); }
+      exportDecayStep();
+      if(activeBurst && activeBurst.frames && activeBurst.frames.length){ const color=recallColor?recallColor.value:'#00e7ff'; drawTinted(recallCtx,activeBurst.frames[activeBurst.i],color); activeBurst.i++; if(activeBurst.i>=activeBurst.frames.length) activeBurst=null; }
+      fctx.globalCompositeOperation='screen'; fctx.drawImage(recallCanvas,0,0); fctx.globalCompositeOperation='source-over';
+    }
+
+    await new Promise(res=>{ const h=()=>{vid.removeEventListener('seeked',h); res();}; vid.addEventListener('seeked',h); try{ vid.currentTime=0; }catch(_){ res(); } });
+    expRecorder.start(250); processOneFrame(can.final.width,can.final.height); blitToOut();
+
+    const hasVFC=typeof vid.requestVideoFrameCallback==='function'; let vfcId=null, rafId=null;
+    function stopDrivers(){ if(vfcId && vid.cancelVideoFrameCallback) try{vid.cancelVideoFrameCallback(vfcId);}catch(_){} if(rafId) cancelAnimationFrame(rafId); vfcId=rafId=null; }
+    function loop(){ processOneFrame(can.final.width,can.final.height); blitToOut(); if(hasVFC) vfcId=vid.requestVideoFrameCallback(()=>loop()); else rafId=requestAnimationFrame(loop); }
+
+    const safety=setTimeout(()=>{ try{vid.pause();}catch(_){}; finalize(); }, (isFinite(vid.duration)?vid.duration:60)*1000+15000);
+    function finalize(){ clearTimeout(safety); stopDrivers(); try{expRecorder.stop();}catch(_){} }
+    vid.addEventListener('ended',finalize,{once:true}); await vid.play().catch(()=>{}); loop(); await recDone;
+
+    const blob=new Blob(expChunks,{type:mime}); const a=document.createElement('a'); const tag=matchPreview.checked?'match':'native';
+    a.download=`wind_on_wall_1x_${vw}x${vh}_${tag}_${Date.now()}.${ext}`; a.href=URL.createObjectURL(blob); a.click();
+
+    if(nativeProcessing){ can.final.width=prevSizes.W; can.final.height=prevSizes.H; can.stain.width=prevSizes.sW; can.stain.height=prevSizes.sH; can.ghost.width=prevSizes.gW; can.ghost.height=prevSizes.gH; proc.width=prevSizes.pW; proc.height=prevSizes.pH; maskCanvas.width=prevSizes.mW; maskCanvas.height=prevSizes.mH; colCanvas.width=prevSizes.cW; colCanvas.height=prevSizes.cH; }
+    vid.loop=prev.loop; vid.playbackRate=prev.rate; try{ vid.currentTime=prev.t; }catch(_){}
+    if(!prev.paused){ try{ await vid.play(); }catch(_){ } }
+    exportOneBtn.disabled=false; recStartBtn.disabled=false;
+  }
+})();
+</script>
+
+<!-- Slider fill % helper (for dark-left/light-right track) -->
+<script>
+(function(){
+  function paint(r){ var min=r.min?+r.min:0, max=r.max?+r.max:100, val=isNaN(+r.value)?min:+r.value, p=((val-min)/(max-min))*100; r.style.setProperty('--p', p+'%'); }
+  var ranges=document.querySelectorAll('input[type="range"]');
+  ranges.forEach(function(r){ paint(r); r.addEventListener('input', function(){ paint(r); }); });
+})();
+</script>
+</body>
+</html>

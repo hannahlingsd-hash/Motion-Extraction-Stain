@@ -8,136 +8,102 @@
 <style>
   :root{
     --bg:#fff; --fg:#000; --mut:#333; --line:#000;
-    --colR:280px;              /* right column width (controls) */
-    --topPad:8px;              /* top pad for right column */
-    --gutter:16px;             /* equal outer gutters + column gap */
-    --track-fill:#111;         /* slider left/value (very dark grey) */
-    --track-bg:#cfcfcf;        /* slider remainder (light grey) */
+    --colR:300px;                /* right column width (controls) */
+    --stagePad:12px;             /* even margin around the stage */
+    --labelW:110px;              /* fixed label column (prevents wrapping push) */
+    --valueW:44px;               /* fixed numeric column */
+    --track-fill:#111;           /* slider left/value (very dark grey) */
+    --track-bg:#cfcfcf;          /* slider remainder (light grey) */
   }
 
-  html,body{
-    height:100%;
-    margin:0;
-    background:var(--bg);
-    color:var(--fg);
-    font:13px/1.45 Arial, Helvetica, sans-serif;
-    overflow-x:hidden; /* never horizontal scroll */
-  }
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:13px/1.45 Arial, Helvetica, sans-serif}
+  *{box-sizing:border-box;border-radius:0}
+  button,input,select,label{font:inherit;color:var(--fg);background:#fff;margin:0}
 
-  /* Thinner vertical scrollbar */
-  *{ box-sizing:border-box }
-  :root{
-    scrollbar-color #bbb transparent;
-    scrollbar-width: thin;
-  }
-  ::-webkit-scrollbar{ width:10px }
-  ::-webkit-scrollbar-thumb{ background:#bbb; border-radius:8px }
-  ::-webkit-scrollbar-track{ background:transparent }
-
-  /* ===== Layout ===== */
+  /* Layout */
   .wrap{
     display:grid;
-    grid-template-columns: 1fr var(--colR);   /* big player + right controls */
-    gap: var(--gutter);
-    height:100vh;
-    padding: var(--gutter);
-  }
-  main{ position:relative; display:flex; align-items:center; justify-content:center }
-  .stage{ position:relative; width:100%; height:100%; margin:0 }
-  canvas{
-    position:absolute; inset:0;
-    width:100%; height:100%;
-    object-fit:contain;
-    background:#000;
-    border:0; outline:0; box-shadow:none;   /* no hairlines */
+    grid-template-columns: 1fr var(--colR);
+    gap:16px; height:100vh; padding:var(--stagePad);
+    overflow:hidden;           /* prevent page-level horizontal scroll */
   }
 
-  /* ===== Right column ===== */
+  /* Left: big stage */
+  main{position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .stage{position:relative;width:100%;height:100%;margin:0}
+  canvas{position:absolute;inset:0;width:100%;height:100%;
+         object-fit:contain;background:#000;border:0;outline:0;box-shadow:none}
+
+  /* Right: controls column */
   aside.panel{
-    padding: var(--topPad) var(--gutter) 0 0; /* right pad keeps numbers off scrollbar */
-    overflow:auto;
+    height:100%; overflow:auto; padding:6px 12px 12px 4px;
+    border-left:1px solid #ddd;
+    /* keep a little right padding so numbers don't hug the scrollbar */
+    scrollbar-width: thin;                 /* Firefox */
   }
+  /* WebKit thin scrollbar */
+  aside.panel::-webkit-scrollbar{width:10px}
+  aside.panel::-webkit-scrollbar-thumb{background:#bbb}
+  aside.panel::-webkit-scrollbar-track{background:#eee}
 
-  .group{ font-weight:700; margin:18px 0 6px }
-  .group:first-of-type{ margin-top:6px }
+  .group{font-weight:700;margin:16px 0 8px}
+  .btnRow{display:flex;gap:8px;flex-wrap:wrap}
 
-  /* Generic rows: label | control | value */
+  /* --- Tighter control grid so sliders line up like "Stain" --- */
   .row{
     display:grid;
     align-items:center;
-    gap:8px;
+    column-gap:10px;
+    row-gap:6px;
     margin:6px 0;
-    grid-template-columns: 1fr minmax(140px,1.6fr) 44px;
+    grid-template-columns: var(--labelW) minmax(200px,1fr) var(--valueW);
   }
-  .row.compact{ grid-template-columns: 1fr auto 44px }
-  .row > span{ text-align:right; color:#000 }
-  .row label{ color:var(--fg) }
+  .row.compact{ grid-template-columns: var(--labelW) auto var(--valueW); }
+  .row label{ white-space:normal; line-height:1.25; }
+  .row > span{ text-align:right; }
 
-  /* ===== Source section (top) ===== */
-  .source{
-    display:grid; row-gap:8px; margin-bottom:12px;
-  }
-  .fileRow{ display:flex; align-items:center; gap:10px; flex-wrap:wrap }
-  .btnRow{ display:flex; gap:8px; flex-wrap:wrap }
-  .btnRow + .btnRow{ margin-top:6px } /* vertical rhythm between button rows */
+  /* put controls in the middle column at full width */
+  aside.panel select,
+  aside.panel input[type="range"]{ width:100%; }
 
-  input[type="file"]{ font:inherit; color:var(--fg); background:#fff }
+  /* Buttons */
+  .btn{appearance:none;background:#fff;color:#000;border:1px solid var(--line);padding:6px 10px;cursor:pointer}
+  .btn.secondary{background:#fff}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
 
-  /* ===== Buttons ===== */
-  .btn{
-    appearance:none;
-    background:#fff;
-    color:#000;
-    border:1px solid var(--line);
-    padding:6px 10px;
-    cursor:pointer;
-  }
-  .btn.secondary{ background:#fff }
-  .btn:disabled{ opacity:.5; cursor:not-allowed }
-
-  /* ===== Sliders (dark left, light right) ===== */
+  /* Sliders (dark left, light right) */
   input[type="range"]{
-    appearance:none;
-    height:2px;
-    outline:none;
-    background:linear-gradient(to right,var(--track-fill) 0 var(--p,0%),var(--track-bg) var(--p,0%) 100%);
+    appearance:none;height:2px;outline:none;
+    background:linear-gradient(to right,var(--track-fill) 0 var(--p,0%),var(--track-bg) var(--p,0%) 100%)
   }
-  input[type="range"]::-webkit-slider-thumb{
-    appearance:none; width:10px; height:10px; background:#000; border:1px solid #000
-  }
-  input[type="range"]::-moz-range-thumb{
-    width:10px; height:10px; background:#000; border:1px solid #000
-  }
-  input[type="range"]::-moz-range-track{ height:2px; background:var(--track-bg) }
-  input[type="range"]::-moz-range-progress{ height:2px; background:var(--track-fill) }
+  input[type="range"]::-webkit-slider-thumb{appearance:none;width:10px;height:10px;background:#000;border:1px solid #000}
+  input[type="range"]::-moz-range-thumb{width:10px;height:10px;background:#000;border:1px solid #000}
+  input[type="range"]::-moz-range-track{height:2px;background:var(--track-bg)}
+  input[type="range"]::-moz-range-progress{height:2px;background:var(--track-fill)}
 
-  input[type="color"]{ width:32px; height:22px; border:1px solid #000; background:#fff; padding:0 }
+  input[type="color"]{width:32px;height:22px;border:1px solid #000;background:#fff;padding:0}
 
-  /* Hide the debug HUD overlay in the new UI */
-  .hud{ display:none!important }
-  .rec{
-    position:absolute; top:10px; right:10px;
-    background:rgba(0,0,0,.6); color:#fff;
-    padding:6px 10px; display:flex; align-items:center; gap:8px
-  }
-  .dot{ width:8px; height:8px; background:#ff5b5b; border-radius:50%; box-shadow:0 0 8px #ff5b5b }
-  .nosrc{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#888; font:12px ui-monospace; pointer-events:none }
-  .fab{ display:none }
-  .small{ font-size:12px; color:#333 }
+  /* Hide debug HUD overlay on stage */
+  .hud{display:none!important}
+  .rec{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.6);color:#fff;padding:6px 10px;display:flex;align-items:center;gap:8px}
+  .dot{width:8px;height:8px;background:#ff5b5b;border-radius:50%;box-shadow:0 0 8px #ff5b5b}
+  .nosrc{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#888;font:12px ui-monospace;pointer-events:none}
+  .fab{display:none}
+  .small{font-size:12px;color:#333}
 
-  /* ===== Export section at the very bottom ===== */
-  .export{ margin-top:18px; padding-top:6px }
-  .export .gridRow{
-    display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin:6px 0;
+  /* Source + Export button rows spacing per your request */
+  .sourceRow{ display:flex; gap:8px; margin:8px 0; flex-wrap:wrap; }
+  .exportGrid{
+    display:grid; gap:8px; margin:8px 0;
+    grid-template-columns: 1fr 1fr;       /* Start | Stop on same row; PNG to right; 1:1 on its own row */
   }
-  .export .gridRow.wide{
-    grid-template-columns: 1fr; /* make 1:1 sit alone if you prefer */
-  }
+  .exportGrid .full{ grid-column: 1 / -1; }
 </style>
 </head>
 
 <body>
 <div class="wrap">
+
   <!-- LEFT: big player -->
   <main>
     <div class="stage">
@@ -151,23 +117,21 @@
     </div>
   </main>
 
-  <!-- RIGHT: controls -->
+  <!-- RIGHT: all controls -->
   <aside class="panel">
-    <!-- SOURCE (top) -->
+
+    <!-- SOURCE -->
     <div class="group">Source</div>
-    <div class="source">
-      <div class="fileRow">
-        <input id="file" type="file" accept="video/*">
-        <span id="fileName" class="small"></span>
-      </div>
-      <div class="btnRow">
-        <button id="webcam" class="btn">Webcam</button>
-        <button id="play"   class="btn secondary">Play/Pause</button>
-        <button id="replay" class="btn secondary">Replay</button>
-      </div>
+    <div class="sourceRow">
+      <input id="file" type="file" accept="video/*">
+    </div>
+    <div class="sourceRow">
+      <button id="webcam" class="btn">Webcam</button>
+      <button id="play" class="btn secondary">Play/Pause</button>
+      <button id="replay" class="btn secondary">Replay</button>
     </div>
 
-    <!-- TEMPORAL WINDOW -->
+    <!-- TEMPORAL -->
     <div class="group">Temporal window</div>
     <div class="row"><label>Δt (seconds)</label><input id="dt" type="range" min="2" max="10" step="0.5" value="6"><span id="dtV">6.0</span></div>
     <div class="row"><label>Diff threshold</label><input id="thr" type="range" min="4" max="60" value="26"><span id="thrV">26</span></div>
@@ -212,30 +176,30 @@
     <div class="row"><label>Span (s)</label><input id="recallSpan" type="range" min="0" max="3" step="0.1" value="0.8"><span id="recallSpanV">0.8</span></div>
     <div class="btnRow"><button id="recallNow" class="btn">Recall now</button></div>
 
-    <!-- EXPORT (bottom) -->
-    <div class="export">
-      <div class="group">Export</div>
-      <div class="gridRow">
-        <button id="recStart" class="btn">Start Recording</button>
-        <button id="recStop" class="btn" disabled>Stop &amp; Save</button>
-      </div>
-      <div class="gridRow">
-        <button id="shot" class="btn secondary">Export PNG</button>
-        <label class="inline" style="display:flex;align-items:center;gap:8px">
-          <span>Match preview</span>
-          <input id="matchPreview" type="checkbox" checked>
-        </label>
-      </div>
-      <div class="gridRow wide">
-        <button id="exportOne" class="btn">Export 1:1 (source)</button>
-      </div>
-      <div class="small" id="supportNote"></div>
-      <div class="small" id="dbg">buffer: 0 | fps —</div>
+    <!-- EXPORT (moved to very bottom) -->
+    <div class="group">Export</div>
+    <div class="row compact">
+      <label for="matchPreview">Match preview</label>
+      <input id="matchPreview" type="checkbox" checked>
+      <span></span>
     </div>
+
+    <div class="exportGrid">
+      <button id="recStart" class="btn">Start Recording</button>
+      <button id="recStop"  class="btn" disabled>Stop &amp; Save</button>
+
+      <button id="shot" class="btn secondary">Export PNG</button>
+      <span></span>
+
+      <button id="exportOne" class="btn full">Export 1:1 (source)</button>
+    </div>
+
+    <div class="small" id="supportNote"></div>
+    <div class="small" id="dbg">buffer: 0 | fps —</div>
   </aside>
 </div>
 
-<!-- ===== SCRIPT: functionality (Auto format, unchanged) ===== -->
+<!-- ===== SCRIPT: functionality (unchanged) ===== -->
 <script>
 (function(){
   /* ---------- Elements ---------- */
@@ -245,7 +209,6 @@
   const fctx = can.final.getContext('2d');
 
   const file = document.getElementById('file');
-  const fileName = document.getElementById('fileName');
   const webcamBtn = document.getElementById('webcam');
   const playBtn = document.getElementById('play');
   const replayBtn = document.getElementById('replay');
@@ -290,13 +253,12 @@
   vid.playsInline = true; vid.muted = true; vid.loop = true; vid.preload = "auto";
 
   const qs = new URLSearchParams(location.search);
-  const src = qs.get('src'); if(src){ vid.src = src; fileName.textContent = src.split('/').pop(); }
+  const src = qs.get('src'); if(src){ vid.src = src; }
 
   let mediaStream = null;
   file.addEventListener('change', e=>{
     const f = e.target.files[0]; if(!f) return;
     stopWebcam(); resetState(); vid.src = URL.createObjectURL(f); vid.play();
-    fileName.textContent = f.name || '';
   });
   playBtn.addEventListener('click', ()=> vid.paused ? vid.play() : vid.pause());
   webcamBtn.addEventListener('click', ()=> startWebcam().catch(e=>alert('Webcam failed: '+(e && e.message ? e.message : e))));
@@ -334,6 +296,8 @@
     const H = Math.max(2, Math.ceil(r.height*dpr));
     for(const k in can){ can[k].width=W; can[k].height=H; }
     proc.width=W; proc.height=H; maskCanvas.width=W; maskCanvas.height=H; colCanvas.width=W; colCanvas.height=H; recallCanvas.width=W; recallCanvas.height=H;
+    // attach the video drawing target to the left canvas stack
+    if(!vid.parentNode){ document.body.appendChild(vid); vid.style.display='none'; }
   }
   new ResizeObserver(fit).observe(can.final); fit();
 
@@ -349,7 +313,7 @@
     ctx.restore();
   }
 
-  /* ---------- Recording (Auto format) ---------- */
+  /* ---------- Recording (Auto) ---------- */
   let recorder=null, chunks=[], recStartTime=0, recTimer=null, recMime="", recExt="webm";
   function bestSupported(){
     const mp4='video/mp4;codecs=avc1.42E01E,mp4a.40.2', webm='video/webm;codecs=vp9,opus', webm2='video/webm;codecs=vp8,opus';
@@ -486,7 +450,7 @@
 
   vid.addEventListener('loadeddata', ()=>{ vid.play().catch(()=>{}); });
 
-  /* ---------- Export 1:1 (Auto format) ---------- */
+  /* ---------- Export 1:1 (Auto) ---------- */
   exportOneBtn.addEventListener('click', exportSourceOnce);
   async function exportSourceOnce(){
     if(vid.srcObject){ alert('1:1 export is for file/URL clips, not webcam.'); return; }
@@ -553,15 +517,12 @@
     }
 
     await new Promise(res=>{ const h=()=>{vid.removeEventListener('seeked',h); res();}; vid.addEventListener('seeked',h); try{ vid.currentTime=0; }catch(_){ res(); } });
-    const expRecorder=new MediaRecorder(outCanvas.captureStream?outCanvas.captureStream(30):outCanvas.mozCaptureStream(30),{mimeType:mime,videoBitsPerSecond:8_000_000});
-    const expChunks=[]; const recDone=new Promise(resolve=>{ expRecorder.ondataavailable=e=>{ if(e.data && e.data.size) expChunks.push(e.data); }; expRecorder.onstop=resolve; });
-    expRecorder.start(250);
-    function blitToOut(){ if(matchPreview.checked){ const sw=can.final.width, sh=can.final.height; const s=Math.min(vw/sw,vh/sh); const dw=Math.round(sw*s), dh=Math.round(sh*s); const dx=Math.floor((vw-dw)/2), dy=Math.floor((vh-dh)/2); octx.clearRect(0,0,vw,vh); octx.drawImage(can.final,dx,dy,dw,dh);} else { octx.clearRect(0,0,vw,vh); octx.drawImage(can.final,0,0,vw,vh); } }
-    processOneFrame(can.final.width,can.final.height); blitToOut();
+    expRecorder.start(250); processOneFrame(can.final.width,can.final.height); blitToOut();
 
     const hasVFC=typeof vid.requestVideoFrameCallback==='function'; let vfcId=null, rafId=null;
     function stopDrivers(){ if(vfcId && vid.cancelVideoFrameCallback) try{vid.cancelVideoFrameCallback(vfcId);}catch(_){} if(rafId) cancelAnimationFrame(rafId); vfcId=rafId=null; }
     function loop(){ processOneFrame(can.final.width,can.final.height); blitToOut(); if(hasVFC) vfcId=vid.requestVideoFrameCallback(()=>loop()); else rafId=requestAnimationFrame(loop); }
+
     const safety=setTimeout(()=>{ try{vid.pause();}catch(_){}; finalize(); }, (isFinite(vid.duration)?vid.duration:60)*1000+15000);
     function finalize(){ clearTimeout(safety); stopDrivers(); try{expRecorder.stop();}catch(_){} }
     vid.addEventListener('ended',finalize,{once:true}); await vid.play().catch(()=>{}); loop(); await recDone;
@@ -577,7 +538,7 @@
 })();
 </script>
 
-<!-- Slider fill % helper (for the dark-left / light-right track) -->
+<!-- Slider fill % helper for the dark-left / light-right track -->
 <script>
 (function(){
   function paint(r){ var min=r.min?+r.min:0, max=r.max?+r.max:100, val=isNaN(+r.value)?min:+r.value, p=((val-min)/(max-min))*100; r.style.setProperty('--p', p+'%'); }

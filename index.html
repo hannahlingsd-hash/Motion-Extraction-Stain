@@ -182,7 +182,7 @@
   </aside>
 </div>
 
-<!-- ===== SCRIPT: functionality (Auto) ===== -->
+<!-- ===== SCRIPT: functionality (unchanged except tiny fixes noted) ===== -->
 <script>
 (function(){
   /* ---------- Elements ---------- */
@@ -261,7 +261,17 @@
     await new Promise(res=>{ if(vid.readyState>=1) return res(); vid.addEventListener('loadedmetadata',res,{once:true}); });
     try{ await vid.play(); }catch(_){ throw new Error('Autoplay failed. Click Play or allow autoplay.'); }
   }
-  function stopWebcam(){ if(mediaStream){ try{mediaStream.getTracks().forEach(t=>t.stop());}catch(_){} mediaStream=null; } if(vid && vid.srcObject){ try{vid.srcObject=null;}catch(_){} }
+
+  /* FIXED: proper closing brace restored */
+  function stopWebcam(){
+    if(mediaStream){
+      try{ mediaStream.getTracks().forEach(t=>t.stop()); }catch(_){}
+      mediaStream=null;
+    }
+    if(vid && vid.srcObject){
+      try{ vid.srcObject=null; }catch(_){}
+    }
+  }
 
   /* ---------- Sizing ---------- */
   const proc = document.createElement('canvas'); const pctx = proc.getContext('2d',{willReadFrequently:true});
@@ -380,7 +390,7 @@
   /* ---------- Haunt Map (controls) ---------- */
   const hauntOn      = document.getElementById('hauntOn');
   const hauntPersist = document.getElementById('hauntPersist');
-  const hauntRadius  = document.getElementById('hauntRadius'); // kept, but unused in sharp mode
+  const hauntRadius  = document.getElementById('hauntRadius'); // retained; not used in sharp mode
   const hauntStick   = document.getElementById('hauntStick');
   const hauntColor   = document.getElementById('hauntColor');
 
@@ -450,20 +460,20 @@
       const stick = +hauntStick.value || 1.3;
       const tint  = (hauntColor && hauntColor.value) ? hauntColor.value : '#4a5e8a';
 
-      // 1) Decay existing memory: higher p = slower decay
+      // fade existing memory: higher p = slower fade
       const decayOut = 0.3 * p; // removal per frame
       hauntCtx.globalCompositeOperation = 'destination-out';
       hauntCtx.fillStyle = `rgba(0,0,0,${decayOut})`;
       hauntCtx.fillRect(0,0,hauntCanvas.width,hauntCanvas.height);
 
-      // 2) Sharp reinforcement from meta-memory (recallCanvas)
+      // sharp reinforcement from meta-memory (recallCanvas only)
       hauntCtx.save();
       hauntCtx.globalCompositeOperation = 'source-over';
       hauntCtx.globalAlpha = Math.min(1, 0.55 * stick);
       hauntCtx.drawImage(recallCanvas,0,0);
       hauntCtx.restore();
 
-      // 3) Subtle multiply tint that preserves edges/luminance
+      // subtle color tone that preserves edges (no halo)
       hauntCtx.save();
       hauntCtx.globalCompositeOperation = 'multiply';
       hauntCtx.globalAlpha = 0.15;
@@ -471,7 +481,7 @@
       hauntCtx.fillRect(0,0,hauntCanvas.width,hauntCanvas.height);
       hauntCtx.restore();
 
-      // 4) Composite onto final
+      // composite onto final
       fctx.globalCompositeOperation = 'screen';
       fctx.drawImage(hauntCanvas,0,0);
       fctx.globalCompositeOperation = 'source-over';

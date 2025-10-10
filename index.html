@@ -155,6 +155,14 @@
     <div class="row"><label>Span (s)</label><input id="recallSpan" type="range" min="0" max="3" step="0.1" value="0.8"><span id="recallSpanV">0.8</span></div>
     <div class="btnRow"><button id="recallNow" class="btn">Recall now</button></div>
 
+    <!-- Haunt Map (long-term resonance) -->
+    <div class="group">Haunt Map</div>
+    <div class="row compact"><label>Enable haunt map</label><input id="hauntOn" type="checkbox"></div>
+    <div class="row"><label>Persistence</label><input id="hauntPersist" type="range" min="0" max="1" step="0.01" value="0.85"><span id="hauntPersistV">0.85</span></div>
+    <div class="row"><label>Reinforce radius (px)</label><input id="hauntRadius" type="range" min="10" max="60" step="1" value="30"><span id="hauntRadiusV">30</span></div>
+    <div class="row"><label>Stickiness</label><input id="hauntStick" type="range" min="0" max="2" step="0.1" value="1.3"><span id="hauntStickV">1.3</span></div>
+    <div class="row compact"><label>Haunt color</label><input id="hauntColor" type="color" value="#4a5e8a"></div>
+
     <!-- Export (at the very bottom) -->
     <div class="group">Export</div>
     <div class="row compact">
@@ -260,6 +268,7 @@
   const maskCanvas = document.createElement('canvas'); const maskCtx = maskCanvas.getContext('2d');
   const colCanvas = document.createElement('canvas'); const colCtx = colCanvas.getContext('2d');
   const recallCanvas = document.createElement('canvas'); const recallCtx = recallCanvas.getContext('2d');
+  const hauntCanvas = document.createElement('canvas'); const hauntCtx = hauntCanvas.getContext('2d');
 
   function fit(){
     const dpr = Math.max(1, window.devicePixelRatio||1);
@@ -268,6 +277,7 @@
     const H = Math.max(2, Math.ceil(r.height*dpr));
     for(const k in can){ can[k].width=W; can[k].height=H; }
     proc.width=W; proc.height=H; maskCanvas.width=W; maskCanvas.height=H; colCanvas.width=W; colCanvas.height=H; recallCanvas.width=W; recallCanvas.height=H;
+    hauntCanvas.width=W; hauntCanvas.height=H;
   }
   new ResizeObserver(fit).observe(can.final); fit();
 
@@ -323,7 +333,7 @@
   shotBtn.addEventListener('click', ()=>{ const a=document.createElement('a'); a.download='still_'+Date.now()+'.png'; a.href=can.final.toDataURL('image/png'); a.click(); });
 
   /* ---------- Replay ---------- */
-  function resetState(){ buf.length=0; sctx.clearRect(0,0,can.stain.width,can.stain.height); gctx.clearRect(0,0,can.ghost.width,can.ghost.height); recallBank.length=0; recallCtx.clearRect(0,0,recallCanvas.width,recallCanvas.height); activeBurst=null; }
+  function resetState(){ buf.length=0; sctx.clearRect(0,0,can.stain.width,can.stain.height); gctx.clearRect(0,0,can.ghost.width,can.ghost.height); recallBank.length=0; recallCtx.clearRect(0,0,recallCanvas.width,recallCanvas.height); activeBurst=null; hauntCtx.clearRect(0,0,hauntCanvas.width,hauntCanvas.height); }
   function replay(){
     if(vid.srcObject){ alert('Replay is for file/URL clips. Stop Webcam and load a clip to use Replay.'); return; }
     if(!vid.currentSrc && !vid.src){ alert('No clip loaded.'); return; }
@@ -366,6 +376,25 @@
   }
   if(recallNowB) recallNowB.addEventListener('click', ()=>{ recallBurst+=1; });
   function drawTinted(dstCtx,src,color){ dstCtx.globalCompositeOperation='source-over'; dstCtx.drawImage(src,0,0); dstCtx.globalCompositeOperation='source-in'; dstCtx.fillStyle=color||'#00e7ff'; dstCtx.fillRect(0,0,recallCanvas.width,recallCanvas.height); dstCtx.globalCompositeOperation='source-over'; }
+
+  /* ---------- Haunt Map (controls) ---------- */
+  const hauntOn      = document.getElementById('hauntOn');
+  const hauntPersist = document.getElementById('hauntPersist');
+  const hauntRadius  = document.getElementById('hauntRadius');
+  const hauntStick   = document.getElementById('hauntStick');
+  const hauntColor   = document.getElementById('hauntColor');
+
+  const hauntPersistV= document.getElementById('hauntPersistV');
+  const hauntRadiusV = document.getElementById('hauntRadiusV');
+  const hauntStickV  = document.getElementById('hauntStickV');
+
+  function syncHaunt(){
+    if(hauntPersistV) hauntPersistV.textContent = (+hauntPersist.value).toFixed(2);
+    if(hauntRadiusV)  hauntRadiusV.textContent  = hauntRadius.value;
+    if(hauntStickV)   hauntStickV.textContent   = (+hauntStick.value).toFixed(1);
+  }
+  [hauntOn,hauntPersist,hauntRadius,hauntStick,hauntColor].forEach(x=>x&&x.addEventListener('input',syncHaunt));
+  syncHaunt();
 
   /* ---------- Main loop ---------- */
   let lastT=performance.now(), fpsEMA=0, suspendLive=false;
@@ -415,6 +444,48 @@
     if(activeBurst && activeBurst.frames && activeBurst.frames.length){ const color=recallColor?recallColor.value:'#00e7ff'; drawTinted(recallCtx,activeBurst.frames[activeBurst.i],color); activeBurst.i++; if(activeBurst.i>=activeBurst.frames.length) activeBurst=null; }
     fctx.globalCompositeOperation='screen'; fctx.drawImage(recallCanvas,0,0); fctx.globalCompositeOperation='source-over';
 
+    /* ---------- Haunt Map (long-term resonance) ---------- */
+    if(hauntOn && hauntOn.checked){
+      const p = Math.max(0, Math.min(1, +hauntPersist.value || 0.85));    // 0..1
+      const stick = +hauntStick.value || 1.3;
+      const rad = (+hauntRadius.value|0) || 30;
+
+      // 1) Decay existing haunts (p controls how slowly we forget)
+      const decayOut = 0.3 * p; // 0..0.3 removal per frame
+      hauntCtx.globalCompositeOperation = 'destination-out';
+      hauntCtx.fillStyle = `rgba(0,0,0,${decayOut})`;
+      hauntCtx.fillRect(0,0,hauntCanvas.width,hauntCanvas.height);
+
+      // 2) Reinforce from meta-memory (recall) & from fresh motion (mask)
+      //    a) recalls (memory of memory) — stronger effect
+      hauntCtx.save();
+      if(rad>0) hauntCtx.filter = `blur(${rad}px)`;
+      hauntCtx.globalCompositeOperation = 'source-over';
+      hauntCtx.globalAlpha = Math.min(1, 0.35 * stick);
+      hauntCtx.drawImage(recallCanvas,0,0);
+      hauntCtx.restore();
+
+      //    b) fresh motion (mask) — gentler reinforcement
+      hauntCtx.save();
+      if(rad>0) hauntCtx.filter = `blur(${Math.max(1, rad*0.6)}px)`;
+      hauntCtx.globalCompositeOperation = 'source-over';
+      hauntCtx.globalAlpha = Math.min(1, 0.18 * stick);
+      hauntCtx.drawImage(maskCanvas,0,0);
+      hauntCtx.restore();
+
+      // 3) Tint to haunt color
+      hauntCtx.save();
+      hauntCtx.globalCompositeOperation = 'source-in';
+      hauntCtx.fillStyle = (hauntColor && hauntColor.value) ? hauntColor.value : '#4a5e8a';
+      hauntCtx.fillRect(0,0,hauntCanvas.width,hauntCanvas.height);
+      hauntCtx.restore();
+
+      // 4) Composite onto final
+      fctx.globalCompositeOperation = 'screen';
+      fctx.drawImage(hauntCanvas,0,0);
+      fctx.globalCompositeOperation = 'source-over';
+    }
+
     const dt=now-lastT; lastT=now; const inst=dt>0?1000/dt:0; fpsEMA=fpsEMA?fpsEMA*0.9+inst*0.1:inst;
     const s=bestSupported(); dbg.textContent=`buffer: ${buf.length} | fps ~ ${fpsEMA.toFixed(1)} | support: ${s.canMp4?'MP4✓':'MP4×'}/${s.canWebm?'WebM✓':'WebM×'}`;
   });
@@ -445,8 +516,8 @@
     vid.pause(); vid.loop=false; vid.playbackRate=1;
 
     const nativeProcessing=!matchPreview.checked;
-    const prevSizes={W:can.final.width,H:can.final.height,sW:can.stain.width,sH:can.stain.height,gW:can.ghost.width,gH:can.ghost.height,pW:proc.width,pH:proc.height,mW:maskCanvas.width,mH:maskCanvas.height,cW:colCanvas.width,cH:colCanvas.height};
-    if(nativeProcessing){ [can.stain,can.ghost,can.final,proc,maskCanvas,colCanvas].forEach(c=>{ c.width=vw; c.height=vh; }); recallCanvas.width=vw; recallCanvas.height=vh; recallCtx.clearRect(0,0,recallCanvas.width,recallCanvas.height); }
+    const prevSizes={W:can.final.width,H:can.final.height,sW:can.stain.width,sH:can.stain.height,gW:can.ghost.width,gH:can.ghost.height,pW:proc.width,pH:proc.height,mW:maskCanvas.width,mH:maskCanvas.height,cW:colCanvas.width,cH:colCanvas.height,hW:hauntCanvas.width,hH:hauntCanvas.height};
+    if(nativeProcessing){ [can.stain,can.ghost,can.final,proc,maskCanvas,colCanvas,hauntCanvas].forEach(c=>{ c.width=vw; c.height=vh; }); recallCanvas.width=vw; recallCanvas.height=vh; recallCtx.clearRect(0,0,recallCanvas.width,recallCanvas.height); }
 
     function drawContain(srcCanvas,dstCtx,dstW,dstH){ const sw=srcCanvas.width, sh=srcCanvas.height; const s=Math.min(dstW/sw,dstH/sh); const dw=Math.round(sw*s), dh=Math.round(sh*s); const dx=Math.floor((dstW-dw)/2), dy=Math.floor((dstH-dh)/2); dstCtx.clearRect(0,0,dstW,dstH); dstCtx.drawImage(srcCanvas,dx,dy,dw,dh); }
     function blitToOut(){ if(matchPreview.checked) drawContain(can.final,octx,vw,vh); else { octx.clearRect(0,0,vw,vh); octx.drawImage(can.final,0,0,vw,vh); } }
@@ -485,6 +556,42 @@
       exportDecayStep();
       if(activeBurst && activeBurst.frames && activeBurst.frames.length){ const color=recallColor?recallColor.value:'#00e7ff'; drawTinted(recallCtx,activeBurst.frames[activeBurst.i],color); activeBurst.i++; if(activeBurst.i>=activeBurst.frames.length) activeBurst=null; }
       fctx.globalCompositeOperation='screen'; fctx.drawImage(recallCanvas,0,0); fctx.globalCompositeOperation='source-over';
+
+      /* Haunt Map during export (same as preview) */
+      if(hauntOn && hauntOn.checked){
+        const p = Math.max(0, Math.min(1, +hauntPersist.value || 0.85));
+        const stick = +hauntStick.value || 1.3;
+        const rad = (+hauntRadius.value|0) || 30;
+
+        const decayOut = 0.3 * p;
+        hauntCtx.globalCompositeOperation = 'destination-out';
+        hauntCtx.fillStyle = `rgba(0,0,0,${decayOut})`;
+        hauntCtx.fillRect(0,0,hauntCanvas.width,hauntCanvas.height);
+
+        hauntCtx.save();
+        if(rad>0) hauntCtx.filter = `blur(${rad}px)`;
+        hauntCtx.globalCompositeOperation = 'source-over';
+        hauntCtx.globalAlpha = Math.min(1, 0.35 * stick);
+        hauntCtx.drawImage(recallCanvas,0,0);
+        hauntCtx.restore();
+
+        hauntCtx.save();
+        if(rad>0) hauntCtx.filter = `blur(${Math.max(1, rad*0.6)}px)`;
+        hauntCtx.globalCompositeOperation = 'source-over';
+        hauntCtx.globalAlpha = Math.min(1, 0.18 * stick);
+        hauntCtx.drawImage(maskCanvas,0,0);
+        hauntCtx.restore();
+
+        hauntCtx.save();
+        hauntCtx.globalCompositeOperation = 'source-in';
+        hauntCtx.fillStyle = (hauntColor && hauntColor.value) ? hauntColor.value : '#4a5e8a';
+        hauntCtx.fillRect(0,0,hauntCanvas.width,hauntCanvas.height);
+        hauntCtx.restore();
+
+        fctx.globalCompositeOperation = 'screen';
+        fctx.drawImage(hauntCanvas,0,0);
+        fctx.globalCompositeOperation = 'source-over';
+      }
     }
 
     await new Promise(res=>{ const h=()=>{vid.removeEventListener('seeked',h); res();}; vid.addEventListener('seeked',h); try{ vid.currentTime=0; }catch(_){ res(); } });
@@ -501,7 +608,15 @@
     const blob=new Blob(expChunks,{type:mime}); const a=document.createElement('a'); const tag=matchPreview.checked?'match':'native';
     a.download=`wind_on_wall_1x_${vw}x${vh}_${tag}_${Date.now()}.${ext}`; a.href=URL.createObjectURL(blob); a.click();
 
-    if(nativeProcessing){ can.final.width=prevSizes.W; can.final.height=prevSizes.H; can.stain.width=prevSizes.sW; can.stain.height=prevSizes.sH; can.ghost.width=prevSizes.gW; can.ghost.height=prevSizes.gH; proc.width=prevSizes.pW; proc.height=prevSizes.pH; maskCanvas.width=prevSizes.mW; maskCanvas.height=prevSizes.mH; colCanvas.width=prevSizes.cW; colCanvas.height=prevSizes.cH; }
+    if(nativeProcessing){
+      can.final.width=prevSizes.W; can.final.height=prevSizes.H;
+      can.stain.width=prevSizes.sW; can.stain.height=prevSizes.sH;
+      can.ghost.width=prevSizes.gW; can.ghost.height=prevSizes.gH;
+      proc.width=prevSizes.pW; proc.height=prevSizes.pH;
+      maskCanvas.width=prevSizes.mW; maskCanvas.height=prevSizes.mH;
+      colCanvas.width=prevSizes.cW; colCanvas.height=prevSizes.cH;
+      hauntCanvas.width=prevSizes.hW; hauntCanvas.height=prevSizes.hH;
+    }
     vid.loop=prev.loop; vid.playbackRate=prev.rate; try{ vid.currentTime=prev.t; }catch(_){}
     if(!prev.paused){ try{ await vid.play(); }catch(_){ } }
     exportOneBtn.disabled=false; recStartBtn.disabled=false;

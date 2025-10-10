@@ -182,7 +182,7 @@
   </aside>
 </div>
 
-<!-- ===== SCRIPT: functionality (unchanged except tiny fixes noted) ===== -->
+<!-- ===== SCRIPT: functionality (only the Haunt logic changed to avoid full-screen tint) ===== -->
 <script>
 (function(){
   /* ---------- Elements ---------- */
@@ -262,7 +262,6 @@
     try{ await vid.play(); }catch(_){ throw new Error('Autoplay failed. Click Play or allow autoplay.'); }
   }
 
-  /* FIXED: proper closing brace restored */
   function stopWebcam(){
     if(mediaStream){
       try{ mediaStream.getTracks().forEach(t=>t.stop()); }catch(_){}
@@ -390,7 +389,7 @@
   /* ---------- Haunt Map (controls) ---------- */
   const hauntOn      = document.getElementById('hauntOn');
   const hauntPersist = document.getElementById('hauntPersist');
-  const hauntRadius  = document.getElementById('hauntRadius'); // retained; not used in sharp mode
+  const hauntRadius  = document.getElementById('hauntRadius'); // retained (not used in sharp mode)
   const hauntStick   = document.getElementById('hauntStick');
   const hauntColor   = document.getElementById('hauntColor');
 
@@ -454,34 +453,34 @@
     if(activeBurst && activeBurst.frames && activeBurst.frames.length){ const color=recallColor?recallColor.value:'#00e7ff'; drawTinted(recallCtx,activeBurst.frames[activeBurst.i],color); activeBurst.i++; if(activeBurst.i>=activeBurst.frames.length) activeBurst=null; }
     fctx.globalCompositeOperation='screen'; fctx.drawImage(recallCanvas,0,0); fctx.globalCompositeOperation='source-over';
 
-    /* ---------- Haunt Map (long-term memory, sharp) ---------- */
+    /* ---------- Haunt Map (long-term memory, sharp; no full-screen tint) ---------- */
     if(hauntOn && hauntOn.checked){
       const p     = Math.max(0, Math.min(1, +hauntPersist.value || 0.85)); // 0..1
       const stick = +hauntStick.value || 1.3;
       const tint  = (hauntColor && hauntColor.value) ? hauntColor.value : '#4a5e8a';
 
-      // fade existing memory: higher p = slower fade
-      const decayOut = 0.3 * p; // removal per frame
+      // 1) Decay existing memory (higher p = slower decay)
+      const decayOut = 0.3 * p;
       hauntCtx.globalCompositeOperation = 'destination-out';
       hauntCtx.fillStyle = `rgba(0,0,0,${decayOut})`;
       hauntCtx.fillRect(0,0,hauntCanvas.width,hauntCanvas.height);
 
-      // sharp reinforcement from meta-memory (recallCanvas only)
+      // 2) Reinforce with current recall shapes (sharp). If no recalls, this adds nothing.
       hauntCtx.save();
       hauntCtx.globalCompositeOperation = 'source-over';
       hauntCtx.globalAlpha = Math.min(1, 0.55 * stick);
       hauntCtx.drawImage(recallCanvas,0,0);
       hauntCtx.restore();
 
-      // subtle color tone that preserves edges (no halo)
+      // 3) Colorize ONLY where memory pixels exist (avoid full-canvas tint)
       hauntCtx.save();
-      hauntCtx.globalCompositeOperation = 'multiply';
-      hauntCtx.globalAlpha = 0.15;
+      hauntCtx.globalCompositeOperation = 'source-atop'; // restrict fill to existing non-transparent haunt pixels
+      hauntCtx.globalAlpha = 0.18;                       // subtle tone
       hauntCtx.fillStyle = tint;
       hauntCtx.fillRect(0,0,hauntCanvas.width,hauntCanvas.height);
       hauntCtx.restore();
 
-      // composite onto final
+      // 4) Composite onto final
       fctx.globalCompositeOperation = 'screen';
       fctx.drawImage(hauntCanvas,0,0);
       fctx.globalCompositeOperation = 'source-over';
@@ -558,7 +557,7 @@
       if(activeBurst && activeBurst.frames && activeBurst.frames.length){ const color=recallColor?recallColor.value:'#00e7ff'; drawTinted(recallCtx,activeBurst.frames[activeBurst.i],color); activeBurst.i++; if(activeBurst.i>=activeBurst.frames.length) activeBurst=null; }
       fctx.globalCompositeOperation='screen'; fctx.drawImage(recallCanvas,0,0); fctx.globalCompositeOperation='source-over';
 
-      /* Haunt Map during export (sharp) */
+      /* Haunt Map during export (sharp; no full-screen tint) */
       if(hauntOn && hauntOn.checked){
         const p     = Math.max(0, Math.min(1, +hauntPersist.value || 0.85));
         const stick = +hauntStick.value || 1.3;
@@ -575,9 +574,10 @@
         hauntCtx.drawImage(recallCanvas,0,0);
         hauntCtx.restore();
 
+        // Colorize only where haunt pixels exist
         hauntCtx.save();
-        hauntCtx.globalCompositeOperation = 'multiply';
-        hauntCtx.globalAlpha = 0.15;
+        hauntCtx.globalCompositeOperation = 'source-atop';
+        hauntCtx.globalAlpha = 0.18;
         hauntCtx.fillStyle = tint;
         hauntCtx.fillRect(0,0,hauntCanvas.width,hauntCanvas.height);
         hauntCtx.restore();

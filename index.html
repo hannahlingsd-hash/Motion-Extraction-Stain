@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -183,7 +182,7 @@
   </aside>
 </div>
 
-<!-- ===== SCRIPT: functionality (unchanged, Auto format) ===== -->
+<!-- ===== SCRIPT: functionality (Haunt uses sharp recall accumulation; UI untouched) ===== -->
 <script>
 (function(){
   /* ---------- Elements ---------- */
@@ -277,8 +276,7 @@
     const W = Math.max(2, Math.ceil(r.width*dpr));
     const H = Math.max(2, Math.ceil(r.height*dpr));
     for(const k in can){ can[k].width=W; can[k].height=H; }
-    proc.width=W; proc.height=H; maskCanvas.width=W; maskCanvas.height=H; colCanvas.width=W; colCanvas.height=H; recallCanvas.width=W; recallCanvas.height=H;
-    hauntCanvas.width=W; hauntCanvas.height=H;
+    proc.width=W; proc.height=H; maskCanvas.width=W; maskCanvas.height=H; colCanvas.width=W; colCanvas.height=H; recallCanvas.width=W; recallCanvas.height=H; hauntCanvas.width=W; hauntCanvas.height=H;
   }
   new ResizeObserver(fit).observe(can.final); fit();
 
@@ -381,7 +379,7 @@
   /* ---------- Haunt Map (controls) ---------- */
   const hauntOn      = document.getElementById('hauntOn');
   const hauntPersist = document.getElementById('hauntPersist');
-  const hauntRadius  = document.getElementById('hauntRadius');
+  const hauntRadius  = document.getElementById('hauntRadius'); // retained (not used here)
   const hauntStick   = document.getElementById('hauntStick');
   const hauntColor   = document.getElementById('hauntColor');
 
@@ -445,45 +443,28 @@
     if(activeBurst && activeBurst.frames && activeBurst.frames.length){ const color=recallColor?recallColor.value:'#00e7ff'; drawTinted(recallCtx,activeBurst.frames[activeBurst.i],color); activeBurst.i++; if(activeBurst.i>=activeBurst.frames.length) activeBurst=null; }
     fctx.globalCompositeOperation='screen'; fctx.drawImage(recallCanvas,0,0); fctx.globalCompositeOperation='source-over';
 
-    /* ---------- Haunt Map (long-term resonance) ---------- */
+    /* ---------- Haunt Map (sharp accumulator; visible) ---------- */
     if(hauntOn && hauntOn.checked){
-      const p = Math.max(0, Math.min(1, +hauntPersist.value || 0.85));    // 0..1
+      const p     = Math.max(0, Math.min(1, +hauntPersist.value || 0.85)); // higher = slower fade
       const stick = +hauntStick.value || 1.3;
-      const rad = (+hauntRadius.value|0) || 30;
 
-      // 1) Decay existing haunts (p controls how slowly we forget)
-      const decayOut = 0.3 * p; // 0..0.3 removal per frame
+      // very gentle decay each frame
+      const decayOut = Math.max(0.001, 0.06 * (1 - p));
       hauntCtx.globalCompositeOperation = 'destination-out';
       hauntCtx.fillStyle = `rgba(0,0,0,${decayOut})`;
       hauntCtx.fillRect(0,0,hauntCanvas.width,hauntCanvas.height);
 
-      // 2) Reinforce from meta-memory (recall) & from fresh motion (mask)
-      //    a) recalls (memory of memory) — stronger effect
-      hauntCtx.save();
-      if(rad>0) hauntCtx.filter = `blur(${rad}px)`;
-      hauntCtx.globalCompositeOperation = 'source-over';
-      hauntCtx.globalAlpha = Math.min(1, 0.35 * stick);
+      // reinforce with current recall (sharp), additive
+      hauntCtx.globalCompositeOperation = 'lighter';
+      hauntCtx.globalAlpha = Math.min(1, 0.55 * stick);
       hauntCtx.drawImage(recallCanvas,0,0);
-      hauntCtx.restore();
+      hauntCtx.globalAlpha = 1;
 
-      //    b) fresh motion (mask) — gentler reinforcement
-      hauntCtx.save();
-      if(rad>0) hauntCtx.filter = `blur(${Math.max(1, rad*0.6)}px)`;
-      hauntCtx.globalCompositeOperation = 'source-over';
-      hauntCtx.globalAlpha = Math.min(1, 0.18 * stick);
-      hauntCtx.drawImage(maskCanvas,0,0);
-      hauntCtx.restore();
-
-      // 3) Tint to haunt color
-      hauntCtx.save();
-      hauntCtx.globalCompositeOperation = 'source-in';
-      hauntCtx.fillStyle = (hauntColor && hauntColor.value) ? hauntColor.value : '#4a5e8a';
-      hauntCtx.fillRect(0,0,hauntCanvas.width,hauntCanvas.height);
-      hauntCtx.restore();
-
-      // 4) Composite onto final
+      // draw to final
       fctx.globalCompositeOperation = 'screen';
+      fctx.globalAlpha = 0.85;
       fctx.drawImage(hauntCanvas,0,0);
+      fctx.globalAlpha = 1;
       fctx.globalCompositeOperation = 'source-over';
     }
 
@@ -558,39 +539,25 @@
       if(activeBurst && activeBurst.frames && activeBurst.frames.length){ const color=recallColor?recallColor.value:'#00e7ff'; drawTinted(recallCtx,activeBurst.frames[activeBurst.i],color); activeBurst.i++; if(activeBurst.i>=activeBurst.frames.length) activeBurst=null; }
       fctx.globalCompositeOperation='screen'; fctx.drawImage(recallCanvas,0,0); fctx.globalCompositeOperation='source-over';
 
-      /* Haunt Map during export (same as preview) */
+      /* Haunt Map during export (same as live) */
       if(hauntOn && hauntOn.checked){
-        const p = Math.max(0, Math.min(1, +hauntPersist.value || 0.85));
+        const p     = Math.max(0, Math.min(1, +hauntPersist.value || 0.85));
         const stick = +hauntStick.value || 1.3;
-        const rad = (+hauntRadius.value|0) || 30;
 
-        const decayOut = 0.3 * p;
+        const decayOut = Math.max(0.001, 0.06 * (1 - p));
         hauntCtx.globalCompositeOperation = 'destination-out';
         hauntCtx.fillStyle = `rgba(0,0,0,${decayOut})`;
         hauntCtx.fillRect(0,0,hauntCanvas.width,hauntCanvas.height);
 
-        hauntCtx.save();
-        if(rad>0) hauntCtx.filter = `blur(${rad}px)`;
-        hauntCtx.globalCompositeOperation = 'source-over';
-        hauntCtx.globalAlpha = Math.min(1, 0.35 * stick);
+        hauntCtx.globalCompositeOperation = 'lighter';
+        hauntCtx.globalAlpha = Math.min(1, 0.55 * stick);
         hauntCtx.drawImage(recallCanvas,0,0);
-        hauntCtx.restore();
-
-        hauntCtx.save();
-        if(rad>0) hauntCtx.filter = `blur(${Math.max(1, rad*0.6)}px)`;
-        hauntCtx.globalCompositeOperation = 'source-over';
-        hauntCtx.globalAlpha = Math.min(1, 0.18 * stick);
-        hauntCtx.drawImage(maskCanvas,0,0);
-        hauntCtx.restore();
-
-        hauntCtx.save();
-        hauntCtx.globalCompositeOperation = 'source-in';
-        hauntCtx.fillStyle = (hauntColor && hauntColor.value) ? hauntColor.value : '#4a5e8a';
-        hauntCtx.fillRect(0,0,hauntCanvas.width,hauntCanvas.height);
-        hauntCtx.restore();
+        hauntCtx.globalAlpha = 1;
 
         fctx.globalCompositeOperation = 'screen';
+        fctx.globalAlpha = 0.85;
         fctx.drawImage(hauntCanvas,0,0);
+        fctx.globalAlpha = 1;
         fctx.globalCompositeOperation = 'source-over';
       }
     }

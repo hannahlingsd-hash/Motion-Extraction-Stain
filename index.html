@@ -13,11 +13,10 @@
     --track-bg:#cfcfcf;          /* slider remainder (light grey) */
   }
   html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:13px/1.45 Arial, Helvetica, sans-serif}
-  body{overflow:hidden;} /* prevent page from introducing extra seams */
+  body{overflow:hidden;}
   *{box-sizing:border-box;border-radius:0}
   button,input,select,label{font:inherit;color:var(--fg);background:#fff;margin:0}
 
-  /* Layout: big stage + one right panel */
   .wrap{
     display:grid;
     grid-template-columns: minmax(0,1fr) var(--colR);
@@ -29,19 +28,18 @@
     width:100%;
     height:100%;
     aspect-ratio:16/9;
-    background:#fff;           /* match page so borders “disappear” */
-    overflow:hidden;           /* hides any subpixel edges */
+    background:#fff;
+    overflow:hidden;
   }
   canvas{
     position:absolute; inset:0;
     width:100%; height:100%;
     object-fit:contain;
-    background:#000;           /* visible frame when idle */
+    background:#000;
     border:0; outline:0; box-shadow:none; display:block;
-    transform:translateZ(0.001px); /* kills subpixel seams */
+    transform:translateZ(0.001px);
   }
 
-  /* Right panel rhythm */
   aside.panel{padding-top:4px; padding-right:14px; padding-left:4px; overflow:auto; scrollbar-width:thin}
   aside.panel::-webkit-scrollbar{width:10px}
   aside.panel::-webkit-scrollbar-thumb{background:#bbb}
@@ -53,20 +51,16 @@
   .row > span{text-align:right;color:#000}
   .row label{color:var(--fg)}
 
-  /* Compact button rows */
   .btnRow{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
   .inlineRow{display:flex;align-items:center;gap:8px;margin:6px 0}
 
-  /* Export buttons laid out horizontally, then full-width 1:1 */
   .exportGrid{display:grid;gap:8px;margin:6px 0;grid-template-columns:1fr 1fr 1fr}
   .exportGrid .full{grid-column:1 / -1}
 
-  /* Buttons */
   .btn{appearance:none;background:#fff;color:#000;border:1px solid var(--line);padding:6px 10px;cursor:pointer}
   .btn.secondary{background:#fff}
   .btn:disabled{opacity:.5;cursor:not-allowed}
 
-  /* Sliders: darker left, light right, black knob */
   input[type="range"]{appearance:none;height:2px;outline:none;background:linear-gradient(to right,var(--track-fill) 0 var(--p,0%),var(--track-bg) var(--p,0%) 100%)}
   input[type="range"]::-webkit-slider-thumb{appearance:none;width:10px;height:10px;background:#000;border:1px solid #000}
   input[type="range"]::-moz-range-thumb{width:10px;height:10px;background:#000;border:1px solid #000}
@@ -75,7 +69,6 @@
 
   input[type="color"]{width:32px;height:22px;border:1px solid #000;background:#fff;padding:0}
 
-  /* Hide debug HUD overlay */
   .hud{display:none!important}
   .rec{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.6);color:#fff;padding:6px 10px;display:flex;align-items:center;gap:8px}
   .dot{width:8px;height:8px;background:#ff5b5b}
@@ -87,7 +80,6 @@
 
 <body>
 <div class="wrap">
-  <!-- CENTER: big stage -->
   <main>
     <div class="stage">
       <canvas id="stain"></canvas>
@@ -100,9 +92,7 @@
     </div>
   </main>
 
-  <!-- RIGHT: ALL controls (import/play/export + parameters) -->
   <aside class="panel">
-    <!-- Import / transport -->
     <div class="group">Source</div>
     <div class="btnRow">
       <input id="file" type="file" accept="video/*">
@@ -113,7 +103,6 @@
       <button id="replay" class="btn secondary">Replay</button>
     </div>
 
-    <!-- Parameters -->
     <div class="group">Temporal window</div>
     <div class="row"><label>Δt (seconds)</label><input id="dt" type="range" min="2" max="10" step="0.5" value="6"><span id="dtV">6.0</span></div>
     <div class="row"><label>Diff threshold</label><input id="thr" type="range" min="4" max="60" value="26"><span id="thrV">26</span></div>
@@ -163,7 +152,6 @@
     <div class="row"><label>Stickiness</label><input id="hauntStick" type="range" min="0" max="2" step="0.1" value="1.3"><span id="hauntStickV">1.3</span></div>
     <div class="row compact"><label>Haunt color</label><input id="hauntColor" type="color" value="#4a5e8a"></div>
 
-    <!-- Export (at the very bottom) -->
     <div class="group">Export</div>
     <div class="row compact">
       <label for="matchPreview">Match preview</label>
@@ -182,7 +170,6 @@
   </aside>
 </div>
 
-<!-- ===== SCRIPT: functionality (only the Haunt logic changed to avoid full-screen tint) ===== -->
 <script>
 (function(){
   /* ---------- Elements ---------- */
@@ -261,7 +248,6 @@
     await new Promise(res=>{ if(vid.readyState>=1) return res(); vid.addEventListener('loadedmetadata',res,{once:true}); });
     try{ await vid.play(); }catch(_){ throw new Error('Autoplay failed. Click Play or allow autoplay.'); }
   }
-
   function stopWebcam(){
     if(mediaStream){
       try{ mediaStream.getTracks().forEach(t=>t.stop()); }catch(_){}
@@ -278,6 +264,7 @@
   const colCanvas = document.createElement('canvas'); const colCtx = colCanvas.getContext('2d');
   const recallCanvas = document.createElement('canvas'); const recallCtx = recallCanvas.getContext('2d');
   const hauntCanvas = document.createElement('canvas'); const hauntCtx = hauntCanvas.getContext('2d');
+  const tintCanvas = document.createElement('canvas'); const tintCtx = tintCanvas.getContext('2d');
 
   function fit(){
     const dpr = Math.max(1, window.devicePixelRatio||1);
@@ -285,8 +272,12 @@
     const W = Math.max(2, Math.ceil(r.width*dpr));
     const H = Math.max(2, Math.ceil(r.height*dpr));
     for(const k in can){ can[k].width=W; can[k].height=H; }
-    proc.width=W; proc.height=H; maskCanvas.width=W; maskCanvas.height=H; colCanvas.width=W; colCanvas.height=H; recallCanvas.width=W; recallCanvas.height=H;
+    proc.width=W; proc.height=H;
+    maskCanvas.width=W; maskCanvas.height=H;
+    colCanvas.width=W; colCanvas.height=H;
+    recallCanvas.width=W; recallCanvas.height=H;
     hauntCanvas.width=W; hauntCanvas.height=H;
+    tintCanvas.width=W; tintCanvas.height=H;
   }
   new ResizeObserver(fit).observe(can.final); fit();
 
@@ -302,7 +293,7 @@
     ctx.restore();
   }
 
-  /* ---------- Recording (Auto) ---------- */
+  /* ---------- Recording ---------- */
   let recorder=null, chunks=[], recStartTime=0, recTimer=null, recMime="", recExt="webm";
   function bestSupported(){
     const mp4='video/mp4;codecs=avc1.42E01E,mp4a.40.2', webm='video/webm;codecs=vp9,opus', webm2='video/webm;codecs=vp8,opus';
@@ -342,17 +333,35 @@
   shotBtn.addEventListener('click', ()=>{ const a=document.createElement('a'); a.download='still_'+Date.now()+'.png'; a.href=can.final.toDataURL('image/png'); a.click(); });
 
   /* ---------- Replay ---------- */
-  function resetState(){ buf.length=0; sctx.clearRect(0,0,can.stain.width,can.stain.height); gctx.clearRect(0,0,can.ghost.width,can.ghost.height); recallBank.length=0; recallCtx.clearRect(0,0,recallCanvas.width,recallCanvas.height); activeBurst=null; hauntCtx.clearRect(0,0,hauntCanvas.width,hauntCanvas.height); }
+  function resetState(){
+    buf.length=0;
+    sctx.clearRect(0,0,can.stain.width,can.stain.height);
+    gctx.clearRect(0,0,can.ghost.width,can.ghost.height);
+    recallBank.length=0;
+    recallCtx.clearRect(0,0,recallCanvas.width,recallCanvas.height);
+    activeBurst=null;
+    hauntCtx.clearRect(0,0,hauntCanvas.width,hauntCanvas.height);
+  }
   function replay(){
     if(vid.srcObject){ alert('Replay is for file/URL clips. Stop Webcam and load a clip to use Replay.'); return; }
     if(!vid.currentSrc && !vid.src){ alert('No clip loaded.'); return; }
     if(recorder && recorder.state==='recording'){ stopRecording(); }
-    try{ vid.pause(); resetState(); const onSeeked=()=>{ vid.removeEventListener('seeked',onSeeked); vid.play(); }; vid.addEventListener('seeked',onSeeked,{once:true}); vid.currentTime=0; }
-    catch(e){ const s=vid.currentSrc || vid.src; if(s){ resetState(); vid.src=s; vid.play(); } }
+    try{
+      vid.pause(); resetState();
+      const onSeeked=()=>{ vid.removeEventListener('seeked',onSeeked); vid.play(); };
+      vid.addEventListener('seeked',onSeeked,{once:true}); vid.currentTime=0;
+    }catch(e){
+      const s=vid.currentSrc || vid.src; if(s){ resetState(); vid.src=s; vid.play(); }
+    }
   }
   replayBtn.addEventListener('click', replay);
   replayFloat.addEventListener('click', replay);
-  document.addEventListener('keydown', (e)=>{ const t=e.target; if(t&&(t.tagName==='INPUT'||t.tagName==='SELECT'||t.tagName==='TEXTAREA'||t.isContentEditable)) return; if(e.code==='KeyR'){ e.preventDefault(); replay(); } else if(e.code==='Space'){ e.preventDefault(); vid.paused?vid.play():vid.pause(); } });
+  document.addEventListener('keydown', (e)=>{
+    const t=e.target;
+    if(t&&(t.tagName==='INPUT'||t.tagName==='SELECT'||t.tagName==='TEXTAREA'||t.isContentEditable)) return;
+    if(e.code==='KeyR'){ e.preventDefault(); replay(); }
+    else if(e.code==='Space'){ e.preventDefault(); vid.paused?vid.play():vid.pause(); }
+  });
 
   /* ---------- Recall ---------- */
   const recallOn = document.getElementById('recallOn');
@@ -363,14 +372,21 @@
   const recallLinger=document.getElementById('recallLinger'); const recallLingerV=document.getElementById('recallLingerV');
   const recallSpan=document.getElementById('recallSpan'); const recallSpanV=document.getElementById('recallSpanV');
 
-  function syncRecall(){ if(recallProbV)recallProbV.textContent=(+recallProb.value).toFixed(2); if(recallCapV)recallCapV.textContent=recallCap.value; if(recallLingerV)recallLingerV.textContent=(+recallLinger.value).toFixed(1); if(recallSpanV)recallSpanV.textContent=(+recallSpan.value).toFixed(1); }
-  [recallOn,recallProb,recallCap,recallColor,recallLinger,recallSpan].forEach(x=>x&&x.addEventListener('input',syncRecall)); syncRecall();
+  function syncRecall(){
+    if(recallProbV)recallProbV.textContent=(+recallProb.value).toFixed(2);
+    if(recallCapV)recallCapV.textContent=recallCap.value;
+    if(recallLingerV)recallLingerV.textContent=(+recallLinger.value).toFixed(1);
+    if(recallSpanV)recallSpanV.textContent=(+recallSpan.value).toFixed(1);
+  }
+  [recallOn,recallProb,recallCap,recallColor,recallLinger,recallSpan].forEach(x=>x&&x.addEventListener('input',syncRecall));
+  syncRecall();
 
   const recallBank=[]; let recallBurst=0; let activeBurst=null;
   function capRecallBank(max){ while(recallBank.length>max) recallBank.shift(); }
   async function snapshotGhost(tNow){
     try{
-      let img; if('createImageBitmap' in window) img=await createImageBitmap(can.ghost);
+      let img;
+      if('createImageBitmap' in window) img=await createImageBitmap(can.ghost);
       else { const c=document.createElement('canvas'); c.width=can.ghost.width; c.height=can.ghost.height; c.getContext('2d').drawImage(can.ghost,0,0); img=c; }
       recallBank.push({img,t:tNow}); capRecallBank((+recallCap.value|0)||40);
     }catch(_){}
@@ -384,12 +400,19 @@
     activeBurst={frames:frames.length?frames:[recallBank[r].img],i:0};
   }
   if(recallNowB) recallNowB.addEventListener('click', ()=>{ recallBurst+=1; });
-  function drawTinted(dstCtx,src,color){ dstCtx.globalCompositeOperation='source-over'; dstCtx.drawImage(src,0,0); dstCtx.globalCompositeOperation='source-in'; dstCtx.fillStyle=color||'#00e7ff'; dstCtx.fillRect(0,0,recallCanvas.width,recallCanvas.height); dstCtx.globalCompositeOperation='source-over'; }
+  function drawTinted(dstCtx,src,color){
+    dstCtx.globalCompositeOperation='source-over';
+    dstCtx.drawImage(src,0,0);
+    dstCtx.globalCompositeOperation='source-in';
+    dstCtx.fillStyle=color||'#00e7ff';
+    dstCtx.fillRect(0,0,recallCanvas.width,recallCanvas.height);
+    dstCtx.globalCompositeOperation='source-over';
+  }
 
   /* ---------- Haunt Map (controls) ---------- */
   const hauntOn      = document.getElementById('hauntOn');
   const hauntPersist = document.getElementById('hauntPersist');
-  const hauntRadius  = document.getElementById('hauntRadius'); // retained (not used in sharp mode)
+  const hauntRadius  = document.getElementById('hauntRadius'); // retained (not used here)
   const hauntStick   = document.getElementById('hauntStick');
   const hauntColor   = document.getElementById('hauntColor');
 
@@ -425,8 +448,14 @@
       const r=c[i], g=c[i+1], b=c[i+2]; const pr=p[i], pg=p[i+1], pb=p[i+2];
       const lc=r*0.2126+g*0.7152+b*0.0722; const lp=pr*0.2126+pg*0.7152+pb*0.0722; const d=Math.abs(lc-lp);
       if(d>thr){ changedCount++; mask[j]=255;
-        if(gUseColor.checked){ const a=Math.max(40,Math.min(255,(d-thr)*8)); const m=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(gColor.value); const cr=m?parseInt(m[1],16):255, cg=m?parseInt(m[2],16):255, cb=m?parseInt(m[3],16):255; gd[i]=cr; gd[i+1]=cg; gd[i+2]=cb; gd[i+3]=a; }
-        else { gd[i]=(r+(255-pr))*0.5; gd[i+1]=(g+(255-pg))*0.5; gd[i+2]=(b+(255-pb))*0.5; gd[i+3]=255; }
+        if(gUseColor.checked){
+          const a=Math.max(40,Math.min(255,(d-thr)*8));
+          const m=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(gColor.value);
+          const cr=m?parseInt(m[1],16):255, cg=m?parseInt(m[2],16):255, cb=m?parseInt(m[3],16):255;
+          gd[i]=cr; gd[i+1]=cg; gd[i+2]=cb; gd[i+3]=a;
+        } else {
+          gd[i]=(r+(255-pr))*0.5; gd[i+1]=(g+(255-pg))*0.5; gd[i+2]=(b+(255-pb))*0.5; gd[i+3]=255;
+        }
       } else { gd[i]=gd[i+1]=gd[i+2]=0; gd[i+3]=0; }
     }
     gctx.putImageData(ghostImg,0,0);
@@ -453,36 +482,40 @@
     if(activeBurst && activeBurst.frames && activeBurst.frames.length){ const color=recallColor?recallColor.value:'#00e7ff'; drawTinted(recallCtx,activeBurst.frames[activeBurst.i],color); activeBurst.i++; if(activeBurst.i>=activeBurst.frames.length) activeBurst=null; }
     fctx.globalCompositeOperation='screen'; fctx.drawImage(recallCanvas,0,0); fctx.globalCompositeOperation='source-over';
 
-    /* ---------- Haunt Map (long-term memory, sharp; no full-screen tint) ---------- */
+    /* ---------- Haunt Map (alpha-accumulator; sharp & masked tint) ---------- */
     if(hauntOn && hauntOn.checked){
-      const p     = Math.max(0, Math.min(1, +hauntPersist.value || 0.85)); // 0..1
+      const p     = Math.max(0, Math.min(1, +hauntPersist.value || 0.85)); // 0..1 (higher = slower fade)
       const stick = +hauntStick.value || 1.3;
       const tint  = (hauntColor && hauntColor.value) ? hauntColor.value : '#4a5e8a';
 
-      // 1) Decay existing memory (higher p = slower decay)
-      const decayOut = 0.3 * p;
+      // 1) Fade existing memory uniformly (reduce alpha everywhere)
+      const decayOut = 0.3 * p;  // tuned small per frame
       hauntCtx.globalCompositeOperation = 'destination-out';
       hauntCtx.fillStyle = `rgba(0,0,0,${decayOut})`;
       hauntCtx.fillRect(0,0,hauntCanvas.width,hauntCanvas.height);
 
-      // 2) Reinforce with current recall shapes (sharp). If no recalls, this adds nothing.
-      hauntCtx.save();
-      hauntCtx.globalCompositeOperation = 'source-over';
-      hauntCtx.globalAlpha = Math.min(1, 0.55 * stick);
+      // 2) Add current recall (sharp). 'lighter' reinforces existing alpha where recalls overlap.
+      hauntCtx.globalCompositeOperation = 'lighter';
+      hauntCtx.globalAlpha = Math.min(1, 0.45 * stick);
       hauntCtx.drawImage(recallCanvas,0,0);
-      hauntCtx.restore();
+      hauntCtx.globalAlpha = 1;
 
-      // 3) Colorize ONLY where memory pixels exist (avoid full-canvas tint)
-      hauntCtx.save();
-      hauntCtx.globalCompositeOperation = 'source-atop'; // restrict fill to existing non-transparent haunt pixels
-      hauntCtx.globalAlpha = 0.18;                       // subtle tone
-      hauntCtx.fillStyle = tint;
-      hauntCtx.fillRect(0,0,hauntCanvas.width,hauntCanvas.height);
-      hauntCtx.restore();
+      // 3) Build a tinted image THROUGH the haunt alpha (no global wash)
+      tintCtx.clearRect(0,0,tintCanvas.width,tintCanvas.height);
+      // copy haunt alpha to tint canvas
+      tintCtx.globalCompositeOperation = 'copy';
+      tintCtx.drawImage(hauntCanvas,0,0);
+      // replace color with tint but keep the copied alpha
+      tintCtx.globalCompositeOperation = 'source-in';
+      tintCtx.fillStyle = tint;
+      tintCtx.globalAlpha = 0.22;
+      tintCtx.fillRect(0,0,tintCanvas.width,tintCanvas.height);
+      tintCtx.globalAlpha = 1;
+      tintCtx.globalCompositeOperation = 'source-over';
 
-      // 4) Composite onto final
+      // 4) Composite onto final (screen for luminous feel)
       fctx.globalCompositeOperation = 'screen';
-      fctx.drawImage(hauntCanvas,0,0);
+      fctx.drawImage(tintCanvas,0,0);
       fctx.globalCompositeOperation = 'source-over';
     }
 
@@ -492,7 +525,7 @@
 
   vid.addEventListener('loadeddata', ()=>{ vid.play().catch(()=>{}); });
 
-  /* ---------- Export 1:1 (Auto) ---------- */
+  /* ---------- Export 1:1 ---------- */
   exportOneBtn.addEventListener('click', exportSourceOnce);
   async function exportSourceOnce(){
     if(vid.srcObject){ alert('1:1 export is for file/URL clips, not webcam.'); return; }
@@ -505,7 +538,7 @@
     else if(s.canWebm){ mime=s.webm; ext='webm'; }
     else { alert('Export not supported on this browser. Try Safari (MP4) or Chrome/Firefox (WebM).'); return; }
 
-    exportOneBtn.disabled=true; recStartBtn.disabled=true; const prevSuspend=false; let suspendLive=prevSuspend;
+    exportOneBtn.disabled=true; recStartBtn.disabled=true; let suspendLive=false;
 
     const outCanvas=document.createElement('canvas'); outCanvas.width=vw; outCanvas.height=vh; const octx=outCanvas.getContext('2d');
     const expChunks=[]; const stream=outCanvas.captureStream?outCanvas.captureStream(30):outCanvas.mozCaptureStream(30);
@@ -516,10 +549,18 @@
     vid.pause(); vid.loop=false; vid.playbackRate=1;
 
     const nativeProcessing=!matchPreview.checked;
-    const prevSizes={W:can.final.width,H:can.final.height,sW:can.stain.width,sH:can.stain.height,gW:can.ghost.width,gH:can.ghost.height,pW:proc.width,pH:proc.height,mW:maskCanvas.width,mH:maskCanvas.height,cW:colCanvas.width,cH:colCanvas.height,hW:hauntCanvas.width,hH:hauntCanvas.height};
-    if(nativeProcessing){ [can.stain,can.ghost,can.final,proc,maskCanvas,colCanvas,hauntCanvas].forEach(c=>{ c.width=vw; c.height=vh; }); recallCanvas.width=vw; recallCanvas.height=vh; recallCtx.clearRect(0,0,recallCanvas.width,recallCanvas.height); }
+    const prevSizes={W:can.final.width,H:can.final.height,sW:can.stain.width,sH:can.stain.height,gW:can.ghost.width,gH:can.ghost.height,pW:proc.width,pH:proc.height,mW:maskCanvas.width,mH:maskCanvas.height,cW:colCanvas.width,cH:colCanvas.height,hW:hauntCanvas.width,hH:hauntCanvas.height,tW:tintCanvas.width,tH:tintCanvas.height};
+    if(nativeProcessing){
+      [can.stain,can.ghost,can.final,proc,maskCanvas,colCanvas,hauntCanvas,tintCanvas].forEach(c=>{ c.width=vw; c.height=vh; });
+      recallCanvas.width=vw; recallCanvas.height=vh; recallCtx.clearRect(0,0,recallCanvas.width,recallCanvas.height);
+    }
 
-    function drawContain(srcCanvas,dstCtx,dstW,dstH){ const sw=srcCanvas.width, sh=srcCanvas.height; const s=Math.min(dstW/sw,dstH/sh); const dw=Math.round(sw*s), dh=Math.round(sh*s); const dx=Math.floor((dstW-dw)/2), dy=Math.floor((dstH-dh)/2); dstCtx.clearRect(0,0,dstW,dstH); dstCtx.drawImage(srcCanvas,dx,dy,dw,dh); }
+    function drawContain(srcCanvas,dstCtx,dstW,dstH){
+      const sw=srcCanvas.width, sh=srcCanvas.height;
+      const s=Math.min(dstW/sw,dstH/sh); const dw=Math.round(sw*s), dh=Math.round(sh*s);
+      const dx=Math.floor((dstW-dw)/2), dy=Math.floor((dstH-dh)/2);
+      dstCtx.clearRect(0,0,dstW,dstH); dstCtx.drawImage(srcCanvas,dx,dy,dw,dh);
+    }
     function blitToOut(){ if(matchPreview.checked) drawContain(can.final,octx,vw,vh); else { octx.clearRect(0,0,vw,vh); octx.drawImage(can.final,0,0,vw,vh); } }
     function exportDecayStep(){ const lingerS=Math.max(0.2,+recallLinger.value||1.2); const fade=1-Math.exp(-1/(lingerS*30)); recallCtx.globalCompositeOperation='destination-out'; recallCtx.fillStyle=`rgba(0,0,0,${fade})`; recallCtx.fillRect(0,0,recallCanvas.width,recallCanvas.height); recallCtx.globalCompositeOperation='source-over'; }
 
@@ -533,15 +574,24 @@
           const r=c[i],g=c[i+1],b=c[i+2]; const pr=p[i],pg=p[i+1],pb=p[i+2];
           const lc=r*0.2126+g*0.7152+b*0.0722; const lp=pr*0.2126+pg*0.7152+pb*0.0722; const d=Math.abs(lc-lp);
           if(d>thr){ mask[j]=255;
-            if(gUseColor.checked){ const m=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(gColor.value); const cr=m?parseInt(m[1],16):255,cg=m?parseInt(m[2],16):255,cb=m?parseInt(m[3],16):255; const a=Math.max(40,Math.min(255,(d-thr)*8)); gd[i]=cr; gd[i+1]=cg; gd[i+2]=cb; gd[i+3]=a; }
-            else { gd[i]=(r+(255-pr))*0.5; gd[i+1]=(g+(255-pg))*0.5; gd[i+2]=(b+(255-pb))*0.5; gd[i+3]=255; }
+            if(gUseColor.checked){
+              const m=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(gColor.value);
+              const cr=m?parseInt(m[1],16):255,cg=m?parseInt(m[2],16):255,cb=m?parseInt(m[3],16):255;
+              const a=Math.max(40,Math.min(255,(d-thr)*8)); gd[i]=cr; gd[i+1]=cg; gd[i+2]=cb; gd[i+3]=a;
+            } else {
+              gd[i]=(r+(255-pr))*0.5; gd[i+1]=(g+(255-pg))*0.5; gd[i+2]=(b+(255-pb))*0.5; gd[i+3]=255;
+            }
           } else { gd[i]=gd[i+1]=gd[i+2]=0; gd[i+3]=0; }
         }
         gctx.putImageData(ghostImg,0,0);
 
         if(stainOn.checked){
-          const decay=+el.decay.value; sctx.globalCompositeOperation='destination-out'; sctx.fillStyle=`rgba(0,0,0,${1-decay})`; sctx.fillRect(0,0,W,H); sctx.globalCompositeOperation='source-over';
-          const mImg=maskCtx.createImageData(W,H); const mdat=mImg.data; for(let j=0,k=0;j<mask.length;j++,k+=4){ const v=mask[j]; mdat[k]=mdat[k+1]=mdat[k+2]=v; mdat[k+3]=v; } maskCtx.putImageData(mImg,0,0);
+          const decay=+el.decay.value; sctx.globalCompositeOperation='destination-out'; sctx.fillStyle=`rgba(0,0,0,${1-decay})`; sctx.fillRect(0,0,W,H);
+          sctx.globalCompositeOperation='source-over';
+          const mImg=maskCtx.createImageData(W,H); const mdat=mImg.data;
+          for(let j=0,k=0;j<mask.length;j++,k+=4){ const v=mask[j]; mdat[k]=mdat[k+1]=mdat[k+2]=v; mdat[k+3]=v; }
+          maskCtx.putImageData(mImg,0,0);
+
           colCtx.clearRect(0,0,W,H); const expand=+el.expand.value; if(expand>0) colCtx.filter=`blur(${expand}px)`; colCtx.drawImage(maskCanvas,0,0); colCtx.filter='none';
           colCtx.globalCompositeOperation='source-in'; colCtx.fillStyle=sColor.value; colCtx.globalAlpha=+el.strength.value; colCtx.fillRect(0,0,W,H);
           colCtx.globalCompositeOperation='source-over'; colCtx.globalAlpha=1; sctx.drawImage(colCanvas,0,0);
@@ -557,7 +607,7 @@
       if(activeBurst && activeBurst.frames && activeBurst.frames.length){ const color=recallColor?recallColor.value:'#00e7ff'; drawTinted(recallCtx,activeBurst.frames[activeBurst.i],color); activeBurst.i++; if(activeBurst.i>=activeBurst.frames.length) activeBurst=null; }
       fctx.globalCompositeOperation='screen'; fctx.drawImage(recallCanvas,0,0); fctx.globalCompositeOperation='source-over';
 
-      /* Haunt Map during export (sharp; no full-screen tint) */
+      /* Haunt Map during export (same as live) */
       if(hauntOn && hauntOn.checked){
         const p     = Math.max(0, Math.min(1, +hauntPersist.value || 0.85));
         const stick = +hauntStick.value || 1.3;
@@ -568,22 +618,23 @@
         hauntCtx.fillStyle = `rgba(0,0,0,${decayOut})`;
         hauntCtx.fillRect(0,0,hauntCanvas.width,hauntCanvas.height);
 
-        hauntCtx.save();
-        hauntCtx.globalCompositeOperation = 'source-over';
-        hauntCtx.globalAlpha = Math.min(1, 0.55 * stick);
+        hauntCtx.globalCompositeOperation = 'lighter';
+        hauntCtx.globalAlpha = Math.min(1, 0.45 * stick);
         hauntCtx.drawImage(recallCanvas,0,0);
-        hauntCtx.restore();
+        hauntCtx.globalAlpha = 1;
 
-        // Colorize only where haunt pixels exist
-        hauntCtx.save();
-        hauntCtx.globalCompositeOperation = 'source-atop';
-        hauntCtx.globalAlpha = 0.18;
-        hauntCtx.fillStyle = tint;
-        hauntCtx.fillRect(0,0,hauntCanvas.width,hauntCanvas.height);
-        hauntCtx.restore();
+        tintCtx.clearRect(0,0,tintCanvas.width,tintCanvas.height);
+        tintCtx.globalCompositeOperation = 'copy';
+        tintCtx.drawImage(hauntCanvas,0,0);
+        tintCtx.globalCompositeOperation = 'source-in';
+        tintCtx.fillStyle = tint;
+        tintCtx.globalAlpha = 0.22;
+        tintCtx.fillRect(0,0,tintCanvas.width,tintCanvas.height);
+        tintCtx.globalAlpha = 1;
+        tintCtx.globalCompositeOperation = 'source-over';
 
         fctx.globalCompositeOperation = 'screen';
-        fctx.drawImage(hauntCanvas,0,0);
+        fctx.drawImage(tintCanvas,0,0);
         fctx.globalCompositeOperation = 'source-over';
       }
     }
@@ -610,6 +661,7 @@
       maskCanvas.width=prevSizes.mW; maskCanvas.height=prevSizes.mH;
       colCanvas.width=prevSizes.cW; colCanvas.height=prevSizes.cH;
       hauntCanvas.width=prevSizes.hW; hauntCanvas.height=prevSizes.hH;
+      tintCanvas.width=prevSizes.tW; tintCanvas.height=prevSizes.tH;
     }
     vid.loop=prev.loop; vid.playbackRate=prev.rate; try{ vid.currentTime=prev.t; }catch(_){}
     if(!prev.paused){ try{ await vid.play(); }catch(_){ } }
@@ -618,7 +670,6 @@
 })();
 </script>
 
-<!-- Slider fill % helper (for dark-left/light-right track) -->
 <script>
 (function(){
   function paint(r){ var min=r.min?+r.min:0, max=r.max?+r.max:100, val=isNaN(+r.value)?min:+r.value, p=((val-min)/(max-min))*100; r.style.setProperty('--p', p+'%'); }

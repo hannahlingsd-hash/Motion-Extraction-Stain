@@ -51,6 +51,12 @@
   .row > span{text-align:right;color:#000}
   .row label{color:var(--fg)}
 
+  /* one-line “color / opacity” rows: label | color | slider | value */
+  .row.colorop{
+    grid-template-columns: 1fr auto minmax(120px,1.6fr) 44px;
+  }
+  .row.colorop span{ white-space:nowrap; justify-self:end; }
+
   .btnRow{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
   .inlineRow{display:flex;align-items:center;gap:8px;margin:6px 0}
 
@@ -144,41 +150,29 @@
     <div class="row"><label>Span (s)</label><input id="recallSpan" type="range" min="0" max="3" step="0.1" value="0.8"><span id="recallSpanV">0.8</span></div>
     <div class="btnRow"><button id="recallNow" class="btn">Recall now</button></div>
 
-    <!-- Linger (long-term resonance; formerly Haunt Map) -->
+    <!-- Linger (formerly Haunt Map) -->
     <div class="group">Linger</div>
-    <div class="row compact"><label>Enable linger</label><input id="lingerOn" type="checkbox"></div>
-    <div class="row"><label>Persistence</label><input id="lingerPersist" type="range" min="0" max="1" step="0.01" value="0.85"><span id="lingerPersistV">0.85</span></div>
-    <div class="row"><label>Reinforce radius (px)</label><input id="lingerRadius" type="range" min="10" max="60" step="1" value="30"><span id="lingerRadiusV">30</span></div>
-    <div class="row"><label>Stickiness</label><input id="lingerStick" type="range" min="0" max="2" step="0.1" value="1.3"><span id="lingerStickV">1.3</span></div>
-    <div class="row compact"><label>Linger color</label><input id="lingerColor" type="color" value="#4a5e8a"></div>
+    <div class="row compact"><label>Enable linger</label><input id="hauntOn" type="checkbox"></div>
+    <div class="row"><label>Persistence</label><input id="hauntPersist" type="range" min="0" max="1" step="0.01" value="0.85"><span id="hauntPersistV">0.85</span></div>
+    <div class="row"><label>Reinforce radius (px)</label><input id="hauntRadius" type="range" min="10" max="60" step="1" value="30"><span id="hauntRadiusV">30</span></div>
+    <div class="row"><label>Stickiness</label><input id="hauntStick" type="range" min="0" max="2" step="0.1" value="1.3"><span id="hauntStickV">1.3</span></div>
+    <div class="row compact"><label>Linger color</label><input id="hauntColor" type="color" value="#4a5e8a"></div>
 
     <!-- Drawing Filter (Outlines) -->
     <div class="group">Drawing Filter (Outlines)</div>
     <div class="row"><label>Threshold</label><input id="edgeThr" type="range" min="0" max="255" step="1" value="40"><span id="edgeThrV">40</span></div>
 
-    <div class="row compact"><label>Ghost outline</label><input id="edgeGhostOn" type="checkbox"></div>
-    <div class="row"><label>&nbsp;&nbsp;color / opacity</label>
-      <input id="edgeGhostColor" type="color" value="#000000">
-      <input id="edgeGhostAlpha" type="range" min="0" max="1" step="0.05" value="0.75"><span id="edgeGhostAlphaV">0.75</span>
-    </div>
+    <div class="row compact"><label>Ghost outline</label><input id="ghostEdgeOn" type="checkbox"></div>
+    <div class="row colorop"><label>color / opacity</label><input id="ghostEdgeColor" type="color" value="#000000"><input id="ghostEdgeAlpha" type="range" min="0" max="1" step="0.05" value="0.75"><span id="ghostEdgeAlphaV">0.75</span></div>
 
-    <div class="row compact"><label>Stain outline</label><input id="edgeStainOn" type="checkbox"></div>
-    <div class="row"><label>&nbsp;&nbsp;color / opacity</label>
-      <input id="edgeStainColor" type="color" value="#000000">
-      <input id="edgeStainAlpha" type="range" min="0" max="1" step="0.05" value="0.75"><span id="edgeStainAlphaV">0.75</span>
-    </div>
+    <div class="row compact"><label>Stain outline</label><input id="stainEdgeOn" type="checkbox"></div>
+    <div class="row colorop"><label>color / opacity</label><input id="stainEdgeColor" type="color" value="#000000"><input id="stainEdgeAlpha" type="range" min="0" max="1" step="0.05" value="0.30"><span id="stainEdgeAlphaV">0.30</span></div>
 
-    <div class="row compact"><label>Recall outline</label><input id="edgeRecallOn" type="checkbox"></div>
-    <div class="row"><label>&nbsp;&nbsp;color / opacity</label>
-      <input id="edgeRecallColor" type="color" value="#000000">
-      <input id="edgeRecallAlpha" type="range" min="0" max="1" step="0.05" value="0.75"><span id="edgeRecallAlphaV">0.75</span>
-    </div>
+    <div class="row compact"><label>Recall outline</label><input id="recallEdgeOn" type="checkbox"></div>
+    <div class="row colorop"><label>color / opacity</label><input id="recallEdgeColor" type="color" value="#000000"><input id="recallEdgeAlpha" type="range" min="0" max="1" step="0.05" value="0.40"><span id="recallEdgeAlphaV">0.40</span></div>
 
-    <div class="row compact"><label>Linger outline</label><input id="edgeLingerOn" type="checkbox"></div>
-    <div class="row"><label>&nbsp;&nbsp;color / opacity</label>
-      <input id="edgeLingerColor" type="color" value="#000000">
-      <input id="edgeLingerAlpha" type="range" min="0" max="1" step="0.05" value="0.75"><span id="edgeLingerAlphaV">0.75</span>
-    </div>
+    <div class="row compact"><label>Linger outline</label><input id="lingerEdgeOn" type="checkbox"></div>
+    <div class="row colorop"><label>color / opacity</label><input id="lingerEdgeColor" type="color" value="#ff0000"><input id="lingerEdgeAlpha" type="range" min="0" max="1" step="0.05" value="0.75"><span id="lingerEdgeAlphaV">0.75</span></div>
 
     <div class="group">Export</div>
     <div class="row compact">
@@ -283,10 +277,9 @@
   const maskCanvas = document.createElement('canvas'); const maskCtx = maskCanvas.getContext('2d');
   const colCanvas = document.createElement('canvas'); const colCtx = colCanvas.getContext('2d');
   const recallCanvas = document.createElement('canvas'); const recallCtx = recallCanvas.getContext('2d');
-  const lingerCanvas = document.createElement('canvas'); const lingerCtx = lingerCanvas.getContext('2d');
+  const hauntCanvas = document.createElement('canvas'); const hauntCtx = hauntCanvas.getContext('2d');
   const tintCanvas  = document.createElement('canvas'); const tintCtx  = tintCanvas.getContext('2d');
   const edgeCanvas  = document.createElement('canvas'); const edgeCtx  = edgeCanvas.getContext('2d', { willReadFrequently:true });
-  const tmpEdgeCanvas = document.createElement('canvas'); const tmpEdgeCtx = tmpEdgeCanvas.getContext('2d');
 
   function fit(){
     const dpr = Math.max(1, window.devicePixelRatio||1);
@@ -298,10 +291,9 @@
     maskCanvas.width=W; maskCanvas.height=H;
     colCanvas.width=W; colCanvas.height=H;
     recallCanvas.width=W; recallCanvas.height=H;
-    lingerCanvas.width=W; lingerCanvas.height=H;
+    hauntCanvas.width=W; hauntCanvas.height=H;
     tintCanvas.width=W; tintCanvas.height=H;
     edgeCanvas.width=W; edgeCanvas.height=H;
-    tmpEdgeCanvas.width=W; tmpEdgeCanvas.height=H;
   }
   new ResizeObserver(fit).observe(can.final); fit();
 
@@ -317,7 +309,7 @@
     ctx.restore();
   }
 
-  /* ---------- Recording note ---------- */
+  /* ---------- Recording (Auto) ---------- */
   let recorder=null, chunks=[], recStartTime=0, recTimer=null, recMime="", recExt="webm";
   function bestSupported(){
     const mp4='video/mp4;codecs=avc1.42E01E,mp4a.40.2', webm='video/webm;codecs=vp9,opus', webm2='video/webm;codecs=vp8,opus';
@@ -364,10 +356,9 @@
     recallBank.length=0;
     recallCtx.clearRect(0,0,recallCanvas.width,recallCanvas.height);
     activeBurst=null;
-    lingerCtx.clearRect(0,0,lingerCanvas.width,lingerCanvas.height);
+    hauntCtx.clearRect(0,0,hauntCanvas.width,hauntCanvas.height);
     tintCtx.clearRect(0,0,tintCanvas.width,tintCanvas.height);
     edgeCtx.clearRect(0,0,edgeCanvas.width,edgeCanvas.height);
-    tmpEdgeCtx.clearRect(0,0,tmpEdgeCanvas.width,tmpEdgeCanvas.height);
   }
   function replay(){
     if(vid.srcObject){ alert('Replay is for file/URL clips. Stop Webcam and load a clip to use Replay.'); return; }
@@ -436,56 +427,53 @@
     dstCtx.globalCompositeOperation='source-over';
   }
 
-  /* ---------- Linger (was Haunt) controls ---------- */
-  const lingerOn      = document.getElementById('lingerOn');
-  const lingerPersist = document.getElementById('lingerPersist');
-  const lingerRadius  = document.getElementById('lingerRadius'); // UI only (reserved)
-  const lingerStick   = document.getElementById('lingerStick');
-  const lingerColor   = document.getElementById('lingerColor');
+  /* ---------- Linger (Haunt) controls ---------- */
+  const hauntOn      = document.getElementById('hauntOn');
+  const hauntPersist = document.getElementById('hauntPersist');
+  const hauntRadius  = document.getElementById('hauntRadius');
+  const hauntStick   = document.getElementById('hauntStick');
+  const hauntColor   = document.getElementById('hauntColor');
 
-  const lingerPersistV= document.getElementById('lingerPersistV');
-  const lingerRadiusV = document.getElementById('lingerRadiusV');
-  const lingerStickV  = document.getElementById('lingerStickV');
+  const hauntPersistV= document.getElementById('hauntPersistV');
+  const hauntRadiusV = document.getElementById('hauntRadiusV');
+  const hauntStickV  = document.getElementById('hauntStickV');
 
-  function syncLinger(){
-    if(lingerPersistV) lingerPersistV.textContent = (+lingerPersist.value).toFixed(2);
-    if(lingerRadiusV)  lingerRadiusV.textContent  = lingerRadius.value;
-    if(lingerStickV)   lingerStickV.textContent   = (+lingerStick.value).toFixed(1);
+  function syncHaunt(){
+    if(hauntPersistV) hauntPersistV.textContent = (+hauntPersist.value).toFixed(2);
+    if(hauntRadiusV)  hauntRadiusV.textContent  = hauntRadius.value;
+    if(hauntStickV)   hauntStickV.textContent   = (+hauntStick.value).toFixed(1);
   }
-  [lingerOn,lingerPersist,lingerRadius,lingerStick,lingerColor].forEach(x=>x&&x.addEventListener('input',syncLinger));
-  syncLinger();
+  [hauntOn,hauntPersist,hauntRadius,hauntStick,hauntColor].forEach(x=>x&&x.addEventListener('input',syncHaunt));
+  syncHaunt();
 
-  /* ---------- Drawing Filter (per-layer) controls ---------- */
-  const edgeThr    = document.getElementById('edgeThr');
-  const edgeThrV   = document.getElementById('edgeThrV');
+  /* ---------- Drawing Filter (Outlines) controls ---------- */
+  const edgeThr      = document.getElementById('edgeThr');
+  const edgeThrV     = document.getElementById('edgeThrV');
 
-  const edgeGhostOn = document.getElementById('edgeGhostOn');
-  const edgeGhostColor = document.getElementById('edgeGhostColor');
-  const edgeGhostAlpha = document.getElementById('edgeGhostAlpha'); const edgeGhostAlphaV=document.getElementById('edgeGhostAlphaV');
+  const ghostEdgeOn   = document.getElementById('ghostEdgeOn');
+  const ghostEdgeColor= document.getElementById('ghostEdgeColor');
+  const ghostEdgeAlpha= document.getElementById('ghostEdgeAlpha'); const ghostEdgeAlphaV=document.getElementById('ghostEdgeAlphaV');
 
-  const edgeStainOn = document.getElementById('edgeStainOn');
-  const edgeStainColor = document.getElementById('edgeStainColor');
-  const edgeStainAlpha = document.getElementById('edgeStainAlpha'); const edgeStainAlphaV=document.getElementById('edgeStainAlphaV');
+  const stainEdgeOn   = document.getElementById('stainEdgeOn');
+  const stainEdgeColor= document.getElementById('stainEdgeColor');
+  const stainEdgeAlpha= document.getElementById('stainEdgeAlpha'); const stainEdgeAlphaV=document.getElementById('stainEdgeAlphaV');
 
-  const edgeRecallOn = document.getElementById('edgeRecallOn');
-  const edgeRecallColor = document.getElementById('edgeRecallColor');
-  const edgeRecallAlpha = document.getElementById('edgeRecallAlpha'); const edgeRecallAlphaV=document.getElementById('edgeRecallAlphaV');
+  const recallEdgeOn   = document.getElementById('recallEdgeOn');
+  const recallEdgeColor= document.getElementById('recallEdgeColor');
+  const recallEdgeAlpha= document.getElementById('recallEdgeAlpha'); const recallEdgeAlphaV=document.getElementById('recallEdgeAlphaV');
 
-  const edgeLingerOn = document.getElementById('edgeLingerOn');
-  const edgeLingerColor = document.getElementById('edgeLingerColor');
-  const edgeLingerAlpha = document.getElementById('edgeLingerAlpha'); const edgeLingerAlphaV=document.getElementById('edgeLingerAlphaV');
+  const lingerEdgeOn   = document.getElementById('lingerEdgeOn');
+  const lingerEdgeColor= document.getElementById('lingerEdgeColor');
+  const lingerEdgeAlpha= document.getElementById('lingerEdgeAlpha'); const lingerEdgeAlphaV=document.getElementById('lingerEdgeAlphaV');
 
   function syncEdges(){
     if(edgeThrV) edgeThrV.textContent = edgeThr.value;
-    if(edgeGhostAlphaV) edgeGhostAlphaV.textContent = (+edgeGhostAlpha.value).toFixed(2);
-    if(edgeStainAlphaV) edgeStainAlphaV.textContent = (+edgeStainAlpha.value).toFixed(2);
-    if(edgeRecallAlphaV) edgeRecallAlphaV.textContent = (+edgeRecallAlpha.value).toFixed(2);
-    if(edgeLingerAlphaV) edgeLingerAlphaV.textContent = (+edgeLingerAlpha.value).toFixed(2);
+    ghostEdgeAlphaV.textContent = (+ghostEdgeAlpha.value).toFixed(2);
+    stainEdgeAlphaV.textContent = (+stainEdgeAlpha.value).toFixed(2);
+    recallEdgeAlphaV.textContent= (+recallEdgeAlpha.value).toFixed(2);
+    lingerEdgeAlphaV.textContent= (+lingerEdgeAlpha.value).toFixed(2);
   }
-  [edgeThr, edgeGhostOn, edgeGhostColor, edgeGhostAlpha,
-   edgeStainOn, edgeStainColor, edgeStainAlpha,
-   edgeRecallOn, edgeRecallColor, edgeRecallAlpha,
-   edgeLingerOn, edgeLingerColor, edgeLingerAlpha].forEach(x=>x&&x.addEventListener('input', syncEdges));
+  [edgeThr,ghostEdgeOn,ghostEdgeColor,ghostEdgeAlpha,stainEdgeOn,stainEdgeColor,stainEdgeAlpha,recallEdgeOn,recallEdgeColor,recallEdgeAlpha,lingerEdgeOn,lingerEdgeColor,lingerEdgeAlpha].forEach(x=>x&&x.addEventListener('input',syncEdges));
   syncEdges();
 
   /* ---------- Main loop ---------- */
@@ -543,32 +531,28 @@
     fctx.globalCompositeOperation='screen'; fctx.drawImage(recallCanvas,0,0); fctx.globalCompositeOperation='source-over';
 
     /* ---------- Linger (sharp accumulator + independent color) ---------- */
-    if(lingerOn && lingerOn.checked){
-      const p     = Math.max(0, Math.min(1, +lingerPersist.value || 0.85)); // higher = slower fade
-      const stick = +lingerStick.value || 1.3;
-      const tint  = (lingerColor && lingerColor.value) ? lingerColor.value : '#4a5e8a';
+    if(hauntOn && hauntOn.checked){
+      const p     = Math.max(0, Math.min(1, +hauntPersist.value || 0.85)); // higher = slower fade
+      const stick = +hauntStick.value || 1.3;
+      const tint  = (hauntColor && hauntColor.value) ? hauntColor.value : '#4a5e8a';
 
-      // gentle per-frame decay
       const decayOut = Math.max(0.001, 0.06 * (1 - p));
-      lingerCtx.globalCompositeOperation = 'destination-out';
-      lingerCtx.fillStyle = `rgba(0,0,0,${decayOut})`;
-      lingerCtx.fillRect(0,0,lingerCanvas.width,lingerCanvas.height);
+      hauntCtx.globalCompositeOperation = 'destination-out';
+      hauntCtx.fillStyle = `rgba(0,0,0,${decayOut})`;
+      hauntCtx.fillRect(0,0,hauntCanvas.width,hauntCanvas.height);
 
-      // reinforce with current recall (sharp)
-      lingerCtx.globalCompositeOperation = 'lighter';
-      lingerCtx.globalAlpha = Math.min(1, 0.55 * stick);
-      lingerCtx.drawImage(recallCanvas,0,0);
-      lingerCtx.globalAlpha = 1;
+      hauntCtx.globalCompositeOperation = 'lighter';
+      hauntCtx.globalAlpha = Math.min(1, 0.55 * stick);
+      hauntCtx.drawImage(recallCanvas,0,0);
+      hauntCtx.globalAlpha = 1;
 
-      // recolor linger alpha to independent lingerColor
       tintCtx.clearRect(0,0,tintCanvas.width,tintCanvas.height);
       tintCtx.globalCompositeOperation = 'copy';
-      tintCtx.drawImage(lingerCanvas,0,0);
+      tintCtx.drawImage(hauntCanvas,0,0);
       tintCtx.globalCompositeOperation = 'source-in';
       tintCtx.fillStyle = tint;
       tintCtx.fillRect(0,0,tintCanvas.width,tintCanvas.height);
 
-      // composite visibly
       fctx.globalCompositeOperation = 'screen';
       fctx.globalAlpha = 0.9;
       fctx.drawImage(tintCanvas,0,0);
@@ -576,65 +560,67 @@
       fctx.globalCompositeOperation = 'source-over';
     }
 
-    /* ---------- Outlines per layer ---------- */
-    const THR = (+edgeThr.value|0) || 40;
+    /* ---------- Drawing Filter: isolated per-layer outlines (levels-like) ---------- */
+    if (edgeThr) edgeThrV.textContent = edgeThr.value;
+    if (document.getElementById('edgeThr')) {
+      const TH = (+edgeThr.value | 0) || 40;
+      const TL = Math.max(0, Math.floor(TH * 0.5));
 
-    function drawEdgesOf(canvasSrc, colorHex, alpha){
-      const W = can.final.width, H = can.final.height;
-      // Copy source into tmpEdgeCanvas to read pixels
-      tmpEdgeCtx.clearRect(0,0,W,H);
-      tmpEdgeCtx.drawImage(canvasSrc,0,0);
-      const srcImg = tmpEdgeCtx.getImageData(0,0,W,H);
-      const src = srcImg.data;
-
-      // grayscale
-      const L = new Uint8ClampedArray(W*H);
-      for(let i=0,j=0;i<src.length;i+=4,++j){
-        L[j] = (src[i]*0.2126 + src[i+1]*0.7152 + src[i+2]*0.0722)|0;
+      function rgbaFrom(hex, a01){
+        const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex||'#000000');
+        return [parseInt(m[1],16), parseInt(m[2],16), parseInt(m[3],16), Math.max(0,Math.min(1,a01||1))];
       }
-      // Sobel (|gx|+|gy|)
-      const outE = new Uint8ClampedArray(W*H);
-      for(let y=1;y<H-1;y++){
-        let idx = y*W+1;
-        for(let x=1;x<W-1;x++,idx++){
-          const a=L[idx-W-1], b=L[idx-W], c=L[idx-W+1];
-          const d=L[idx-1],               f=L[idx+1];
-          const g=L[idx+W-1], h=L[idx+W], i=L[idx+W+1];
-          const gx = -a -2*b -c + g +2*h + i;
-          const gy = -a -2*d -g + c +2*f + i;
-          const mag = Math.abs(gx) + Math.abs(gy);
-          outE[idx] = mag>255?255:mag;
+      function drawOutlineFrom(srcCanvas, colorHex, alpha01){
+        const W = srcCanvas.width, H = srcCanvas.height;
+        if (!W || !H) return;
+        const sctx = srcCanvas.getContext('2d');
+        const img  = sctx.getImageData(0,0,W,H);
+        const d    = img.data;
+
+        const L = new Uint8ClampedArray(W*H);
+        for (let i=0,j=0;i<d.length;i+=4,++j){
+          const lum = d[i]*0.2126 + d[i+1]*0.7152 + d[i+2]*0.0722;
+          const a   = d[i+3];
+          L[j] = Math.max(lum, a);
         }
+        const E = new Uint8ClampedArray(W*H);
+        for (let y=1;y<H-1;y++){
+          let idx=y*W+1;
+          for (let x=1;x<W-1;x++,idx++){
+            const a=L[idx-W-1], b=L[idx-W],   c=L[idx-W+1];
+            const d0=L[idx-1],               f=L[idx+1];
+            const g=L[idx+W-1], h=L[idx+W],  i=L[idx+W+1];
+            const gx = -a -2*b -c + g +2*h + i;
+            const gy = -a -2*d0 -g + c +2*f + i;
+            const mag = Math.abs(gx) + Math.abs(gy);
+            let aa;
+            if (mag >= TH) aa = 255;
+            else if (mag <= TL) aa = 0;
+            else aa = Math.round((mag - TL)/(TH - TL)*255);
+            E[idx] = aa;
+          }
+        }
+        for (let i=0,j=0;i<d.length;i+=4,++j){ E[j] = Math.round(E[j] * (d[i+3]/255)); }
+        const [r,g,b,a01] = rgbaFrom(colorHex, alpha01);
+        const mask = edgeCtx.createImageData(W,H);
+        const md = mask.data;
+        for (let j=0,p=0;j<E.length;j++,p+=4){
+          const a = E[j];
+          if (!a){ md[p]=md[p+1]=md[p+2]=md[p+3]=0; continue; }
+          md[p]=r; md[p+1]=g; md[p+2]=b; md[p+3]=Math.min(255, Math.round(a*a01));
+        }
+        edgeCtx.putImageData(mask,0,0);
       }
-      // threshold to alpha mask
-      edgeCtx.clearRect(0,0,W,H);
-      const eImg = edgeCtx.createImageData(W,H);
-      const ed = eImg.data;
-      for(let j=0,p=0;j<outE.length;j++,p+=4){
-        const m = outE[j] >= THR ? 255 : 0;
-        ed[p]=255; ed[p+1]=255; ed[p+2]=255; ed[p+3]=m;
-      }
-      edgeCtx.putImageData(eImg,0,0);
 
-      // tint to colorHex, composite with opacity
-      fctx.save();
-      fctx.globalAlpha = Math.max(0, Math.min(1, alpha||0.75));
+      edgeCtx.clearRect(0,0,edgeCanvas.width,edgeCanvas.height);
+      if (ghostEdgeOn && ghostEdgeOn.checked)   drawOutlineFrom(can.ghost,    ghostEdgeColor.value,  +ghostEdgeAlpha.value||0.8);
+      if (stainEdgeOn && stainEdgeOn.checked)   drawOutlineFrom(can.stain,    stainEdgeColor.value,  +stainEdgeAlpha.value||0.7);
+      if (recallEdgeOn && recallEdgeOn.checked) drawOutlineFrom(recallCanvas, recallEdgeColor.value, +recallEdgeAlpha.value||0.7);
+      if (lingerEdgeOn && lingerEdgeOn.checked) drawOutlineFrom(hauntCanvas,  lingerEdgeColor.value, +lingerEdgeAlpha.value||0.8);
+
       fctx.globalCompositeOperation='source-over';
-      // colorize via source-in on temp
-      tintCtx.clearRect(0,0,tintCanvas.width,tintCanvas.height);
-      tintCtx.globalCompositeOperation='copy';
-      tintCtx.drawImage(edgeCanvas,0,0);
-      tintCtx.globalCompositeOperation='source-in';
-      tintCtx.fillStyle=colorHex||'#000000';
-      tintCtx.fillRect(0,0,tintCanvas.width,tintCanvas.height);
-      fctx.drawImage(tintCanvas,0,0);
-      fctx.restore();
+      fctx.drawImage(edgeCanvas,0,0);
     }
-
-    if(edgeGhostOn && edgeGhostOn.checked) drawEdgesOf(can.ghost, edgeGhostColor.value, +edgeGhostAlpha.value);
-    if(edgeStainOn && edgeStainOn.checked) drawEdgesOf(can.stain, edgeStainColor.value, +edgeStainAlpha.value);
-    if(edgeRecallOn && edgeRecallOn.checked) drawEdgesOf(recallCanvas, edgeRecallColor.value, +edgeRecallAlpha.value);
-    if(edgeLingerOn && edgeLingerOn.checked) drawEdgesOf(lingerCanvas, edgeLingerColor.value, +edgeLingerAlpha.value);
 
     const dt=now-lastT; lastT=now; const inst=dt>0?1000/dt:0; fpsEMA=fpsEMA?fpsEMA*0.9+inst*0.1:inst;
     const s=bestSupported(); dbg.textContent=`buffer: ${buf.length} | fps ~ ${fpsEMA.toFixed(1)} | support: ${s.canMp4?'MP4✓':'MP4×'}/${s.canWebm?'WebM✓':'WebM×'}`;
@@ -642,7 +628,7 @@
 
   vid.addEventListener('loadeddata', ()=>{ vid.play().catch(()=>{}); });
 
-  /* ---------- Export 1:1 (updated to use Linger + per-layer outlines) ---------- */
+  /* ---------- Export 1:1 ---------- */
   exportOneBtn.addEventListener('click', exportSourceOnce);
   async function exportSourceOnce(){
     if(vid.srcObject){ alert('1:1 export is for file/URL clips, not webcam.'); return; }
@@ -666,9 +652,9 @@
     vid.pause(); vid.loop=false; vid.playbackRate=1;
 
     const nativeProcessing=!matchPreview.checked;
-    const prevSizes={W:can.final.width,H:can.final.height,sW:can.stain.width,sH:can.stain.height,gW:can.ghost.width,gH:can.ghost.height,pW:proc.width,pH:proc.height,mW:maskCanvas.width,mH:maskCanvas.height,cW:colCanvas.width,cH:colCanvas.height,lW:lingerCanvas.width,lH:lingerCanvas.height,tW:tintCanvas.width,tH:tintCanvas.height,eW:edgeCanvas.width,eH:edgeCanvas.height,tmpW:tmpEdgeCanvas.width,tmpH:tmpEdgeCanvas.height};
+    const prevSizes={W:can.final.width,H:can.final.height,sW:can.stain.width,sH:can.stain.height,gW:can.ghost.width,gH:can.ghost.height,pW:proc.width,pH:proc.height,mW:maskCanvas.width,mH:maskCanvas.height,cW:colCanvas.width,cH:colCanvas.height,hW:hauntCanvas.width,hH:hauntCanvas.height,tW:tintCanvas.width,tH:tintCanvas.height,eW:edgeCanvas.width,eH:edgeCanvas.height};
     if(nativeProcessing){
-      [can.stain,can.ghost,can.final,proc,maskCanvas,colCanvas,lingerCanvas,tintCanvas,edgeCanvas,tmpEdgeCanvas].forEach(c=>{ c.width=vw; c.height=vh; });
+      [can.stain,can.ghost,can.final,proc,maskCanvas,colCanvas,hauntCanvas,tintCanvas,edgeCanvas].forEach(c=>{ c.width=vw; c.height=vh; });
       recallCanvas.width=vw; recallCanvas.height=vh; recallCtx.clearRect(0,0,recallCanvas.width,recallCanvas.height);
     }
 
@@ -724,25 +710,24 @@
       if(activeBurst && activeBurst.frames && activeBurst.frames.length){ const color=recallColor?recallColor.value:'#00e7ff'; drawTinted(recallCtx,activeBurst.frames[activeBurst.i],color); activeBurst.i++; if(activeBurst.i>=activeBurst.frames.length) activeBurst=null; }
       fctx.globalCompositeOperation='screen'; fctx.drawImage(recallCanvas,0,0); fctx.globalCompositeOperation='source-over';
 
-      /* Linger during export */
-      if(lingerOn && lingerOn.checked){
-        const p     = Math.max(0, Math.min(1, +lingerPersist.value || 0.85));
-        const stick = +lingerStick.value || 1.3;
-        const tint  = (lingerColor && lingerColor.value) ? lingerColor.value : '#4a5e8a';
+      if(hauntOn && hauntOn.checked){
+        const p     = Math.max(0, Math.min(1, +hauntPersist.value || 0.85));
+        const stick = +hauntStick.value || 1.3;
+        const tint  = (hauntColor && hauntColor.value) ? hauntColor.value : '#4a5e8a';
 
         const decayOut = Math.max(0.001, 0.06 * (1 - p));
-        lingerCtx.globalCompositeOperation = 'destination-out';
-        lingerCtx.fillStyle = `rgba(0,0,0,${decayOut})`;
-        lingerCtx.fillRect(0,0,lingerCanvas.width,lingerCanvas.height);
+        hauntCtx.globalCompositeOperation = 'destination-out';
+        hauntCtx.fillStyle = `rgba(0,0,0,${decayOut})`;
+        hauntCtx.fillRect(0,0,hauntCanvas.width,hauntCanvas.height);
 
-        lingerCtx.globalCompositeOperation = 'lighter';
-        lingerCtx.globalAlpha = Math.min(1, 0.55 * stick);
-        lingerCtx.drawImage(recallCanvas,0,0);
-        lingerCtx.globalAlpha = 1;
+        hauntCtx.globalCompositeOperation = 'lighter';
+        hauntCtx.globalAlpha = Math.min(1, 0.55 * stick);
+        hauntCtx.drawImage(recallCanvas,0,0);
+        hauntCtx.globalAlpha = 1;
 
         tintCtx.clearRect(0,0,tintCanvas.width,tintCanvas.height);
         tintCtx.globalCompositeOperation = 'copy';
-        tintCtx.drawImage(lingerCanvas,0,0);
+        tintCtx.drawImage(hauntCanvas,0,0);
         tintCtx.globalCompositeOperation = 'source-in';
         tintCtx.fillStyle = tint;
         tintCtx.fillRect(0,0,tintCanvas.width,tintCanvas.height);
@@ -754,56 +739,55 @@
         fctx.globalCompositeOperation = 'source-over';
       }
 
-      /* Per-layer outlines during export (same as live) */
-      const THR=(+edgeThr.value|0)||40;
-      function drawEdgesOf(canvasSrc,colorHex,alpha){
-        const W=can.final.width, H=can.final.height;
-        tmpEdgeCtx.clearRect(0,0,W,H);
-        tmpEdgeCtx.drawImage(canvasSrc,0,0);
-        const srcImg = tmpEdgeCtx.getImageData(0,0,W,H);
-        const src = srcImg.data;
-
+      /* Outlines during export (same as live) */
+      const TH = (+edgeThr.value | 0) || 40;
+      const TL = Math.max(0, Math.floor(TH * 0.5));
+      function rgbaFrom(hex, a01){
+        const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex||'#000000');
+        return [parseInt(m[1],16), parseInt(m[2],16), parseInt(m[3],16), Math.max(0,Math.min(1,a01||1))];
+      }
+      function drawOutlineFrom(srcCanvas, colorHex, alpha01){
+        const W = srcCanvas.width, H = srcCanvas.height; if(!W||!H) return;
+        const sctx = srcCanvas.getContext('2d');
+        const img  = sctx.getImageData(0,0,W,H);
+        const d    = img.data;
         const L = new Uint8ClampedArray(W*H);
-        for(let i=0,j=0;i<src.length;i+=4,++j){
-          L[j] = (src[i]*0.2126 + src[i+1]*0.7152 + src[i+2]*0.0722)|0;
+        for (let i=0,j=0;i<d.length;i+=4,++j){
+          const lum = d[i]*0.2126 + d[i+1]*0.7152 + d[i+2]*0.0722;
+          const a   = d[i+3];
+          L[j] = Math.max(lum, a);
         }
-        const outE = new Uint8ClampedArray(W*H);
-        for(let y=1;y<H-1;y++){
+        const E = new Uint8ClampedArray(W*H);
+        for (let y=1;y<H-1;y++){
           let idx=y*W+1;
-          for(let x=1;x<W-1;x++,idx++){
-            const a=L[idx-W-1],b=L[idx-W],c=L[idx-W+1];
-            const d=L[idx-1],              f=L[idx+1];
-            const g=L[idx+W-1],h=L[idx+W],i=L[idx+W+1];
-            const gx=-a-2*b-c+g+2*h+i;
-            const gy=-a-2*d-g+c+2*f+i;
-            const mag=Math.abs(gx)+Math.abs(gy);
-            outE[idx]=mag>255?255:mag;
+          for (let x=1;x<W-1;x++,idx++){
+            const a=L[idx-W-1], b=L[idx-W], c=L[idx-W+1];
+            const d0=L[idx-1],              f=L[idx+1];
+            const g=L[idx+W-1], h=L[idx+W], i=L[idx+W+1];
+            const gx = -a -2*b -c + g +2*h + i;
+            const gy = -a -2*d0 -g + c +2*f + i;
+            const mag = Math.abs(gx) + Math.abs(gy);
+            let aa; if(mag>=TH) aa=255; else if(mag<=TL) aa=0; else aa=Math.round((mag-TL)/(TH-TL)*255);
+            E[idx]=aa;
           }
         }
-        edgeCtx.clearRect(0,0,W,H);
-        const eImg=edgeCtx.createImageData(W,H);
-        const ed=eImg.data;
-        for(let j=0,p=0;j<outE.length;j++,p+=4){
-          const m=outE[j]>=THR?255:0;
-          ed[p]=255; ed[p+1]=255; ed[p+2]=255; ed[p+3]=m;
+        for (let i=0,j=0;i<d.length;i+=4,++j){ E[j] = Math.round(E[j] * (d[i+3]/255)); }
+        const [r,g,b,a01] = rgbaFrom(colorHex, alpha01);
+        const mask = edgeCtx.createImageData(W,H);
+        const md = mask.data;
+        for (let j=0,p=0;j<E.length;j++,p+=4){
+          const a = E[j]; if(!a){ md[p]=md[p+1]=md[p+2]=md[p+3]=0; continue; }
+          md[p]=r; md[p+1]=g; md[p+2]=b; md[p+3]=Math.min(255, Math.round(a*a01));
         }
-        edgeCtx.putImageData(eImg,0,0);
-
-        fctx.save();
-        fctx.globalAlpha=Math.max(0,Math.min(1,alpha||0.75));
-        tintCtx.clearRect(0,0,tintCanvas.width,tintCanvas.height);
-        tintCtx.globalCompositeOperation='copy';
-        tintCtx.drawImage(edgeCanvas,0,0);
-        tintCtx.globalCompositeOperation='source-in';
-        tintCtx.fillStyle=colorHex||'#000000';
-        tintCtx.fillRect(0,0,tintCanvas.width,tintCanvas.height);
-        fctx.drawImage(tintCanvas,0,0);
-        fctx.restore();
+        edgeCtx.putImageData(mask,0,0);
       }
-      if(edgeGhostOn && edgeGhostOn.checked) drawEdgesOf(can.ghost, edgeGhostColor.value, +edgeGhostAlpha.value);
-      if(edgeStainOn && edgeStainOn.checked) drawEdgesOf(can.stain, edgeStainColor.value, +edgeStainAlpha.value);
-      if(edgeRecallOn && edgeRecallOn.checked) drawEdgesOf(recallCanvas, edgeRecallColor.value, +edgeRecallAlpha.value);
-      if(edgeLingerOn && edgeLingerOn.checked) drawEdgesOf(lingerCanvas, edgeLingerColor.value, +edgeLingerAlpha.value);
+
+      edgeCtx.clearRect(0,0,edgeCanvas.width,edgeCanvas.height);
+      if (ghostEdgeOn && ghostEdgeOn.checked)   drawOutlineFrom(can.ghost,    ghostEdgeColor.value,  +ghostEdgeAlpha.value||0.8);
+      if (stainEdgeOn && stainEdgeOn.checked)   drawOutlineFrom(can.stain,    stainEdgeColor.value,  +stainEdgeAlpha.value||0.7);
+      if (recallEdgeOn && recallEdgeOn.checked) drawOutlineFrom(recallCanvas, recallEdgeColor.value, +recallEdgeAlpha.value||0.7);
+      if (lingerEdgeOn && lingerEdgeOn.checked) drawOutlineFrom(hauntCanvas,  lingerEdgeColor.value, +lingerEdgeAlpha.value||0.8);
+      fctx.drawImage(edgeCanvas,0,0);
     }
 
     await new Promise(res=>{ const h=()=>{vid.removeEventListener('seeked',h); res();}; vid.addEventListener('seeked',h); try{ vid.currentTime=0; }catch(_){ res(); } });
@@ -827,10 +811,9 @@
       proc.width=prevSizes.pW; proc.height=prevSizes.pH;
       maskCanvas.width=prevSizes.mW; maskCanvas.height=prevSizes.mH;
       colCanvas.width=prevSizes.cW; colCanvas.height=prevSizes.cH;
-      lingerCanvas.width=prevSizes.lW; lingerCanvas.height=prevSizes.lH;
+      hauntCanvas.width=prevSizes.hW; hauntCanvas.height=prevSizes.hH;
       tintCanvas.width=prevSizes.tW; tintCanvas.height=prevSizes.tH;
       edgeCanvas.width=prevSizes.eW; edgeCanvas.height=prevSizes.eH;
-      tmpEdgeCanvas.width=prevSizes.tmpW; tmpEdgeCanvas.height=prevSizes.tmpH;
     }
     vid.loop=prev.loop; vid.playbackRate=prev.rate; try{ vid.currentTime=prev.t; }catch(_){}
     if(!prev.paused){ try{ await vid.play(); }catch(_){ } }
@@ -839,6 +822,7 @@
 })();
 </script>
 
+<!-- Slider fill % helper -->
 <script>
 (function(){
   function paint(r){ var min=r.min?+r.min:0, max=r.max?+r.max:100, val=isNaN(+r.value)?min:+r.value, p=((val-min)/(max-min))*100; r.style.setProperty('--p', p+'%'); }

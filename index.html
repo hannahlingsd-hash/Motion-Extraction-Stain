@@ -659,22 +659,48 @@
     else if(s.canWebm){ mime=s.webm; ext='webm'; }
     else { alert('Export not supported on this browser. Try Safari (MP4) or Chrome/Firefox (WebM).'); return; }
 
+    // UI lock
     exportOneBtn.disabled=true; recStartBtn.disabled=true;
 
-    const outCanvas=document.createElement('canvas'); outCanvas.width=vw; outCanvas.height=vh; const octx=outCanvas.getContext('2d');
-    const expChunks=[]; const stream=outCanvas.captureStream?outCanvas.captureStream(30):outCanvas.mozCaptureStream(30);
-    const expRecorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:8_000_000});
-    const recDone=new Promise(resolve=>{ expRecorder.ondataavailable=e=>{ if(e.data && e.data.size) expChunks.push(e.data); }; expRecorder.onstop=resolve; });
+    // --- Pause live loop to avoid double work (fixes lag) ---
+    const prevSuspend = suspendLive;
+    suspendLive = true;
 
+    // Prepare output canvas/recorder
+    const outCanvas=document.createElement('canvas');
+    outCanvas.width=vw; outCanvas.height=vh;
+    const octx=outCanvas.getContext('2d');
+
+    const expChunks=[];
+    const targetFPS = 30;
+    const stream = outCanvas.captureStream ? outCanvas.captureStream(targetFPS) : outCanvas.mozCaptureStream(targetFPS);
+    const expRecorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:8_000_000});
+    const recDone=new Promise(resolve=>{
+      expRecorder.ondataavailable=e=>{ if(e.data && e.data.size) expChunks.push(e.data); };
+      expRecorder.onstop=resolve;
+    });
+
+    // Save and normalize video state
     const prev={ loop:vid.loop, rate:vid.playbackRate, paused:vid.paused, t:vid.currentTime };
     vid.pause(); vid.loop=false; vid.playbackRate=1;
 
+    // Resize processing pipeline ONLY when native-processing is chosen
     const nativeProcessing=!matchPreview.checked;
-    const prevSizes={W:can.final.width,H:can.final.height,sW:can.stain.width,sH:can.stain.height,gW:can.ghost.width,gH:can.ghost.height,pW:proc.width,pH:proc.height,mW:maskCanvas.width,mH:maskCanvas.height,cW:colCanvas.width,cH:colCanvas.height,hW:hauntCanvas.width,hH:hauntCanvas.height,tW:tintCanvas.width,tH:tintCanvas.height,eW:edgeCanvas.width,eH:edgeCanvas.height};
+    const prevSizes={
+      W:can.final.width,H:can.final.height,
+      sW:can.stain.width,sH:can.stain.height,
+      gW:can.ghost.width,gH:can.ghost.height,
+      pW:proc.width,pH:proc.height,
+      mW:maskCanvas.width,mH:maskCanvas.height,
+      cW:colCanvas.width,cH:colCanvas.height,
+      hW:hauntCanvas.width,hH:hauntCanvas.height,
+      tW:tintCanvas.width,tH:tintCanvas.height,
+      eW:edgeCanvas.width,eH:edgeCanvas.height
+    };
     if(nativeProcessing){
       [can.stain,can.ghost,can.final,proc,maskCanvas,colCanvas,hauntCanvas,tintCanvas,edgeCanvas].forEach(c=>{ c.width=vw; c.height=vh; });
       recallCanvas.width=vw; recallCanvas.height=vh; recallCtx.clearRect(0,0,recallCanvas.width,recallCanvas.height);
-      /* size temp outline layer for export */
+      // keep temp outline layer in sync
       edgeLayerCanvas.width=vw; edgeLayerCanvas.height=vh;
     }
 
@@ -682,25 +708,46 @@
       const sw=srcCanvas.width, sh=srcCanvas.height;
       const s=Math.min(dstW/sw,dstH/sh); const dw=Math.round(sw*s), dh=Math.round(sh*s);
       const dx=Math.floor((dstW-dw)/2), dy=Math.floor((dstH-dh)/2);
-      dstCtx.clearRect(0,0,dstW,dstH); dstCtx.drawImage(srcCanvas,dx,dy,dw,dh);
+      dstCtx.clearRect(0,0,dstW,dstH);
+      dstCtx.drawImage(srcCanvas,dx,dy,dw,dh);
     }
-    function blitToOut(){ if(matchPreview.checked) drawContain(can.final,octx,vw,vh); else { octx.clearRect(0,0,vw,vh); octx.drawImage(can.final,0,0,vw,vh); } }
-    function exportDecayStep(){ const lingerS=Math.max(0.2,+recallLinger.value||1.2); const fade=1-Math.exp(-1/(lingerS*30)); recallCtx.globalCompositeOperation='destination-out'; recallCtx.fillStyle=`rgba(0,0,0,${fade})`; recallCtx.fillRect(0,0,recallCanvas.width,recallCanvas.height); recallCtx.globalCompositeOperation='source-over'; }
+    function blitToOut(){
+      if(matchPreview.checked) drawContain(can.final,octx,vw,vh);
+      else { octx.clearRect(0,0,vw,vh); octx.drawImage(can.final,0,0,vw,vh); }
+    }
+    function exportDecayStep(){
+      const lingerS=Math.max(0.2,+recallLinger.value||1.2);
+      const fade=1-Math.exp(-1/(lingerS*targetFPS));
+      recallCtx.globalCompositeOperation='destination-out';
+      recallCtx.fillStyle=`rgba(0,0,0,${fade})';
+      recallCtx.fillRect(0,0,recallCanvas.width,recallCanvas.height);
+      recallCtx.globalCompositeOperation='source-over';
+    }
 
     function processOneFrame(W,H){
-      const grey=+el.grey.value; fctx.clearRect(0,0,W,H); fctx.fillStyle=`rgb(${grey},${grey},${grey})`; fctx.fillRect(0,0,W,H);
-      drawVideoContained(pctx,vid,W,H,+el.preblur.value); const curr=pctx.getImageData(0,0,W,H); pushFrame(curr,vid.currentTime);
+      const grey=+el.grey.value;
+      fctx.clearRect(0,0,W,H);
+      fctx.fillStyle=`rgb(${grey},${grey},${grey})`;
+      fctx.fillRect(0,0,W,H);
+
+      drawVideoContained(pctx,vid,W,H,+el.preblur.value);
+      const curr=pctx.getImageData(0,0,W,H); pushFrame(curr,vid.currentTime);
       const past=getPastFrame(+el.dt.value);
+
       if(past){
-        const c=curr.data, p=past.data; const ghostImg=gctx.createImageData(W,H); const gd=ghostImg.data; const thr=+el.thr.value; const mask=new Uint8ClampedArray(W*H);
+        const c=curr.data, p=past.data;
+        const ghostImg=gctx.createImageData(W,H); const gd=ghostImg.data;
+        const thr=+el.thr.value; const mask=new Uint8ClampedArray(W*H);
         for(let i=0,j=0;i<c.length;i+=4,j++){
           const r=c[i],g=c[i+1],b=c[i+2]; const pr=p[i],pg=p[i+1],pb=p[i+2];
           const lc=r*0.2126+g*0.7152+b*0.0722; const lp=pr*0.2126+pg*0.7152+pb*0.0722; const d=Math.abs(lc-lp);
-          if(d>thr){ mask[j]=255;
+          if(d>thr){
+            mask[j]=255;
             if(gUseColor.checked){
               const m=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(gColor.value);
               const cr=m?parseInt(m[1],16):255,cg=m?parseInt(m[2],16):255,cb=m?parseInt(m[3],16):255;
-              const a=Math.max(40,Math.min(255,(d-thr)*8)); gd[i]=cr; gd[i+1]=cg; gd[i+2]=cb; gd[i+3]=a;
+              const a=Math.max(40,Math.min(255,(d-thr)*8));
+              gd[i]=cr; gd[i+1]=cg; gd[i+2]=cb; gd[i+3]=a;
             } else {
               gd[i]=(r+(255-pr))*0.5; gd[i+1]=(g+(255-pg))*0.5; gd[i+2]=(b+(255-pb))*0.5; gd[i+3]=255;
             }
@@ -709,15 +756,28 @@
         gctx.putImageData(ghostImg,0,0);
 
         if(stainOn.checked){
-          const decay=+el.decay.value; sctx.globalCompositeOperation='destination-out'; sctx.fillStyle=`rgba(0,0,0,${1-decay})`; sctx.fillRect(0,0,W,H);
+          const decay=+el.decay.value;
+          sctx.globalCompositeOperation='destination-out';
+          sctx.fillStyle=`rgba(0,0,0,${1-decay})`;
+          sctx.fillRect(0,0,W,H);
           sctx.globalCompositeOperation='source-over';
+
           const mImg=maskCtx.createImageData(W,H); const mdat=mImg.data;
           for(let j=0,k=0;j<mask.length;j++,k+=4){ const v=mask[j]; mdat[k]=mdat[k+1]=mdat[k+2]=v; mdat[k+3]=v; }
           maskCtx.putImageData(mImg,0,0);
 
-          colCtx.clearRect(0,0,W,H); const expand=+el.expand.value; if(expand>0) colCtx.filter=`blur(${expand}px)`; colCtx.drawImage(maskCanvas,0,0); colCtx.filter='none';
-          colCtx.globalCompositeOperation='source-in'; colCtx.fillStyle=sColor.value; colCtx.globalAlpha=+el.strength.value; colCtx.fillRect(0,0,W,H);
-          colCtx.globalCompositeOperation='source-over'; colCtx.globalAlpha=1; sctx.drawImage(colCanvas,0,0);
+          colCtx.clearRect(0,0,W,H);
+          const expand=+el.expand.value;
+          if(expand>0) colCtx.filter=`blur(${expand}px)`;
+          colCtx.drawImage(maskCanvas,0,0);
+          colCtx.filter='none';
+          colCtx.globalCompositeOperation='source-in';
+          colCtx.fillStyle=sColor.value;
+          colCtx.globalAlpha=+el.strength.value;
+          colCtx.fillRect(0,0,W,H);
+          colCtx.globalCompositeOperation='source-over';
+          colCtx.globalAlpha=1;
+          sctx.drawImage(colCanvas,0,0);
         }
       }
 
@@ -733,9 +793,11 @@
         activeBurst.i++;
         if(activeBurst.i>=activeBurst.frames.length) activeBurst=null;
       }
-      fctx.globalCompositeOperation='screen'; fctx.drawImage(recallCanvas,0,0); fctx.globalCompositeOperation='source-over';
+      fctx.globalCompositeOperation='screen';
+      fctx.drawImage(recallCanvas,0,0);
+      fctx.globalCompositeOperation='source-over';
 
-      /* outlines during export (same algo & surgical blend as live) */
+      // outlines (same as live)
       const TH = (+edgeThr.value | 0) || 40;
       const TL = Math.max(0, Math.floor(TH * 0.5));
       function rgbaFrom(hex, a01){
@@ -782,29 +844,90 @@
         edgeCtx.globalCompositeOperation='source-over';
         edgeCtx.drawImage(edgeLayerCanvas,0,0);
       }
-
       edgeCtx.clearRect(0,0,edgeCanvas.width,edgeCanvas.height);
       if (ghostEdgeOn && ghostEdgeOn.checked)   drawOutlineFrom(can.ghost,    ghostEdgeColor.value,  +ghostEdgeAlpha.value||0.8);
       if (stainEdgeOn && stainEdgeOn.checked)   drawOutlineFrom(can.stain,    stainEdgeColor.value,  +stainEdgeAlpha.value||0.7);
       if (recallEdgeOn && recallEdgeOn.checked) drawOutlineFrom(recallCanvas, recallEdgeColor.value, +recallEdgeAlpha.value||0.7);
       if (lingerEdgeOn && lingerEdgeOn.checked) drawOutlineFrom(hauntCanvas,  lingerEdgeColor.value, +lingerEdgeAlpha.value||0.8);
       fctx.drawImage(edgeCanvas,0,0);
+
+      // push to output
+      blitToOut();
     }
 
-    await new Promise(res=>{ const h=()=>{vid.removeEventListener('seeked',h); res();}; vid.addEventListener('seeked',h); try{ vid.currentTime=0; }catch(_){ res(); } });
-    expRecorder.start(250); processOneFrame(can.final.width,can.final.height); blitToOut();
+    // Seek hard to 0 BEFORE starting the recorder to capture the first frame
+    await new Promise(res=>{
+      const onSeeked=()=>{ vid.removeEventListener('seeked',onSeeked); res(); };
+      vid.addEventListener('seeked',onSeeked,{once:true});
+      try{ vid.currentTime = 0; }catch(_){ res(); }
+    });
 
-    const hasVFC=typeof vid.requestVideoFrameCallback==='function'; let vfcId=null, rafId=null;
-    function stopDrivers(){ if(vfcId && vid.cancelVideoFrameCallback) try{vid.cancelVideoFrameCallback(vfcId);}catch(_){} if(rafId) cancelAnimationFrame(rafId); vfcId=rafId=null; }
-    function loop(){ processOneFrame(can.final.width,can.final.height); blitToOut(); if(hasVFC) vfcId=vid.requestVideoFrameCallback(()=>loop()); else rafId=requestAnimationFrame(loop); }
+    // Start recorder, then frame loop
+    expRecorder.start(250);
 
-    const safety=setTimeout(()=>{ try{vid.pause();}catch(_){}; finalize(); }, (isFinite(vid.duration)?vid.duration:60)*1000+15000);
-    function finalize(){ clearTimeout(safety); stopDrivers(); try{expRecorder.stop();}catch(_){} }
-    vid.addEventListener('ended',finalize,{once:true}); await vid.play().catch(()=>{}); loop(); await recDone;
+    let stopRequested = false;
+    const hasVFC = typeof vid.requestVideoFrameCallback === 'function';
+    let vfcId = null, rafId = null;
 
-    const blob=new Blob(expChunks,{type:mime}); const a=document.createElement('a'); const tag=matchPreview.checked?'match':'native';
-    a.download=`wind_on_wall_1x_${vw}x${vh}_${tag}_${Date.now()}.${ext}`; a.href=URL.createObjectURL(blob); a.click();
+    function stopDrivers(){
+      if(vfcId && vid.cancelVideoFrameCallback) { try{ vid.cancelVideoFrameCallback(vfcId); }catch(_){} }
+      if(rafId) cancelAnimationFrame(rafId);
+      vfcId = null; rafId = null;
+    }
 
+    const endGuard = ()=>{
+      if(!isFinite(vid.duration) || vid.duration<=0) return false;
+      // stop when we're at or beyond the last frame (~1 frame margin)
+      return vid.currentTime >= (vid.duration - 1/targetFPS - 0.0005);
+    };
+
+    function step(){
+      processOneFrame(can.final.width, can.final.height);
+      if(!stopRequested && endGuard()){
+        stopRequested = true;
+        finalize();
+        return;
+      }
+      if(hasVFC){
+        vfcId = vid.requestVideoFrameCallback(()=>step());
+      }else{
+        rafId = requestAnimationFrame(step);
+      }
+    }
+
+    const onEnded = ()=>{ if(!stopRequested){ stopRequested=true; finalize(); } };
+    const onTimeUpdate = ()=>{ if(!stopRequested && endGuard()){ stopRequested=true; finalize(); } };
+
+    function finalize(){
+      clearTimeout(safety);
+      stopDrivers();
+      vid.removeEventListener('ended', onEnded);
+      vid.removeEventListener('timeupdate', onTimeUpdate);
+      try{ expRecorder.stop(); }catch(_){}
+    }
+
+    // Safety net: duration + small buffer
+    const safety = setTimeout(()=>{ if(!stopRequested){ stopRequested=true; finalize(); } }, (isFinite(vid.duration)?vid.duration:60)*1000 + 5000);
+
+    vid.addEventListener('ended', onEnded, {once:false});
+    vid.addEventListener('timeupdate', onTimeUpdate);
+
+    try{ await vid.play(); }catch(_){}
+    // Kick the loop
+    step();
+
+    // Wait for recorder to flush
+    await recDone;
+
+    // Save file
+    const blob=new Blob(expChunks,{type:mime});
+    const a=document.createElement('a');
+    const tag=matchPreview.checked?'match':'native';
+    a.download=`wind_on_wall_1x_${vw}x${vh}_${tag}_${Date.now()}.${ext}`;
+    a.href=URL.createObjectURL(blob);
+    a.click();
+
+    // Restore sizes if we changed them
     if(nativeProcessing){
       can.final.width=prevSizes.W; can.final.height=prevSizes.H;
       can.stain.width=prevSizes.sW; can.stain.height=prevSizes.sH;
@@ -815,11 +938,16 @@
       hauntCanvas.width=prevSizes.hW; hauntCanvas.height=prevSizes.hH;
       tintCanvas.width=prevSizes.tW; tintCanvas.height=prevSizes.tH;
       edgeCanvas.width=prevSizes.eW; edgeCanvas.height=prevSizes.eH;
-      /* restore temp outline layer size */
       edgeLayerCanvas.width=prevSizes.eW; edgeLayerCanvas.height=prevSizes.eH;
     }
-    vid.loop=prev.loop; vid.playbackRate=prev.rate; try{ vid.currentTime=prev.t; }catch(_){}
+
+    // Restore video + UI state
+    vid.loop=prev.loop; vid.playbackRate=prev.rate;
+    try{ vid.currentTime=prev.t; }catch(_){}
     if(!prev.paused){ try{ await vid.play(); }catch(_){ } }
+
+    // Re-enable live loop and buttons
+    suspendLive = prevSuspend;
     exportOneBtn.disabled=false; recStartBtn.disabled=false;
   }
 })();

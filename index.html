@@ -51,11 +51,15 @@
   .row > span{text-align:right;color:#000}
   .row label{color:var(--fg)}
 
-  /* one-line “color / opacity” rows: label | color | slider | value */
+  /* Drawing Filter (color / opacity) layout ONLY — shorter opacity sliders */
   .row.colorop{
-    grid-template-columns: 1fr auto minmax(120px,1.6fr) 44px;
+    grid-template-columns: 1fr auto 110px 44px !important; /* label | color | SHORT range | value */
   }
-  .row.colorop span{ white-space:nowrap; justify-self:end; }
+  .row.colorop input[type="range"]{
+    width:110px !important;
+    max-width:110px !important;
+    justify-self:start;
+  }
 
   .btnRow{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
   .inlineRow{display:flex;align-items:center;gap:8px;margin:6px 0}
@@ -111,12 +115,12 @@
 
     <div class="group">Temporal window</div>
     <div class="row"><label>Δt (seconds)</label><input id="dt" type="range" min="2" max="10" step="0.5" value="6"><span id="dtV">6.0</span></div>
-    <div class="row"><label>Diff threshold</label><input id="thr" type="range" min="4" max="60" value="26"><span id="thrV">26</span></div>
+    <div class="row"><label>Diff threshold</label><input id="thr" type="range" min="4" max="60" value="60"><span id="thrV">60</span></div>
     <div class="row"><label>Grey level</label><input id="grey" type="range" min="60" max="200" value="200"><span id="greyV">200</span></div>
     <div class="row"><label>Pre-blur (px)</label><input id="preblur" type="range" min="0" max="3" value="0"><span id="preblurV">0</span></div>
 
     <div class="group">Ghosts</div>
-    <div class="row"><label>Ghost opacity</label><input id="gAlpha" type="range" min="0" max="1" step="0.05" value="0.7"><span id="gAlphaV">0.70</span></div>
+    <div class="row"><label>Ghost opacity</label><input id="gAlpha" type="range" min="0" max="1" step="0.05" value="0.75"><span id="gAlphaV">0.75</span></div>
     <div class="row">
       <label>Blend mode</label>
       <select id="gBlend">
@@ -131,31 +135,31 @@
     <div class="row compact">
       <label>Ghost color</label>
       <input id="gUseColor" type="checkbox" checked style="display:none">
-      <input id="gColor" type="color" value="#ffffff">
+      <input id="gColor" type="color" value="#000000">
     </div>
 
     <div class="group">Stain</div>
     <div class="row compact"><label>Enable stain</label><input id="stainOn" type="checkbox" checked></div>
-    <div class="row"><label>Decay</label><input id="decay" type="range" min="0.90" max="0.995" step="0.001" value="0.970"><span id="decayV">0.970</span></div>
-    <div class="row"><label>Strength</label><input id="strength" type="range" min="0.1" max="1" step="0.05" value="0.50"><span id="strengthV">0.50</span></div>
-    <div class="row"><label>Expand (px)</label><input id="expand" type="range" min="0" max="8" step="1" value="2"><span id="expandV">2</span></div>
+    <div class="row"><label>Decay</label><input id="decay" type="range" min="0.90" max="0.995" step="0.001" value="0.925"><span id="decayV">0.925</span></div>
+    <div class="row"><label>Strength</label><input id="strength" type="range" min="0.1" max="1" step="0.05" value="0.35"><span id="strengthV">0.35</span></div>
+    <div class="row"><label>Expand (px)</label><input id="expand" type="range" min="0" max="8" step="1" value="0"><span id="expandV">0</span></div>
     <div class="row compact"><label>Stain color</label><input id="sColor" type="color" value="#223b7a"></div>
 
     <div class="group">Recalls</div>
     <div class="row compact"><label>Enable recall</label><input id="recallOn" type="checkbox"></div>
-    <div class="row"><label>Probability</label><input id="recallProb" type="range" min="0" max="1" step="0.01" value="0.20"><span id="recallProbV">0.20</span></div>
-    <div class="row"><label>Capacity</label><input id="recallCap" type="range" min="0" max="120" step="5" value="40"><span id="recallCapV">40</span></div>
+    <div class="row"><label>Probability</label><input id="recallProb" type="range" min="0" max="1" step="0.01" value="0.05"><span id="recallProbV">0.05</span></div>
+    <div class="row"><label>Capacity</label><input id="recallCap" type="range" min="0" max="120" step="5" value="60"><span id="recallCapV">60</span></div>
     <div class="row compact"><label>Recall color</label><input id="recallColor" type="color" value="#00e7ff"></div>
-    <div class="row"><label>Linger (s)</label><input id="recallLinger" type="range" min="0.2" max="3" step="0.1" value="1.2"><span id="recallLingerV">1.2</span></div>
-    <div class="row"><label>Span (s)</label><input id="recallSpan" type="range" min="0" max="3" step="0.1" value="0.8"><span id="recallSpanV">0.8</span></div>
+    <div class="row"><label>Linger (s)</label><input id="recallLinger" type="range" min="0.2" max="3" step="0.1" value="0.6"><span id="recallLingerV">0.6</span></div>
+    <div class="row"><label>Span (s)</label><input id="recallSpan" type="range" min="0" max="3" step="0.1" value="0.4"><span id="recallSpanV">0.4</span></div>
     <div class="btnRow"><button id="recallNow" class="btn">Recall now</button></div>
 
     <!-- Linger (formerly Haunt Map) -->
     <div class="group">Linger</div>
     <div class="row compact"><label>Enable linger</label><input id="hauntOn" type="checkbox"></div>
-    <div class="row"><label>Persistence</label><input id="hauntPersist" type="range" min="0" max="1" step="0.01" value="0.85"><span id="hauntPersistV">0.85</span></div>
+    <div class="row"><label>Persistence</label><input id="hauntPersist" type="range" min="0" max="1" step="0.01" value="0.70"><span id="hauntPersistV">0.70</span></div>
     <div class="row"><label>Reinforce radius (px)</label><input id="hauntRadius" type="range" min="10" max="60" step="1" value="30"><span id="hauntRadiusV">30</span></div>
-    <div class="row"><label>Stickiness</label><input id="hauntStick" type="range" min="0" max="2" step="0.1" value="1.3"><span id="hauntStickV">1.3</span></div>
+    <div class="row"><label>Stickiness</label><input id="hauntStick" type="range" min="0" max="2" step="0.1" value="1.0"><span id="hauntStickV">1.0</span></div>
     <div class="row compact"><label>Linger color</label><input id="hauntColor" type="color" value="#4a5e8a"></div>
 
     <!-- Drawing Filter (Outlines) -->
@@ -169,7 +173,7 @@
     <div class="row colorop"><label>color / opacity</label><input id="stainEdgeColor" type="color" value="#000000"><input id="stainEdgeAlpha" type="range" min="0" max="1" step="0.05" value="0.30"><span id="stainEdgeAlphaV">0.30</span></div>
 
     <div class="row compact"><label>Recall outline</label><input id="recallEdgeOn" type="checkbox"></div>
-    <div class="row colorop"><label>color / opacity</label><input id="recallEdgeColor" type="color" value="#000000"><input id="recallEdgeAlpha" type="range" min="0" max="1" step="0.05" value="0.40"><span id="recallEdgeAlphaV">0.40</span></div>
+    <div class="row colorop"><label>color / opacity</label><input id="recallEdgeColor" type="color" value="#fbff00"><input id="recallEdgeAlpha" type="range" min="0" max="1" step="0.05" value="0.40"><span id="recallEdgeAlphaV">0.40</span></div>
 
     <div class="row compact"><label>Linger outline</label><input id="lingerEdgeOn" type="checkbox"></div>
     <div class="row colorop"><label>color / opacity</label><input id="lingerEdgeColor" type="color" value="#ff0000"><input id="lingerEdgeAlpha" type="range" min="0" max="1" step="0.05" value="0.75"><span id="lingerEdgeAlphaV">0.75</span></div>
@@ -270,7 +274,10 @@
     await new Promise(res=>{ if(vid.readyState>=1) return res(); vid.addEventListener('loadedmetadata',res,{once:true}); });
     try{ await vid.play(); }catch(_){ throw new Error('Autoplay failed. Click Play or allow autoplay.'); }
   }
-  function stopWebcam(){ if(mediaStream){ try{mediaStream.getTracks().forEach(t=>t.stop());}catch(_){} mediaStream=null; } if(vid && vid.srcObject){ try{vid.srcObject=null;}catch(_){} } }
+  function stopWebcam(){
+    if(mediaStream){ try{mediaStream.getTracks().forEach(t=>t.stop());}catch(_){} mediaStream=null; }
+    if(vid && vid.srcObject){ try{vid.srcObject=null;}catch(_){} }
+  }
 
   /* ---------- Sizing ---------- */
   const proc = document.createElement('canvas'); const pctx = proc.getContext('2d',{willReadFrequently:true});
@@ -280,6 +287,9 @@
   const hauntCanvas = document.createElement('canvas'); const hauntCtx = hauntCanvas.getContext('2d');
   const tintCanvas  = document.createElement('canvas'); const tintCtx  = tintCanvas.getContext('2d');
   const edgeCanvas  = document.createElement('canvas'); const edgeCtx  = edgeCanvas.getContext('2d', { willReadFrequently:true });
+  /* temp layer for per-layer outlines (surgical) */
+  const edgeLayerCanvas = document.createElement('canvas');
+  const edgeLayerCtx = edgeLayerCanvas.getContext('2d', { willReadFrequently:true });
 
   function fit(){
     const dpr = Math.max(1, window.devicePixelRatio||1);
@@ -294,6 +304,8 @@
     hauntCanvas.width=W; hauntCanvas.height=H;
     tintCanvas.width=W; tintCanvas.height=H;
     edgeCanvas.width=W; edgeCanvas.height=H;
+    /* size temp layer */
+    edgeLayerCanvas.width=W; edgeLayerCanvas.height=H;
   }
   new ResizeObserver(fit).observe(can.final); fit();
 
@@ -560,7 +572,7 @@
       fctx.globalCompositeOperation = 'source-over';
     }
 
-    /* ---------- Drawing Filter: isolated per-layer outlines (levels-like) ---------- */
+    /* ---------- Drawing Filter: isolated per-layer outlines (surgical blend) ---------- */
     if (edgeThr) edgeThrV.textContent = edgeThr.value;
     if (document.getElementById('edgeThr')) {
       const TH = (+edgeThr.value | 0) || 40;
@@ -601,15 +613,21 @@
           }
         }
         for (let i=0,j=0;i<d.length;i+=4,++j){ E[j] = Math.round(E[j] * (d[i+3]/255)); }
+
+        /* per-layer blend to avoid overwriting earlier outlines */
+        edgeLayerCtx.clearRect(0,0,edgeLayerCanvas.width,edgeLayerCanvas.height);
         const [r,g,b,a01] = rgbaFrom(colorHex, alpha01);
-        const mask = edgeCtx.createImageData(W,H);
+        const mask = edgeLayerCtx.createImageData(W,H);
         const md = mask.data;
         for (let j=0,p=0;j<E.length;j++,p+=4){
           const a = E[j];
           if (!a){ md[p]=md[p+1]=md[p+2]=md[p+3]=0; continue; }
           md[p]=r; md[p+1]=g; md[p+2]=b; md[p+3]=Math.min(255, Math.round(a*a01));
         }
-        edgeCtx.putImageData(mask,0,0);
+        edgeLayerCtx.putImageData(mask,0,0);
+
+        edgeCtx.globalCompositeOperation='source-over';
+        edgeCtx.drawImage(edgeLayerCanvas,0,0);
       }
 
       edgeCtx.clearRect(0,0,edgeCanvas.width,edgeCanvas.height);
@@ -641,9 +659,6 @@
     else if(s.canWebm){ mime=s.webm; ext='webm'; }
     else { alert('Export not supported on this browser. Try Safari (MP4) or Chrome/Firefox (WebM).'); return; }
 
-    // Pause live rendering to avoid lag
-    const prevSuspend = suspendLive; suspendLive = true;
-
     exportOneBtn.disabled=true; recStartBtn.disabled=true;
 
     const outCanvas=document.createElement('canvas'); outCanvas.width=vw; outCanvas.height=vh; const octx=outCanvas.getContext('2d');
@@ -651,16 +666,16 @@
     const expRecorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:8_000_000});
     const recDone=new Promise(resolve=>{ expRecorder.ondataavailable=e=>{ if(e.data && e.data.size) expChunks.push(e.data); }; expRecorder.onstop=resolve; });
 
-    const prev={ loop:vid.loop, rate:vid.playbackRate, paused:vid.paused, t:vid.currentTime, muted:vid.muted };
-    vid.pause(); vid.loop=false; vid.playbackRate=1; vid.muted=true;
+    const prev={ loop:vid.loop, rate:vid.playbackRate, paused:vid.paused, t:vid.currentTime };
+    vid.pause(); vid.loop=false; vid.playbackRate=1;
 
     const nativeProcessing=!matchPreview.checked;
-    const prevSizes={W:can.final.width,H:can.final.height,sW:can.stain.width,sH:can.stain.height,gW:can.ghost.width,gH:can.ghost.height,pW:proc.width,pH:proc.height,mW:maskCanvas.width,mH:maskCanvas.height,cW:colCanvas.width,cH:colCanvas.height,rW:recallCanvas.width,rH:recallCanvas.height,hW:hauntCanvas.width,hH:hauntCanvas.height,tW:tintCanvas.width,tH:tintCanvas.height,eW:edgeCanvas.width,eH:edgeCanvas.height};
+    const prevSizes={W:can.final.width,H:can.final.height,sW:can.stain.width,sH:can.stain.height,gW:can.ghost.width,gH:can.ghost.height,pW:proc.width,pH:proc.height,mW:maskCanvas.width,mH:maskCanvas.height,cW:colCanvas.width,cH:colCanvas.height,hW:hauntCanvas.width,hH:hauntCanvas.height,tW:tintCanvas.width,tH:tintCanvas.height,eW:edgeCanvas.width,eH:edgeCanvas.height};
     if(nativeProcessing){
-      [can.stain,can.ghost,can.final,proc,maskCanvas,colCanvas,recallCanvas,hauntCanvas,tintCanvas,edgeCanvas].forEach(c=>{ c.width=vw; c.height=vh; });
-    } else {
-      // clear recall at start even when matching preview
-      recallCanvas.width = recallCanvas.width;
+      [can.stain,can.ghost,can.final,proc,maskCanvas,colCanvas,hauntCanvas,tintCanvas,edgeCanvas].forEach(c=>{ c.width=vw; c.height=vh; });
+      recallCanvas.width=vw; recallCanvas.height=vh; recallCtx.clearRect(0,0,recallCanvas.width,recallCanvas.height);
+      /* size temp outline layer for export */
+      edgeLayerCanvas.width=vw; edgeLayerCanvas.height=vh;
     }
 
     function drawContain(srcCanvas,dstCtx,dstW,dstH){
@@ -712,10 +727,15 @@
       if(vid && !isNaN(vid.currentTime)) snapshotGhost(vid.currentTime);
       if(recallOn && recallOn.checked){ const prob=+recallProb.value||0; if(Math.random()<prob && !activeBurst) startRandomBurst(); }
       exportDecayStep();
-      if(activeBurst && activeBurst.frames && activeBurst.frames.length){ const color=recallColor?recallColor.value:'#00e7ff'; drawTinted(recallCtx,activeBurst.frames[activeBurst.i],color); activeBurst.i++; if(activeBurst.i>=activeBurst.frames.length) activeBurst=null; }
+      if(activeBurst && activeBurst.frames && activeBurst.frames.length){
+        const color=recallColor?recallColor.value:'#00e7ff';
+        drawTinted(recallCtx, activeBurst.frames[activeBurst.i], color);
+        activeBurst.i++;
+        if(activeBurst.i>=activeBurst.frames.length) activeBurst=null;
+      }
       fctx.globalCompositeOperation='screen'; fctx.drawImage(recallCanvas,0,0); fctx.globalCompositeOperation='source-over';
 
-      /* outlines during export (same algo as live) */
+      /* outlines during export (same algo & surgical blend as live) */
       const TH = (+edgeThr.value | 0) || 40;
       const TL = Math.max(0, Math.floor(TH * 0.5));
       function rgbaFrom(hex, a01){
@@ -748,14 +768,19 @@
           }
         }
         for (let i=0,j=0;i<d.length;i+=4,++j){ E[j] = Math.round(E[j] * (d[i+3]/255)); }
+
+        edgeLayerCtx.clearRect(0,0,edgeLayerCanvas.width,edgeLayerCanvas.height);
         const [r,g,b,a01] = rgbaFrom(colorHex, alpha01);
-        const mask = edgeCtx.createImageData(W,H);
+        const mask = edgeLayerCtx.createImageData(W,H);
         const md = mask.data;
         for (let j=0,p=0;j<E.length;j++,p+=4){
           const a = E[j]; if(!a){ md[p]=md[p+1]=md[p+2]=md[p+3]=0; continue; }
           md[p]=r; md[p+1]=g; md[p+2]=b; md[p+3]=Math.min(255, Math.round(a*a01));
         }
-        edgeCtx.putImageData(mask,0,0);
+        edgeLayerCtx.putImageData(mask,0,0);
+
+        edgeCtx.globalCompositeOperation='source-over';
+        edgeCtx.drawImage(edgeLayerCanvas,0,0);
       }
 
       edgeCtx.clearRect(0,0,edgeCanvas.width,edgeCanvas.height);
@@ -766,31 +791,16 @@
       fctx.drawImage(edgeCanvas,0,0);
     }
 
-    // reset state & seek to true beginning
-    if (typeof resetState === 'function') resetState();
     await new Promise(res=>{ const h=()=>{vid.removeEventListener('seeked',h); res();}; vid.addEventListener('seeked',h); try{ vid.currentTime=0; }catch(_){ res(); } });
+    expRecorder.start(250); processOneFrame(can.final.width,can.final.height); blitToOut();
 
-    expRecorder.start(500);
-    processOneFrame(can.final.width,can.final.height);
-    blitToOut();
-
-    const hasVFC=typeof vid.requestVideoFrameCallback==='function';
-    let vfcId=null, rafId=null, finished=false;
+    const hasVFC=typeof vid.requestVideoFrameCallback==='function'; let vfcId=null, rafId=null;
     function stopDrivers(){ if(vfcId && vid.cancelVideoFrameCallback) try{vid.cancelVideoFrameCallback(vfcId);}catch(_){} if(rafId) cancelAnimationFrame(rafId); vfcId=rafId=null; }
-    function finalize(){ if(finished) return; finished=true; stopDrivers(); try{expRecorder.stop();}catch(_){} }
-    function loop(){
-      if(finished) return;
-      processOneFrame(can.final.width,can.final.height);
-      blitToOut();
-      const d=vid.duration;
-      if(vid.ended || (isFinite(d) && vid.currentTime >= d - 1/60)){ finalize(); return; }
-      if(hasVFC) vfcId=vid.requestVideoFrameCallback(()=>loop()); else rafId=requestAnimationFrame(loop);
-    }
-    const safety=setTimeout(finalize, (isFinite(vid.duration)?vid.duration:120)*1000 + 30000);
-    vid.addEventListener('ended',finalize,{once:true});
-    try{ await vid.play(); }catch(_){}
-    loop();
-    await recDone; clearTimeout(safety);
+    function loop(){ processOneFrame(can.final.width,can.final.height); blitToOut(); if(hasVFC) vfcId=vid.requestVideoFrameCallback(()=>loop()); else rafId=requestAnimationFrame(loop); }
+
+    const safety=setTimeout(()=>{ try{vid.pause();}catch(_){}; finalize(); }, (isFinite(vid.duration)?vid.duration:60)*1000+15000);
+    function finalize(){ clearTimeout(safety); stopDrivers(); try{expRecorder.stop();}catch(_){} }
+    vid.addEventListener('ended',finalize,{once:true}); await vid.play().catch(()=>{}); loop(); await recDone;
 
     const blob=new Blob(expChunks,{type:mime}); const a=document.createElement('a'); const tag=matchPreview.checked?'match':'native';
     a.download=`wind_on_wall_1x_${vw}x${vh}_${tag}_${Date.now()}.${ext}`; a.href=URL.createObjectURL(blob); a.click();
@@ -802,17 +812,14 @@
       proc.width=prevSizes.pW; proc.height=prevSizes.pH;
       maskCanvas.width=prevSizes.mW; maskCanvas.height=prevSizes.mH;
       colCanvas.width=prevSizes.cW; colCanvas.height=prevSizes.cH;
-      recallCanvas.width=prevSizes.rW; recallCanvas.height=prevSizes.rH;
       hauntCanvas.width=prevSizes.hW; hauntCanvas.height=prevSizes.hH;
       tintCanvas.width=prevSizes.tW; tintCanvas.height=prevSizes.tH;
       edgeCanvas.width=prevSizes.eW; edgeCanvas.height=prevSizes.eH;
+      /* restore temp outline layer size */
+      edgeLayerCanvas.width=prevSizes.eW; edgeLayerCanvas.height=prevSizes.eH;
     }
-    vid.loop=prev.loop; vid.playbackRate=prev.rate; vid.muted=prev.muted;
-    try{ vid.currentTime=prev.t; }catch(_){}
+    vid.loop=prev.loop; vid.playbackRate=prev.rate; try{ vid.currentTime=prev.t; }catch(_){}
     if(!prev.paused){ try{ await vid.play(); }catch(_){ } }
-
-    // restore live render + buttons
-    suspendLive = prevSuspend;
     exportOneBtn.disabled=false; recStartBtn.disabled=false;
   }
 })();

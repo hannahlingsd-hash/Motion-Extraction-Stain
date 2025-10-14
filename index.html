@@ -425,8 +425,7 @@
     const frames=recallBank.filter(f=>f.t>=t0 && f.t<=t1).map(f=>f.img);
     activeBurst={frames:frames.length?frames:[recallBank[r].img],i:0};
   }
-  const recallNow = document.getElementById('recallNow');
-  if(recallNow) recallNow.addEventListener('click', ()=>{ recallBurst+=1; });
+  if(recallNowB) recallNowB.addEventListener('click', ()=>{ recallBurst+=1; });
   function drawTinted(dstCtx,src,color){
     dstCtx.globalCompositeOperation='source-over';
     dstCtx.drawImage(src,0,0);
@@ -635,7 +634,7 @@
 
   vid.addEventListener('loadeddata', ()=>{ vid.play().catch(()=>{}); });
 
-  /* ---------- Export 1:1 (FIXED: decode-clock–paced, manual frame pushing) ---------- */
+  /* ---------- Export 1:1 (FIXED pacing & mux) ---------- */
   exportOneBtn.addEventListener('click', exportSourceOnce);
   async function exportSourceOnce(){
     if(vid.srcObject){ alert('1:1 export is for file/URL clips, not webcam.'); return; }
@@ -648,18 +647,19 @@
     else if(s.canWebm){ mime=s.webm; ext='webm'; }
     else { alert('Export not supported on this browser. Try Safari (MP4) or Chrome/Firefox (WebM).'); return; }
 
-    // Pause live render to avoid contention
+    /* suspend live loop to avoid contention */
     const prevSuspend = suspendLive; suspendLive = true;
 
     exportOneBtn.disabled=true; recStartBtn.disabled=true;
 
-    const outCanvas=document.createElement('canvas'); outCanvas.width=vw; outCanvas.height=vh; const octx=outCanvas.getContext('2d');
-    const getStream = outCanvas.captureStream || outCanvas.mozCaptureStream;
-    const stream = getStream.call(outCanvas, 0); // 0fps → we'll push frames manually
+    const outCanvas=document.createElement('canvas'); outCanvas.width=vw; outCanvas.height=vh;
+    const octx=outCanvas.getContext('2d');
+    /* captureStream(0) + manual requestFrame pacing */
+    const stream = outCanvas.captureStream(0);
     const track = stream.getVideoTracks()[0];
 
-    const expChunks=[]; 
-    const expRecorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:10_000_000});
+    const expChunks=[];
+    const expRecorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:12_000_000});
     const recDone=new Promise(resolve=>{ expRecorder.ondataavailable=e=>{ if(e.data && e.data.size) expChunks.push(e.data); }; expRecorder.onstop=resolve; });
 
     const prev={ loop:vid.loop, rate:vid.playbackRate, paused:vid.paused, t:vid.currentTime };
@@ -728,7 +728,6 @@
       }
       fctx.globalCompositeOperation='screen'; fctx.drawImage(recallCanvas,0,0); fctx.globalCompositeOperation='source-over';
 
-      /* outlines (same as live) */
       const TH = (+edgeThr.value | 0) || 40;
       const TL = Math.max(0, Math.floor(TH * 0.5));
       function rgbaFrom(hex, a01){
@@ -764,4 +763,90 @@
         const [r,g,b,a01] = rgbaFrom(colorHex, alpha01);
         const mask = edgeCtx.createImageData(W,H);
         const md = mask.data;
-        for (let j=0,p=0;j<E.length;j++,
+        for (let j=0,p=0;j<E.length;j++,p+=4){
+          const a = E[j]; if(!a){ md[p]=md[p+1]=md[p+2]=md[p+3]=0; continue; }
+          md[p]=r; md[p+1]=g; md[p+2]=b; md[p+3]=Math.min(255, Math.round(a*a01));
+        }
+        edgeCtx.putImageData(mask,0,0);
+      }
+
+      edgeCtx.clearRect(0,0,edgeCanvas.width,edgeCanvas.height);
+      if (ghostEdgeOn && ghostEdgeOn.checked)   drawOutlineFrom(can.ghost,    ghostEdgeColor.value,  +ghostEdgeAlpha.value||0.8);
+      if (stainEdgeOn && stainEdgeOn.checked)   drawOutlineFrom(can.stain,    stainEdgeColor.value,  +stainEdgeAlpha.value||0.7);
+      if (recallEdgeOn && recallEdgeOn.checked) drawOutlineFrom(recallCanvas, recallEdgeColor.value, +recallEdgeAlpha.value||0.7);
+      if (lingerEdgeOn && lingerEdgeOn.checked) drawOutlineFrom(hauntCanvas,  lingerEdgeColor.value, +lingerEdgeAlpha.value||0.8);
+      fctx.drawImage(edgeCanvas,0,0);
+
+      blitToOut();
+    }
+
+    /* seek to start */
+    await new Promise(res=>{ const h=()=>{vid.removeEventListener('seeked',h); res();}; vid.addEventListener('seeked',h,{once:true}); try{ vid.currentTime=0; }catch(_){ res(); } });
+    /* start recorder without timeslice to reduce stutter */
+    expRecorder.start();
+
+    let running = true;
+    function onVFC(){
+      if(!running) return;
+      processOneFrame(can.final.width,can.final.height);
+      track.requestFrame();
+      if(!vid.ended && !vid.seeking) vid.requestVideoFrameCallback(onVFC);
+    }
+
+    await vid.play().catch(()=>{});
+    if (typeof vid.requestVideoFrameCallback === 'function'){
+      vid.requestVideoFrameCallback(onVFC);
+    } else {
+      // Fallback ~30fps
+      const frameMs=33;
+      const timer = setInterval(()=>{
+        if(vid.ended){ clearInterval(timer); return; }
+        processOneFrame(can.final.width,can.final.height);
+        track.requestFrame();
+      }, frameMs);
+      vid.addEventListener('ended', ()=>clearInterval(timer), {once:true});
+    }
+
+    const safety=setTimeout(()=>{ running=false; try{vid.pause();}catch(_){} try{expRecorder.stop();}catch(_){} }, (isFinite(vid.duration)?vid.duration:60)*1000+15000);
+    vid.addEventListener('ended', ()=>{
+      running=false;
+      clearTimeout(safety);
+      try{ expRecorder.stop(); }catch(_){}
+    }, {once:true});
+
+    await recDone;
+
+    const blob=new Blob(expChunks,{type:mime});
+    const a=document.createElement('a'); const tag=matchPreview.checked?'match':'native';
+    a.download=`wind_on_wall_1x_${vw}x${vh}_${tag}_${Date.now()}.${ext}`; a.href=URL.createObjectURL(blob); a.click();
+
+    if(nativeProcessing){
+      can.final.width=prevSizes.W; can.final.height=prevSizes.H;
+      can.stain.width=prevSizes.sW; can.stain.height=prevSizes.sH;
+      can.ghost.width=prevSizes.gW; can.ghost.height=prevSizes.gH;
+      proc.width=prevSizes.pW; proc.height=prevSizes.pH;
+      maskCanvas.width=prevSizes.mW; maskCanvas.height=prevSizes.mH;
+      colCanvas.width=prevSizes.cW; colCanvas.height=prevSizes.cH;
+      hauntCanvas.width=prevSizes.hW; hauntCanvas.height=prevSizes.hH;
+      tintCanvas.width=prevSizes.tW; tintCanvas.height=prevSizes.tH;
+      edgeCanvas.width=prevSizes.eW; edgeCanvas.height=prevSizes.eH;
+    }
+    vid.loop=prev.loop; vid.playbackRate=prev.rate; try{ vid.currentTime=prev.t; }catch(_){}
+    if(!prev.paused){ try{ await vid.play(); }catch(_){ } }
+
+    exportOneBtn.disabled=false; recStartBtn.disabled=false;
+    suspendLive = prevSuspend; /* resume live loop */
+  }
+})();
+</script>
+
+<!-- Slider fill % helper -->
+<script>
+(function(){
+  function paint(r){ var min=r.min?+r.min:0, max=r.max?+r.max:100, val=isNaN(+r.value)?min:+r.value, p=((val-min)/(max-min))*100; r.style.setProperty('--p', p+'%'); }
+  var ranges=document.querySelectorAll('input[type="range"]');
+  ranges.forEach(function(r){ paint(r); r.addEventListener('input', function(){ paint(r); }); });
+})();
+</script>
+</body>
+</html>

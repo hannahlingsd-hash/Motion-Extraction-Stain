@@ -51,11 +51,12 @@
   .row > span{text-align:right;color:#000}
   .row label{color:var(--fg)}
 
-  /* one-line color/opacity rows: label | color | slider | value */
+  /* color / opacity rows ONLY (Drawing Filter section) */
   .row.colorop{
-    /* shortened opacity slider ONLY for outline section */
-    grid-template-columns: 1fr auto 120px 44px;
+    /* label | color | shorter range | value */
+    grid-template-columns: 1fr auto 120px 44px !important;
   }
+  .row.colorop input[type="range"]{ width:120px; }
 
   .btnRow{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
   .inlineRow{display:flex;align-items:center;gap:8px;margin:6px 0}
@@ -270,7 +271,10 @@
     await new Promise(res=>{ if(vid.readyState>=1) return res(); vid.addEventListener('loadedmetadata',res,{once:true}); });
     try{ await vid.play(); }catch(_){ throw new Error('Autoplay failed. Click Play or allow autoplay.'); }
   }
-  function stopWebcam(){ if(mediaStream){ try{mediaStream.getTracks().forEach(t=>t.stop());}catch(_){} mediaStream=null; } if(vid && vid.srcObject){ try{vid.srcObject=null;}catch(_){} }
+  function stopWebcam(){
+    if(mediaStream){ try{mediaStream.getTracks().forEach(t=>t.stop());}catch(_){} mediaStream=null; }
+    if(vid && vid.srcObject){ try{vid.srcObject=null;}catch(_){} }
+  }
 
   /* ---------- Sizing ---------- */
   const proc = document.createElement('canvas'); const pctx = proc.getContext('2d',{willReadFrequently:true});
@@ -532,7 +536,7 @@
 
     /* ---------- Linger (sharp accumulator + independent color) ---------- */
     if(hauntOn && hauntOn.checked){
-      const p     = Math.max(0, Math.min(1, +hauntPersist.value || 0.85));
+      const p     = Math.max(0, Math.min(1, +hauntPersist.value || 0.85)); // higher = slower fade
       const stick = +hauntStick.value || 1.3;
       const tint  = (hauntColor && hauntColor.value) ? hauntColor.value : '#4a5e8a';
 
@@ -560,7 +564,7 @@
       fctx.globalCompositeOperation = 'source-over';
     }
 
-    /* ---------- Drawing Filter: isolated per-layer outlines ---------- */
+    /* ---------- Drawing Filter: isolated per-layer outlines (levels-like) ---------- */
     if (edgeThr) edgeThrV.textContent = edgeThr.value;
     if (document.getElementById('edgeThr')) {
       const TH = (+edgeThr.value | 0) || 40;
@@ -710,7 +714,7 @@
       if(activeBurst && activeBurst.frames && activeBurst.frames.length){ const color=recallColor?recallColor.value:'#00e7ff'; drawTinted(recallCtx,activeBurst.frames[activeBurst.i],color); activeBurst.i++; if(activeBurst.i>=activeBurst.frames.length) activeBurst=null; }
       fctx.globalCompositeOperation='screen'; fctx.drawImage(recallCanvas,0,0); fctx.globalCompositeOperation='source-over';
 
-      /* outlines during export */
+      /* outlines during export (same as live) */
       const TH = (+edgeThr.value | 0) || 40;
       const TL = Math.max(0, Math.floor(TH * 0.5));
       function rgbaFrom(hex, a01){

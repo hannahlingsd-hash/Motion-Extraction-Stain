@@ -51,9 +51,9 @@
   .row > span{text-align:right;color:#000}
   .row label{color:var(--fg)}
 
-  /* Drawing Filter (color / opacity) layout ONLY — shorter opacity sliders */
+  /* Drawing Filter (color / opacity) – short sliders */
   .row.colorop{
-    grid-template-columns: 1fr auto 110px 44px !important; /* label | color | SHORT range | value */
+    grid-template-columns: 1fr auto 110px 44px !important;
   }
   .row.colorop input[type="range"]{
     width:110px !important;
@@ -274,10 +274,7 @@
     await new Promise(res=>{ if(vid.readyState>=1) return res(); vid.addEventListener('loadedmetadata',res,{once:true}); });
     try{ await vid.play(); }catch(_){ throw new Error('Autoplay failed. Click Play or allow autoplay.'); }
   }
-  function stopWebcam(){
-    if(mediaStream){ try{mediaStream.getTracks().forEach(t=>t.stop());}catch(_){} mediaStream=null; }
-    if(vid && vid.srcObject){ try{vid.srcObject=null;}catch(_){} }
-  }
+  function stopWebcam(){ if(mediaStream){ try{mediaStream.getTracks().forEach(t=>t.stop());}catch(_){} mediaStream=null; } if(vid && vid.srcObject){ try{vid.srcObject=null;}catch(_){} } }
 
   /* ---------- Sizing ---------- */
   const proc = document.createElement('canvas'); const pctx = proc.getContext('2d',{willReadFrequently:true});
@@ -287,9 +284,6 @@
   const hauntCanvas = document.createElement('canvas'); const hauntCtx = hauntCanvas.getContext('2d');
   const tintCanvas  = document.createElement('canvas'); const tintCtx  = tintCanvas.getContext('2d');
   const edgeCanvas  = document.createElement('canvas'); const edgeCtx  = edgeCanvas.getContext('2d', { willReadFrequently:true });
-  /* temp layer for per-layer outlines (surgical) */
-  const edgeLayerCanvas = document.createElement('canvas');
-  const edgeLayerCtx = edgeLayerCanvas.getContext('2d', { willReadFrequently:true });
 
   function fit(){
     const dpr = Math.max(1, window.devicePixelRatio||1);
@@ -304,8 +298,6 @@
     hauntCanvas.width=W; hauntCanvas.height=H;
     tintCanvas.width=W; tintCanvas.height=H;
     edgeCanvas.width=W; edgeCanvas.height=H;
-    /* size temp layer */
-    edgeLayerCanvas.width=W; edgeLayerCanvas.height=H;
   }
   new ResizeObserver(fit).observe(can.final); fit();
 
@@ -544,7 +536,7 @@
 
     /* ---------- Linger (sharp accumulator + independent color) ---------- */
     if(hauntOn && hauntOn.checked){
-      const p     = Math.max(0, Math.min(1, +hauntPersist.value || 0.85)); // higher = slower fade
+      const p     = Math.max(0, Math.min(1, +hauntPersist.value || 0.85));
       const stick = +hauntStick.value || 1.3;
       const tint  = (hauntColor && hauntColor.value) ? hauntColor.value : '#4a5e8a';
 
@@ -572,7 +564,7 @@
       fctx.globalCompositeOperation = 'source-over';
     }
 
-    /* ---------- Drawing Filter: isolated per-layer outlines (surgical blend) ---------- */
+    /* ---------- Drawing Filter: per-layer outlines (non-destructive) ---------- */
     if (edgeThr) edgeThrV.textContent = edgeThr.value;
     if (document.getElementById('edgeThr')) {
       const TH = (+edgeThr.value | 0) || 40;
@@ -582,9 +574,10 @@
         const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex||'#000000');
         return [parseInt(m[1],16), parseInt(m[2],16), parseInt(m[3],16), Math.max(0,Math.min(1,a01||1))];
       }
-      function drawOutlineFrom(srcCanvas, colorHex, alpha01){
+      /* Return an offscreen canvas with the outline for srcCanvas */
+      function outlineCanvasFrom(srcCanvas, colorHex, alpha01){
         const W = srcCanvas.width, H = srcCanvas.height;
-        if (!W || !H) return;
+        if (!W || !H) return null;
         const sctx = srcCanvas.getContext('2d');
         const img  = sctx.getImageData(0,0,W,H);
         const d    = img.data;
@@ -612,29 +605,31 @@
             E[idx] = aa;
           }
         }
-        for (let i=0,j=0;i<d.length;i+=4,++j){ E[j] = Math.round(E[j] * (d[i+3]/255)); }
-
-        /* per-layer blend to avoid overwriting earlier outlines */
-        edgeLayerCtx.clearRect(0,0,edgeLayerCanvas.width,edgeLayerCanvas.height);
+        /* mask → RGBA with chosen color and alpha */
         const [r,g,b,a01] = rgbaFrom(colorHex, alpha01);
-        const mask = edgeLayerCtx.createImageData(W,H);
+        const out = new OffscreenCanvas ? new OffscreenCanvas(W,H) : (function(){ const c=document.createElement('canvas'); c.width=W; c.height=H; return c; })();
+        const octx = out.getContext('2d');
+        const mask = octx.createImageData(W,H);
         const md = mask.data;
         for (let j=0,p=0;j<E.length;j++,p+=4){
           const a = E[j];
           if (!a){ md[p]=md[p+1]=md[p+2]=md[p+3]=0; continue; }
           md[p]=r; md[p+1]=g; md[p+2]=b; md[p+3]=Math.min(255, Math.round(a*a01));
         }
-        edgeLayerCtx.putImageData(mask,0,0);
-
-        edgeCtx.globalCompositeOperation='source-over';
-        edgeCtx.drawImage(edgeLayerCanvas,0,0);
+        octx.putImageData(mask,0,0);
+        return out;
       }
 
       edgeCtx.clearRect(0,0,edgeCanvas.width,edgeCanvas.height);
-      if (ghostEdgeOn && ghostEdgeOn.checked)   drawOutlineFrom(can.ghost,    ghostEdgeColor.value,  +ghostEdgeAlpha.value||0.8);
-      if (stainEdgeOn && stainEdgeOn.checked)   drawOutlineFrom(can.stain,    stainEdgeColor.value,  +stainEdgeAlpha.value||0.7);
-      if (recallEdgeOn && recallEdgeOn.checked) drawOutlineFrom(recallCanvas, recallEdgeColor.value, +recallEdgeAlpha.value||0.7);
-      if (lingerEdgeOn && lingerEdgeOn.checked) drawOutlineFrom(hauntCanvas,  lingerEdgeColor.value, +lingerEdgeAlpha.value||0.8);
+      /* Compose each outline onto edgeCanvas to avoid overwriting */
+      const layers = [];
+      if (ghostEdgeOn && ghostEdgeOn.checked)   layers.push(outlineCanvasFrom(can.ghost,    ghostEdgeColor.value,  +ghostEdgeAlpha.value||0.8));
+      if (stainEdgeOn && stainEdgeOn.checked)   layers.push(outlineCanvasFrom(can.stain,    stainEdgeColor.value,  +stainEdgeAlpha.value||0.7));
+      if (recallEdgeOn && recallEdgeOn.checked) layers.push(outlineCanvasFrom(recallCanvas, recallEdgeColor.value, +recallEdgeAlpha.value||0.7));
+      if (lingerEdgeOn && lingerEdgeOn.checked) layers.push(outlineCanvasFrom(hauntCanvas,  lingerEdgeColor.value, +lingerEdgeAlpha.value||0.8));
+
+      edgeCtx.globalCompositeOperation='source-over';
+      for(const layer of layers){ if(layer) edgeCtx.drawImage(layer,0,0); }
 
       fctx.globalCompositeOperation='source-over';
       fctx.drawImage(edgeCanvas,0,0);
@@ -661,6 +656,10 @@
 
     exportOneBtn.disabled=true; recStartBtn.disabled=true;
 
+    /* Pause live loop and reset for a clean, full-length export */
+    suspendLive = true;
+    resetState();
+
     const outCanvas=document.createElement('canvas'); outCanvas.width=vw; outCanvas.height=vh; const octx=outCanvas.getContext('2d');
     const expChunks=[]; const stream=outCanvas.captureStream?outCanvas.captureStream(30):outCanvas.mozCaptureStream(30);
     const expRecorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:8_000_000});
@@ -674,8 +673,6 @@
     if(nativeProcessing){
       [can.stain,can.ghost,can.final,proc,maskCanvas,colCanvas,hauntCanvas,tintCanvas,edgeCanvas].forEach(c=>{ c.width=vw; c.height=vh; });
       recallCanvas.width=vw; recallCanvas.height=vh; recallCtx.clearRect(0,0,recallCanvas.width,recallCanvas.height);
-      /* size temp outline layer for export */
-      edgeLayerCanvas.width=vw; edgeLayerCanvas.height=vh;
     }
 
     function drawContain(srcCanvas,dstCtx,dstW,dstH){
@@ -730,20 +727,19 @@
       if(activeBurst && activeBurst.frames && activeBurst.frames.length){
         const color=recallColor?recallColor.value:'#00e7ff';
         drawTinted(recallCtx, activeBurst.frames[activeBurst.i], color);
-        activeBurst.i++;
-        if(activeBurst.i>=activeBurst.frames.length) activeBurst=null;
+        activeBurst.i++; if(activeBurst.i>=activeBurst.frames.length) activeBurst=null;
       }
       fctx.globalCompositeOperation='screen'; fctx.drawImage(recallCanvas,0,0); fctx.globalCompositeOperation='source-over';
 
-      /* outlines during export (same algo & surgical blend as live) */
+      /* outlines during export (same logic as live) */
       const TH = (+edgeThr.value | 0) || 40;
       const TL = Math.max(0, Math.floor(TH * 0.5));
       function rgbaFrom(hex, a01){
         const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex||'#000000');
         return [parseInt(m[1],16), parseInt(m[2],16), parseInt(m[3],16), Math.max(0,Math.min(1,a01||1))];
       }
-      function drawOutlineFrom(srcCanvas, colorHex, alpha01){
-        const W = srcCanvas.width, H = srcCanvas.height; if(!W||!H) return;
+      function outlineCanvasFrom(srcCanvas, colorHex, alpha01){
+        const W = srcCanvas.width, H = srcCanvas.height; if(!W||!H) return null;
         const sctx = srcCanvas.getContext('2d');
         const img  = sctx.getImageData(0,0,W,H);
         const d    = img.data;
@@ -767,40 +763,51 @@
             E[idx]=aa;
           }
         }
-        for (let i=0,j=0;i<d.length;i+=4,++j){ E[j] = Math.round(E[j] * (d[i+3]/255)); }
-
-        edgeLayerCtx.clearRect(0,0,edgeLayerCanvas.width,edgeLayerCanvas.height);
         const [r,g,b,a01] = rgbaFrom(colorHex, alpha01);
-        const mask = edgeLayerCtx.createImageData(W,H);
+        const out = new OffscreenCanvas ? new OffscreenCanvas(W,H) : (function(){ const c=document.createElement('canvas'); c.width=W; c.height=H; return c; })();
+        const octx = out.getContext('2d');
+        const mask = octx.createImageData(W,H);
         const md = mask.data;
         for (let j=0,p=0;j<E.length;j++,p+=4){
           const a = E[j]; if(!a){ md[p]=md[p+1]=md[p+2]=md[p+3]=0; continue; }
           md[p]=r; md[p+1]=g; md[p+2]=b; md[p+3]=Math.min(255, Math.round(a*a01));
         }
-        edgeLayerCtx.putImageData(mask,0,0);
-
-        edgeCtx.globalCompositeOperation='source-over';
-        edgeCtx.drawImage(edgeLayerCanvas,0,0);
+        octx.putImageData(mask,0,0);
+        return out;
       }
-
       edgeCtx.clearRect(0,0,edgeCanvas.width,edgeCanvas.height);
-      if (ghostEdgeOn && ghostEdgeOn.checked)   drawOutlineFrom(can.ghost,    ghostEdgeColor.value,  +ghostEdgeAlpha.value||0.8);
-      if (stainEdgeOn && stainEdgeOn.checked)   drawOutlineFrom(can.stain,    stainEdgeColor.value,  +stainEdgeAlpha.value||0.7);
-      if (recallEdgeOn && recallEdgeOn.checked) drawOutlineFrom(recallCanvas, recallEdgeColor.value, +recallEdgeAlpha.value||0.7);
-      if (lingerEdgeOn && lingerEdgeOn.checked) drawOutlineFrom(hauntCanvas,  lingerEdgeColor.value, +lingerEdgeAlpha.value||0.8);
+      const layers=[];
+      if (ghostEdgeOn && ghostEdgeOn.checked)   layers.push(outlineCanvasFrom(can.ghost,    ghostEdgeColor.value,  +ghostEdgeAlpha.value||0.8));
+      if (stainEdgeOn && stainEdgeOn.checked)   layers.push(outlineCanvasFrom(can.stain,    stainEdgeColor.value,  +stainEdgeAlpha.value||0.7));
+      if (recallEdgeOn && recallEdgeOn.checked) layers.push(outlineCanvasFrom(recallCanvas, recallEdgeColor.value, +recallEdgeAlpha.value||0.7));
+      if (lingerEdgeOn && lingerEdgeOn.checked) layers.push(outlineCanvasFrom(hauntCanvas,  lingerEdgeColor.value, +lingerEdgeAlpha.value||0.8));
+      edgeCtx.globalCompositeOperation='source-over';
+      for(const layer of layers){ if(layer) edgeCtx.drawImage(layer,0,0); }
       fctx.drawImage(edgeCanvas,0,0);
     }
 
-    await new Promise(res=>{ const h=()=>{vid.removeEventListener('seeked',h); res();}; vid.addEventListener('seeked',h); try{ vid.currentTime=0; }catch(_){ res(); } });
-    expRecorder.start(250); processOneFrame(can.final.width,can.final.height); blitToOut();
+    /* ensure we truly start at t=0 and run to ended */
+    await new Promise(res=>{
+      const h=()=>{ vid.removeEventListener('seeked',h); res(); };
+      vid.addEventListener('seeked',h,{once:true});
+      try{ vid.currentTime=0; }catch(_){ res(); }
+    });
+
+    expRecorder.start(250);
+    /* prime first frame */
+    processOneFrame(can.final.width,can.final.height); blitToOut();
 
     const hasVFC=typeof vid.requestVideoFrameCallback==='function'; let vfcId=null, rafId=null;
     function stopDrivers(){ if(vfcId && vid.cancelVideoFrameCallback) try{vid.cancelVideoFrameCallback(vfcId);}catch(_){} if(rafId) cancelAnimationFrame(rafId); vfcId=rafId=null; }
     function loop(){ processOneFrame(can.final.width,can.final.height); blitToOut(); if(hasVFC) vfcId=vid.requestVideoFrameCallback(()=>loop()); else rafId=requestAnimationFrame(loop); }
 
-    const safety=setTimeout(()=>{ try{vid.pause();}catch(_){}; finalize(); }, (isFinite(vid.duration)?vid.duration:60)*1000+15000);
+    const safety=setTimeout(()=>{ try{vid.pause();}catch(_){} finalize(); }, (isFinite(vid.duration)?vid.duration:60)*1000 + 30000);
     function finalize(){ clearTimeout(safety); stopDrivers(); try{expRecorder.stop();}catch(_){} }
-    vid.addEventListener('ended',finalize,{once:true}); await vid.play().catch(()=>{}); loop(); await recDone;
+
+    vid.addEventListener('ended',finalize,{once:true});
+    await vid.play().catch(()=>{});
+    loop();
+    await recDone;
 
     const blob=new Blob(expChunks,{type:mime}); const a=document.createElement('a'); const tag=matchPreview.checked?'match':'native';
     a.download=`wind_on_wall_1x_${vw}x${vh}_${tag}_${Date.now()}.${ext}`; a.href=URL.createObjectURL(blob); a.click();
@@ -815,12 +822,12 @@
       hauntCanvas.width=prevSizes.hW; hauntCanvas.height=prevSizes.hH;
       tintCanvas.width=prevSizes.tW; tintCanvas.height=prevSizes.tH;
       edgeCanvas.width=prevSizes.eW; edgeCanvas.height=prevSizes.eH;
-      /* restore temp outline layer size */
-      edgeLayerCanvas.width=prevSizes.eW; edgeLayerCanvas.height=prevSizes.eH;
     }
     vid.loop=prev.loop; vid.playbackRate=prev.rate; try{ vid.currentTime=prev.t; }catch(_){}
     if(!prev.paused){ try{ await vid.play(); }catch(_){ } }
     exportOneBtn.disabled=false; recStartBtn.disabled=false;
+
+    suspendLive = false;  // resume live loop
   }
 })();
 </script>

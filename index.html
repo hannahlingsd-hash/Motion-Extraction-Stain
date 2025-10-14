@@ -51,8 +51,16 @@
   .row > span{text-align:right;color:#000}
   .row label{color:var(--fg)}
 
-  /* (optional) keep a shorter layout for color/opacity rows */
-  .row.colorop{grid-template-columns:1fr auto 110px 44px}
+  /* Drawing Filter (color / opacity) layout ONLY */
+  .row.colorop{
+    /* label | color | SHORT range | value */
+    grid-template-columns: 1fr auto 110px 44px !important;
+  }
+  .row.colorop input[type="range"]{
+    width:110px !important;
+    max-width:110px !important;
+    justify-self:start;
+  }
 
   .btnRow{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
   .inlineRow{display:flex;align-items:center;gap:8px;margin:6px 0}
@@ -160,36 +168,16 @@
     <div class="row"><label>Threshold</label><input id="edgeThr" type="range" min="0" max="255" step="1" value="40"><span id="edgeThrV">40</span></div>
 
     <div class="row compact"><label>Ghost outline</label><input id="ghostEdgeOn" type="checkbox"></div>
-    <div class="row colorop">
-      <label>color / opacity</label>
-      <input id="ghostEdgeColor" type="color" value="#000000">
-      <input id="ghostEdgeAlpha" type="range" min="0" max="1" step="0.05" value="0.75" style="width:110px;max-width:110px">
-      <span id="ghostEdgeAlphaV">0.75</span>
-    </div>
+    <div class="row colorop"><label>color / opacity</label><input id="ghostEdgeColor" type="color" value="#000000"><input id="ghostEdgeAlpha" type="range" min="0" max="1" step="0.05" value="0.75"><span id="ghostEdgeAlphaV">0.75</span></div>
 
     <div class="row compact"><label>Stain outline</label><input id="stainEdgeOn" type="checkbox"></div>
-    <div class="row colorop">
-      <label>color / opacity</label>
-      <input id="stainEdgeColor" type="color" value="#000000">
-      <input id="stainEdgeAlpha" type="range" min="0" max="1" step="0.05" value="0.30" style="width:110px;max-width:110px">
-      <span id="stainEdgeAlphaV">0.30</span>
-    </div>
+    <div class="row colorop"><label>color / opacity</label><input id="stainEdgeColor" type="color" value="#000000"><input id="stainEdgeAlpha" type="range" min="0" max="1" step="0.05" value="0.30"><span id="stainEdgeAlphaV">0.30</span></div>
 
     <div class="row compact"><label>Recall outline</label><input id="recallEdgeOn" type="checkbox"></div>
-    <div class="row colorop">
-      <label>color / opacity</label>
-      <input id="recallEdgeColor" type="color" value="#fbff00">
-      <input id="recallEdgeAlpha" type="range" min="0" max="1" step="0.05" value="0.40" style="width:110px;max-width:110px">
-      <span id="recallEdgeAlphaV">0.40</span>
-    </div>
+    <div class="row colorop"><label>color / opacity</label><input id="recallEdgeColor" type="color" value="#fbff00"><input id="recallEdgeAlpha" type="range" min="0" max="1" step="0.05" value="0.40"><span id="recallEdgeAlphaV">0.40</span></div>
 
     <div class="row compact"><label>Linger outline</label><input id="lingerEdgeOn" type="checkbox"></div>
-    <div class="row colorop">
-      <label>color / opacity</label>
-      <input id="lingerEdgeColor" type="color" value="#ff0000">
-      <input id="lingerEdgeAlpha" type="range" min="0" max="1" step="0.05" value="0.75" style="width:110px;max-width:110px">
-      <span id="lingerEdgeAlphaV">0.75</span>
-    </div>
+    <div class="row colorop"><label>color / opacity</label><input id="lingerEdgeColor" type="color" value="#ff0000"><input id="lingerEdgeAlpha" type="range" min="0" max="1" step="0.05" value="0.75"><span id="lingerEdgeAlphaV">0.75</span></div>
 
     <div class="group">Export</div>
     <div class="row compact">
@@ -488,10 +476,10 @@
 
   function syncEdges(){
     if(edgeThrV) edgeThrV.textContent = edgeThr.value;
-    ghostEdgeAlphaV.textContent  = (+ghostEdgeAlpha.value).toFixed(2);
-    stainEdgeAlphaV.textContent  = (+stainEdgeAlpha.value).toFixed(2);
-    recallEdgeAlphaV.textContent = (+recallEdgeAlpha.value).toFixed(2);
-    lingerEdgeAlphaV.textContent = (+lingerEdgeAlpha.value).toFixed(2);
+    ghostEdgeAlphaV.textContent = (+ghostEdgeAlpha.value).toFixed(2);
+    stainEdgeAlphaV.textContent = (+stainEdgeAlpha.value).toFixed(2);
+    recallEdgeAlphaV.textContent= (+recallEdgeAlpha.value).toFixed(2);
+    lingerEdgeAlphaV.textContent= (+lingerEdgeAlpha.value).toFixed(2);
   }
   [edgeThr,ghostEdgeOn,ghostEdgeColor,ghostEdgeAlpha,stainEdgeOn,stainEdgeColor,stainEdgeAlpha,recallEdgeOn,recallEdgeColor,recallEdgeAlpha,lingerEdgeOn,lingerEdgeColor,lingerEdgeAlpha].forEach(x=>x&&x.addEventListener('input',syncEdges));
   syncEdges();
@@ -580,7 +568,7 @@
       fctx.globalCompositeOperation = 'source-over';
     }
 
-    /* ---------- Drawing Filter: isolated per-layer outlines ---------- */
+    /* ---------- Drawing Filter: outlines ---------- */
     if (edgeThr) edgeThrV.textContent = edgeThr.value;
     if (document.getElementById('edgeThr')) {
       const TH = (+edgeThr.value | 0) || 40;
@@ -727,7 +715,7 @@
       if(vid && !isNaN(vid.currentTime)) snapshotGhost(vid.currentTime);
       if(recallOn && recallOn.checked){ const prob=+recallProb.value||0; if(Math.random()<prob && !activeBurst) startRandomBurst(); }
       exportDecayStep();
-      if(activeBurst && activeBurst.frames && activeBurst.frames.length){ const color=recallColor?recallColor.value:'#00e7ff'; drawTinted(recallCtx,activeBurst.frames[activeBurst.i],color); activeBurst.i++; if(activeBurst.i>=activeBurst.frames.length) activeBurst=null; }
+      if(activeBurst && activeBurst.frames && activeBurst.frames.length){ const color=recallColor?recallColor.value:'#00e7ff'; drawTinted(recallCtx,activeBurst.frames[recallEdgeAlpha.i],color); activeBurst.i++; if(activeBurst.i>=activeBurst.frames.length) activeBurst=null; }
       fctx.globalCompositeOperation='screen'; fctx.drawImage(recallCanvas,0,0); fctx.globalCompositeOperation='source-over';
 
       /* outlines during export */
@@ -782,8 +770,33 @@
     }
 
     await new Promise(res=>{ const h=()=>{vid.removeEventListener('seeked',h); res();}; vid.addEventListener('seeked',h); try{ vid.currentTime=0; }catch(_){ res(); } });
-    exportOneBtn.startDisabled=true; // noop safeguard
-    const outCanvas=document.createElement('canvas'); // moved earlier; no logic change
+    expRecorder.start(250); processOneFrame(can.final.width,can.final.height); blitToOut();
+
+    const hasVFC=typeof vid.requestVideoFrameCallback==='function'; let vfcId=null, rafId=null;
+    function stopDrivers(){ if(vfcId && vid.cancelVideoFrameCallback) try{vid.cancelVideoFrameCallback(vfcId);}catch(_){} if(rafId) cancelAnimationFrame(rafId); vfcId=rafId=null; }
+    function loop(){ processOneFrame(can.final.width,can.final.height); blitToOut(); if(hasVFC) vfcId=vid.requestVideoFrameCallback(()=>loop()); else rafId=requestAnimationFrame(loop); }
+
+    const safety=setTimeout(()=>{ try{vid.pause();}catch(_){}; finalize(); }, (isFinite(vid.duration)?vid.duration:60)*1000+15000);
+    function finalize(){ clearTimeout(safety); stopDrivers(); try{expRecorder.stop();}catch(_){} }
+    vid.addEventListener('ended',finalize,{once:true}); await vid.play().catch(()=>{}); loop(); await recDone;
+
+    const blob=new Blob(expChunks,{type:mime}); const a=document.createElement('a'); const tag=matchPreview.checked?'match':'native';
+    a.download=`wind_on_wall_1x_${vw}x${vh}_${tag}_${Date.now()}.${ext}`; a.href=URL.createObjectURL(blob); a.click();
+
+    if(nativeProcessing){
+      can.final.width=prevSizes.W; can.final.height=prevSizes.H;
+      can.stain.width=prevSizes.sW; can.stain.height=prevSizes.sH;
+      can.ghost.width=prevSizes.gW; can.ghost.height=prevSizes.gH;
+      proc.width=prevSizes.pW; proc.height=prevSizes.pH;
+      maskCanvas.width=prevSizes.mW; maskCanvas.height=prevSizes.mH;
+      colCanvas.width=prevSizes.cW; colCanvas.height=prevSizes.cH;
+      hauntCanvas.width=prevSizes.hW; hauntCanvas.height=prevSizes.hH;
+      tintCanvas.width=prevSizes.tW; tintCanvas.height=prevSizes.tH;
+      edgeCanvas.width=prevSizes.eW; edgeCanvas.height=prevSizes.eH;
+    }
+    vid.loop=prev.loop; vid.playbackRate=prev.rate; try{ vid.currentTime=prev.t; }catch(_){}
+    if(!prev.paused){ try{ await vid.play(); }catch(_){ } }
+    exportOneBtn.disabled=false; recStartBtn.disabled=false;
   }
 })();
 </script>

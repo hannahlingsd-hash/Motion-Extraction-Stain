@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Wind-on-Wall — Ghosts + Stain (1920x1080)</title>
+<title>Wind-on-Wall — Ghosts + Stain</title>
 
 <style>
   :root{
@@ -27,14 +27,14 @@
     position:relative;
     width:100%;
     height:0;
-    padding-bottom:56.25%; /* 16:9 aspect ratio (1080/1920 = 0.5625) */
+    padding-bottom:56.25%; /* 16:9 aspect ratio */
     background:#000;
     overflow:hidden;
   }
   canvas{
     position:absolute; inset:0;
     width:100%; height:100%;
-    object-fit:contain; /* Changed from cover to contain for no cropping */
+    object-fit:contain; /* Show entire video without cropping */
     background:#000;
     border:0; outline:0; box-shadow:none; display:block;
     transform:translateZ(0.001px);
@@ -312,7 +312,7 @@
   const edgeLayerCanvas = document.createElement('canvas');
   const edgeLayerCtx = edgeLayerCanvas.getContext('2d', { willReadFrequently:true });
 
-  // Use the video's native resolution for processing
+  // Use video's native resolution for processing
   let PROCESS_WIDTH = 1920;
   let PROCESS_HEIGHT = 1080;
 
@@ -333,10 +333,19 @@
   new ResizeObserver(fit).observe(can.final); fit();
 
   function updateProcessingSize(videoWidth, videoHeight) {
-    PROCESS_WIDTH = videoWidth;
-    PROCESS_HEIGHT = videoHeight;
+    // Use video's native resolution but cap at 1920x1080 for performance
+    const maxWidth = 1920;
+    const maxHeight = 1080;
     
-    // Update all processing canvases to match video resolution
+    let scale = 1;
+    if (videoWidth > maxWidth || videoHeight > maxHeight) {
+      scale = Math.min(maxWidth / videoWidth, maxHeight / videoHeight);
+    }
+    
+    PROCESS_WIDTH = Math.round(videoWidth * scale);
+    PROCESS_HEIGHT = Math.round(videoHeight * scale);
+    
+    // Update all processing canvases
     proc.width = PROCESS_WIDTH; proc.height = PROCESS_HEIGHT;
     maskCanvas.width = PROCESS_WIDTH; maskCanvas.height = PROCESS_HEIGHT;
     colCanvas.width = PROCESS_WIDTH; colCanvas.height = PROCESS_HEIGHT;
@@ -345,6 +354,7 @@
     tintCanvas.width = PROCESS_WIDTH; tintCanvas.height = PROCESS_HEIGHT;
     edgeCanvas.width = PROCESS_WIDTH; edgeCanvas.height = PROCESS_HEIGHT;
     edgeLayerCanvas.width = PROCESS_WIDTH; edgeLayerCanvas.height = PROCESS_HEIGHT;
+    processFinal.width = PROCESS_WIDTH; processFinal.height = PROCESS_HEIGHT;
     
     // Reset state for new video
     resetState();
@@ -370,10 +380,15 @@
     ctx.clearRect(0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
     if(blurPx>0) ctx.filter=`blur(${blurPx}px)`;
     
-    // Draw video at its native resolution, centered
     const vw=video.videoWidth||0, vh=video.videoHeight||0;
     if(vw && vh){
-      ctx.drawImage(video, 0, 0, vw, vh, 0, 0, PROCESS_WIDTH, PROCESS_HEIGHT);
+      // Calculate scale to fit video within processing canvas without cropping
+      const scale = Math.min(PROCESS_WIDTH/vw, PROCESS_HEIGHT/vh);
+      const dw = Math.round(vw*scale), dh = Math.round(vh*scale);
+      const dx = Math.floor((PROCESS_WIDTH-dw)/2), dy = Math.floor((PROCESS_HEIGHT-dh)/2);
+      
+      // Draw video centered with correct aspect ratio
+      ctx.drawImage(video, 0, 0, vw, vh, dx, dy, dw, dh);
     }
     ctx.restore();
   }

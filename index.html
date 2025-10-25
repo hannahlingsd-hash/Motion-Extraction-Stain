@@ -1,7 +1,3 @@
-
-
-
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -361,60 +357,33 @@
     ctx.restore();
   }
 
-  /* ---------- Recording helpers ---------- */
-  function bestSupported(){
-    const mp4='video/mp4;codecs=avc1.42E01E,mp4a.40.2';
-    const webm='video/webm;codecs=vp9,opus';
-    const webm2='video/webm;codecs=vp8,opus';
-    const canMp4 = !!(window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(mp4));
-    const canWebm= !!(window.MediaRecorder && MediaRecorder.isTypeSupported &&
-                      (MediaRecorder.isTypeSupported(webm)||MediaRecorder.isTypeSupported(webm2)));
-    return {
-      canMp4,
-      canWebm,
-      mp4,
-      webm:(MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(webm)?webm:webm2)
-    };
-  }
+  /* ---------- Recording helpers (MP4 ONLY) ---------- */
 
-  function preferMp4(){
-    // Safari heuristic: has "Safari" but not Chrome/Chromium/Android
-    const ua = navigator.userAgent || "";
-    const isSafari = /^((?!chrome|chromium|android).)*safari/i.test(ua);
-    const s = bestSupported();
-    return !!(isSafari && s.canMp4);
+  const REC_MIME_MP4 = 'video/mp4;codecs=avc1.42E01E,mp4a.40.2';
+
+  function ensureMP4SupportOrDie() {
+    if (!window.MediaRecorder ||
+        !MediaRecorder.isTypeSupported ||
+        !MediaRecorder.isTypeSupported(REC_MIME_MP4)) {
+      throw new Error('MP4 recording not supported in this browser. Use Safari.');
+    }
+    return REC_MIME_MP4;
   }
 
   function refreshSupportNote(){
-    const s=bestSupported();
-    const ua = navigator.userAgent || "";
-    const isSafari = /^((?!chrome|chromium|android).)*safari/i.test(ua);
-    const note = isSafari && s.canMp4
-      ? 'Auto → MP4'
-      : (s.canWebm ? 'Auto → WebM' : '<span class="warn">Recording unsupported.</span>');
-    supportNote.innerHTML = note;
+    // Always MP4-only now
+    supportNote.innerHTML = 'Recording format: MP4 only (Safari recommended)';
   }
   refreshSupportNote();
 
-  let recorder=null, chunks=[], recStartTime=0, recTimer=null, recMime="", recExt="webm";
+  let recorder=null, chunks=[], recStartTime=0, recTimer=null;
 
   function startRecording(){
-    const s = bestSupported();
-    let mime = "";
-    let ext  = "";
-
-    if (preferMp4()) {
-      mime = s.mp4;
-      ext  = "mp4";
-    } else if (s.canWebm) {
-      mime = s.webm;
-      ext  = "webm";
-    } else if (s.canMp4) {
-      // last resort if browser says mp4 but not safari
-      mime = s.mp4;
-      ext  = "mp4";
-    } else {
-      alert('Recording format not supported on this browser.');
+    let mime;
+    try {
+      mime = ensureMP4SupportOrDie();
+    } catch (err) {
+      alert(err.message || err);
       return;
     }
 
@@ -428,16 +397,13 @@
       videoBitsPerSecond: 8_000_000
     });
 
-    recMime = mime;
-    recExt  = ext;
-
     recorder.ondataavailable = e=>{
       if(e.data && e.data.size) chunks.push(e.data);
     };
     recorder.onstop = ()=>{
-      const blob=new Blob(chunks,{type:recMime});
+      const blob=new Blob(chunks,{type:mime});
       const a=document.createElement('a');
-      a.download=`wind_on_wall_${Date.now()}.${recExt}`;
+      a.download=`wind_on_wall_${Date.now()}.mp4`;
       a.href=URL.createObjectURL(blob);
       a.click();
       stopRecUI();
@@ -881,16 +847,16 @@
     const inst=dt>0?1000/dt:0;
     fpsEMA=fpsEMA?fpsEMA*0.9+inst*0.1:inst;
 
-    const s=bestSupported();
-    dbg.textContent=`buffer: ${buf.length} | fps ~ ${fpsEMA.toFixed(1)} | support: ${(preferMp4()?'MP4✓':'MP4?')}/${s.canWebm?'WebM✓':'WebM×'}`;
+    dbg.textContent=`buffer: ${buf.length} | fps ~ ${fpsEMA.toFixed(1)} | MP4-only`;
   });
 
   vid.addEventListener('loadeddata', ()=>{
     vid.play().catch(()=>{});
   });
 
-  /* ---------- Export 1:1 (hi-res, browser-stable mime) ---------- */
+  /* ---------- Export 1:1 (MP4-only, pause live loop) ---------- */
   exportOneBtn.addEventListener('click', exportSourceOnce);
+
   async function exportSourceOnce(){
     if(vid.srcObject){
       alert('1:1 export is for file/URL clips, not webcam.');
@@ -912,23 +878,17 @@
       return;
     }
 
-    const s = bestSupported();
-    let mime = "";
-    let ext  = "";
-
-    if (preferMp4()) {
-      mime = s.mp4;
-      ext  = "mp4";
-    } else if (s.canWebm) {
-      mime = s.webm;
-      ext  = "webm";
-    } else if (s.canMp4) {
-      mime = s.mp4;
-      ext  = "mp4";
-    } else {
-      alert('Export not supported on this browser. Try Safari (MP4) or Chrome/Firefox (WebM).');
+    // Enforce MP4-only
+    let mime;
+    try {
+      mime = ensureMP4SupportOrDie();
+    } catch (err) {
+      alert(err.message || err);
       return;
     }
+
+    // *** stop live loop mutations during export ***
+    suspendLive = true;
 
     exportOneBtn.disabled = true;
     recStartBtn.disabled  = true;
@@ -965,7 +925,7 @@
 
       proc.width = vw;        proc.height = vh;
       maskCanvas.width = vw;  maskCanvas.height = vh;
-      colCanvas.width  = vw;  colCanvas.height  = vh;
+      colCanvas.width = vw;   colCanvas.height  = vh;
 
       recallCanvas.width = vw;  recallCanvas.height = vh;
       hauntCanvas.width  = vw;  hauntCanvas.height  = vh;
@@ -974,7 +934,7 @@
       edgeCanvas.width      = vw;  edgeCanvas.height      = vh;
       edgeLayerCanvas.width = vw;  edgeLayerCanvas.height = vh;
 
-      resetState();
+      resetState(); // cold start for stain/haunt/recall
     }
     resizeAllToNative();
 
@@ -1281,8 +1241,7 @@
         drawOutlineFrom(hauntCanvas, lingerEdgeColor.value, +lingerEdgeAlpha.value||0.8);
 
       fctx.drawImage(edgeCanvas,0,0);
-
-      octx.drawImage(can.final, 0, 0); // 1:1 native pixels
+      octx.drawImage(can.final, 0, 0); // copy final full-res frame to outCanvas
     }
 
     const safetyMs = (isFinite(vid.duration)?vid.duration:60)*1000 + 15000;
@@ -1347,9 +1306,12 @@
       exportOneBtn.disabled = false;
       recStartBtn.disabled  = false;
 
+      // resume live rendering
+      suspendLive = false;
+
       const blob = new Blob(expChunks, {type: mime});
       const a = document.createElement('a');
-      a.download = `wind_on_wall_1x_${vw}x${vh}_${Date.now()}.${ext}`;
+      a.download = `wind_on_wall_1x_${vw}x${vh}_${Date.now()}.mp4`;
       a.href = URL.createObjectURL(blob);
       a.click();
     }
@@ -1403,4 +1365,3 @@
 </script>
 </body>
 </html>
-

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Wind-on-Wall — Ghosts + Stain</title>
+<title>Wind-on-Wall — Ghosts + Stain (1920x1080)</title>
 
 <style>
   :root{
@@ -34,7 +34,7 @@
   canvas{
     position:absolute; inset:0;
     width:100%; height:100%;
-    object-fit:contain; /* Show entire video without cropping */
+    object-fit:contain;
     background:#000;
     border:0; outline:0; box-shadow:none; display:block;
     transform:translateZ(0.001px);
@@ -312,9 +312,9 @@
   const edgeLayerCanvas = document.createElement('canvas');
   const edgeLayerCtx = edgeLayerCanvas.getContext('2d', { willReadFrequently:true });
 
-  // Use video's native resolution for processing
-  let PROCESS_WIDTH = 1920;
-  let PROCESS_HEIGHT = 1080;
+  // Fixed 1920x1080 for all processing
+  const PROCESS_WIDTH = 1920;
+  const PROCESS_HEIGHT = 1080;
 
   function fit(){
     const dpr = Math.max(1, window.devicePixelRatio||1);
@@ -329,23 +329,8 @@
       can[k].width = displayWidth; 
       can[k].height = displayHeight; 
     }
-  }
-  new ResizeObserver(fit).observe(can.final); fit();
-
-  function updateProcessingSize(videoWidth, videoHeight) {
-    // Use video's native resolution but cap at 1920x1080 for performance
-    const maxWidth = 1920;
-    const maxHeight = 1080;
     
-    let scale = 1;
-    if (videoWidth > maxWidth || videoHeight > maxHeight) {
-      scale = Math.min(maxWidth / videoWidth, maxHeight / videoHeight);
-    }
-    
-    PROCESS_WIDTH = Math.round(videoWidth * scale);
-    PROCESS_HEIGHT = Math.round(videoHeight * scale);
-    
-    // Update all processing canvases
+    // Set all processing canvases to 1920x1080
     proc.width = PROCESS_WIDTH; proc.height = PROCESS_HEIGHT;
     maskCanvas.width = PROCESS_WIDTH; maskCanvas.height = PROCESS_HEIGHT;
     colCanvas.width = PROCESS_WIDTH; colCanvas.height = PROCESS_HEIGHT;
@@ -355,10 +340,8 @@
     edgeCanvas.width = PROCESS_WIDTH; edgeCanvas.height = PROCESS_HEIGHT;
     edgeLayerCanvas.width = PROCESS_WIDTH; edgeLayerCanvas.height = PROCESS_HEIGHT;
     processFinal.width = PROCESS_WIDTH; processFinal.height = PROCESS_HEIGHT;
-    
-    // Reset state for new video
-    resetState();
   }
+  new ResizeObserver(fit).observe(can.final); fit();
 
   /* ---------- Buffers ---------- */
   const buf=[]; const MAX_SEC=14;
@@ -382,13 +365,8 @@
     
     const vw=video.videoWidth||0, vh=video.videoHeight||0;
     if(vw && vh){
-      // Calculate scale to fit video within processing canvas without cropping
-      const scale = Math.min(PROCESS_WIDTH/vw, PROCESS_HEIGHT/vh);
-      const dw = Math.round(vw*scale), dh = Math.round(vh*scale);
-      const dx = Math.floor((PROCESS_WIDTH-dw)/2), dy = Math.floor((PROCESS_HEIGHT-dh)/2);
-      
-      // Draw video centered with correct aspect ratio
-      ctx.drawImage(video, 0, 0, vw, vh, dx, dy, dw, dh);
+      // Draw video at exact 1920x1080 - no scaling, no cropping
+      ctx.drawImage(video, 0, 0, vw, vh, 0, 0, PROCESS_WIDTH, PROCESS_HEIGHT);
     }
     ctx.restore();
   }
@@ -397,12 +375,8 @@
     ctx.save();
     ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
     
-    // Scale the processing result to fit the display while maintaining aspect ratio
-    const scale = Math.min(ctx.canvas.width/PROCESS_WIDTH, ctx.canvas.height/PROCESS_HEIGHT);
-    const dw = Math.round(PROCESS_WIDTH*scale), dh = Math.round(PROCESS_HEIGHT*scale);
-    const dx = Math.floor((ctx.canvas.width-dw)/2), dy = Math.floor((ctx.canvas.height-dh)/2);
-    
-    ctx.drawImage(sourceCanvas,dx,dy,dw,dh);
+    // Draw the 1920x1080 processing result to fit the display
+    ctx.drawImage(sourceCanvas, 0, 0, PROCESS_WIDTH, PROCESS_HEIGHT, 0, 0, ctx.canvas.width, ctx.canvas.height);
     ctx.restore();
   }
 
@@ -435,15 +409,10 @@
       return;
     }
 
-    // Create a separate canvas for recording at video's native resolution
-    const recordCanvas = document.createElement('canvas');
-    recordCanvas.width = PROCESS_WIDTH;
-    recordCanvas.height = PROCESS_HEIGHT;
-    const recordCtx = recordCanvas.getContext('2d');
-
-    const stream = recordCanvas.captureStream
-      ? recordCanvas.captureStream(30)
-      : recordCanvas.mozCaptureStream(30);
+    // Use the processing canvas for recording at 1920x1080
+    const stream = processFinal.captureStream
+      ? processFinal.captureStream(30)
+      : processFinal.mozCaptureStream(30);
 
     chunks=[];
     recorder = new MediaRecorder(stream,{
@@ -463,12 +432,6 @@
       stopRecUI();
     };
 
-    // Record the processing result at native resolution
-    const recordInterval = setInterval(() => {
-      recordCtx.clearRect(0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
-      recordCtx.drawImage(processFinal, 0, 0, PROCESS_WIDTH, PROCESS_HEIGHT);
-    }, 33); // ~30fps
-
     recorder.start(250);
 
     recStartTime=performance.now();
@@ -482,16 +445,6 @@
     recHUD.style.display='flex';
     recStartBtn.disabled=true;
     recStopBtn.disabled=false;
-
-    // Store original stop function and override
-    const originalStop = stopRecording;
-    stopRecording = function() {
-      clearInterval(recordInterval);
-      if(recorder && recorder.state==='recording'){
-        recorder.stop();
-      }
-      stopRecording = originalStop;
-    };
   }
   
   function stopRecording(){
@@ -677,19 +630,11 @@
   /* ---------- Live render loop ---------- */
   let lastT=performance.now(), fpsEMA=0, suspendLive=false;
   
-  // Processing canvas for video's native resolution
+  // Processing canvas for 1920x1080
   const processFinal = document.createElement('canvas');
-  let processFinalCtx = processFinal.getContext('2d');
-
-  // Update processing size when video loads
-  vid.addEventListener('loadedmetadata', () => {
-    if (vid.videoWidth && vid.videoHeight) {
-      updateProcessingSize(vid.videoWidth, vid.videoHeight);
-      processFinal.width = PROCESS_WIDTH;
-      processFinal.height = PROCESS_HEIGHT;
-    }
-    vid.play().catch(()=>{});
-  });
+  processFinal.width = PROCESS_WIDTH;
+  processFinal.height = PROCESS_HEIGHT;
+  const processFinalCtx = processFinal.getContext('2d');
 
   requestAnimationFrame(function tick(now){
     requestAnimationFrame(tick);
@@ -708,7 +653,7 @@
       nosrc.style.display='none';
     }
 
-    // Process video at its native resolution
+    // Process video at 1920x1080
     drawVideoToProcessingCanvas(pctx,vid,+el.preblur.value);
     const curr=pctx.getImageData(0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
     pushFrame(curr,vid.currentTime);
@@ -938,7 +883,11 @@
     const inst=dt>0?1000/dt:0;
     fpsEMA=fpsEMA?fpsEMA*0.9+inst*0.1:inst;
 
-    dbg.textContent=`buffer: ${buf.length} | fps ~ ${fpsEMA.toFixed(1)} | ${PROCESS_WIDTH}x${PROCESS_HEIGHT}`;
+    dbg.textContent=`buffer: ${buf.length} | fps ~ ${fpsEMA.toFixed(1)} | 1920x1080`;
+  });
+
+  vid.addEventListener('loadeddata', ()=>{
+    vid.play().catch(()=>{});
   });
 
   /* ---------- Export 1:1 (MP4-only, pause live loop) ---------- */
@@ -993,7 +942,7 @@
 
     const expChunks = [];
     
-    // Use the processing canvas for recording at video's native resolution
+    // Use the processing canvas for recording at 1920x1080
     const stream = processFinal.captureStream
       ? processFinal.captureStream(30)
       : processFinal.mozCaptureStream(30);

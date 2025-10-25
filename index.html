@@ -887,11 +887,11 @@
       return;
     }
 
-    // *** stop live loop mutations during export ***
+    // Stop live loop during export
     suspendLive = true;
 
     exportOneBtn.disabled = true;
-    recStartBtn.disabled  = true;
+    recStartBtn.disabled = true;
 
     const prev = {
       loop: vid.loop,
@@ -904,6 +904,7 @@
     vid.loop = false;
     vid.playbackRate = 1.0;
 
+    // Store original sizes
     const restoreSizes = {
       finW: can.final.width, finH: can.final.height,
       stainW: can.stain.width, stainH: can.stain.height,
@@ -918,6 +919,7 @@
       edgeLayerW: edgeLayerCanvas.width, edgeLayerH: edgeLayerCanvas.height
     };
 
+    // Resize all canvases to video native resolution
     function resizeAllToNative() {
       can.final.width = vw;   can.final.height = vh;
       can.stain.width = vw;   can.stain.height = vh;
@@ -934,7 +936,7 @@
       edgeCanvas.width      = vw;  edgeCanvas.height      = vh;
       edgeLayerCanvas.width = vw;  edgeLayerCanvas.height = vh;
 
-      resetState(); // cold start for stain/haunt/recall
+      resetState(); // Clear all buffers
     }
     resizeAllToNative();
 
@@ -944,13 +946,11 @@
     const octx = outCanvas.getContext('2d');
 
     const expChunks = [];
-    const stream = outCanvas.captureStream
-      ? outCanvas.captureStream(30)
-      : outCanvas.mozCaptureStream(30);
+    const stream = outCanvas.captureStream(30); // Explicit 30 FPS
 
     const expRecorder = new MediaRecorder(stream, {
       mimeType: mime,
-      videoBitsPerSecond: 20_000_000
+      videoBitsPerSecond: 8000000 // Reduced from 20M to 8M for better compatibility
     });
 
     const recDone = new Promise(resolve => {
@@ -960,327 +960,85 @@
       expRecorder.onstop = resolve;
     });
 
-    function rgbaFrom(hex, a01){
-      const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex||'#000000');
-      return [
-        parseInt(m[1],16),
-        parseInt(m[2],16),
-        parseInt(m[3],16),
-        Math.max(0,Math.min(1,a01||1))
-      ];
-    }
-
-    function drawVideoContainedExact(ctx, video, W, H, blurPx){
-      ctx.save();
-      ctx.clearRect(0,0,W,H);
-      if(blurPx>0) ctx.filter=`blur(${blurPx}px)`;
-
-      const vw0 = video.videoWidth  || 0;
-      const vh0 = video.videoHeight || 0;
-      if(vw0 && vh0){
-        const s = Math.min(W/vw0, H/vh0);
-        const dw = Math.round(vw0*s), dh = Math.round(vh0*s);
-        const dx = Math.floor((W-dw)/2), dy = Math.floor((H-dh)/2);
-        ctx.drawImage(video, dx, dy, dw, dh);
-      }
-      ctx.restore();
-    }
-
-    function buildGhostAndStain(W,H,tNow){
-      const currImg = pctx.getImageData(0,0,W,H);
-      pushFrame(currImg, tNow);
-      const past = getPastFrame(+el.dt.value);
-      gctx.clearRect(0,0,W,H);
-
-      if(!past){
-        return {changedCount:0};
-      }
-
-      const c = currImg.data;
-      const p = past.data;
-      const ghostImg = gctx.createImageData(W,H);
-      const gd = ghostImg.data;
-      const thr = +el.thr.value;
-      const maskArr = new Uint8ClampedArray(W*H);
-
-      let changedCount=0;
-      for(let i=0,j=0;i<c.length;i+=4,j++){
-        const r=c[i],g=c[i+1],b=c[i+2];
-        const pr=p[i],pg=p[i+1],pb=p[i+2];
-        const lc=r*0.2126+g*0.7152+b*0.0722;
-        const lp=pr*0.2126+pg*0.7152+pb*0.0722;
-        const d=Math.abs(lc-lp);
-
-        if(d>thr){
-          changedCount++;
-          maskArr[j]=255;
-          if(gUseColor.checked){
-            const m=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(gColor.value);
-            const cr=m?parseInt(m[1],16):255;
-            const cg=m?parseInt(m[2],16):255;
-            const cb=m?parseInt(m[3],16):255;
-            const a=Math.max(40,Math.min(255,(d-thr)*8));
-            gd[i]=cr; gd[i+1]=cg; gd[i+2]=cb; gd[i+3]=a;
-          } else {
-            gd[i]=(r+(255-pr))*0.5;
-            gd[i+1]=(g+(255-pg))*0.5;
-            gd[i+2]=(b+(255-pb))*0.5;
-            gd[i+3]=255;
-          }
-        } else {
-          gd[i]=gd[i+1]=gd[i+2]=0;
-          gd[i+3]=0;
-        }
-      }
-      gctx.putImageData(ghostImg,0,0);
-
-      if(stainOn.checked){
-        const decay=+el.decay.value;
-        sctx.globalCompositeOperation='destination-out';
-        sctx.fillStyle=`rgba(0,0,0,${1-decay})`;
-        sctx.fillRect(0,0,W,H);
-        sctx.globalCompositeOperation='source-over';
-
-        const mImg = maskCtx.createImageData(W,H);
-        const mdat = mImg.data;
-        for(let j=0,k=0;j<maskArr.length;j++,k+=4){
-          const v=maskArr[j];
-          mdat[k]=mdat[k+1]=mdat[k+2]=v;
-          mdat[k+3]=v;
-        }
-        maskCtx.putImageData(mImg,0,0);
-
-        colCtx.clearRect(0,0,W,H);
-        const expand=+el.expand.value;
-        if(expand>0) colCtx.filter=`blur(${expand}px)`;
-        colCtx.drawImage(maskCanvas,0,0);
-        colCtx.filter='none';
-
-        colCtx.globalCompositeOperation='source-in';
-        colCtx.fillStyle=sColor.value;
-        colCtx.globalAlpha=+el.strength.value;
-        colCtx.fillRect(0,0,W,H);
-
-        colCtx.globalCompositeOperation='source-over';
-        colCtx.globalAlpha=1;
-        sctx.drawImage(colCanvas,0,0);
-      }
-
-      return {changedCount};
-    }
-
-    function fadeRecallLayer(dtMs){
-      const lingerS = Math.max(0.2, +recallLinger.value || 1.2);
-      const fade    = 1 - Math.exp(-(dtMs)/(lingerS*1000));
-      recallCtx.globalCompositeOperation='destination-out';
-      recallCtx.fillStyle=`rgba(0,0,0,${fade})`;
-      recallCtx.fillRect(0,0,recallCanvas.width,recallCanvas.height);
-      recallCtx.globalCompositeOperation='source-over';
-    }
-
-    async function maybeDoRecall(changedNow, tNow){
-      if(changedNow>0){
-        try {
-          let img;
-          if('createImageBitmap' in window){
-            img = await createImageBitmap(can.ghost);
-          } else {
-            const c2=document.createElement('canvas');
-            c2.width=can.ghost.width; c2.height=can.ghost.height;
-            c2.getContext('2d').drawImage(can.ghost,0,0);
-            img=c2;
-          }
-          recallBank.push({img, t:tNow});
-          capRecallBank((+recallCap.value|0) || 40);
-        } catch(_){}
-      }
-
-      if(recallOn && recallOn.checked){
-        const prob = +recallProb.value || 0;
-        if(Math.random() < prob && !activeBurst){
-          startRandomBurst();
-        }
-      }
-
-      if(activeBurst && activeBurst.frames && activeBurst.frames.length){
-        const color = recallColor ? recallColor.value : '#00e7ff';
-        drawTinted(recallCtx, activeBurst.frames[activeBurst.i], color);
-        activeBurst.i++;
-        if(activeBurst.i >= activeBurst.frames.length){
-          activeBurst = null;
-        }
-      }
-    }
-
-    function drawHauntAndCompositeFinal(W,H){
-      fctx.clearRect(0,0,W,H);
-
-      const grey = +el.grey.value;
-      fctx.fillStyle=`rgb(${grey},${grey},${grey})`;
-      fctx.fillRect(0,0,W,H);
-
-      if(stainOn.checked){
-        fctx.globalCompositeOperation='multiply';
-        fctx.drawImage(can.stain,0,0);
-        fctx.globalCompositeOperation='source-over';
-      }
-
-      fctx.globalAlpha = +el.gAlpha.value;
-      fctx.globalCompositeOperation = gBlend.value;
-      fctx.drawImage(can.ghost,0,0);
-      fctx.globalAlpha = 1;
-      fctx.globalCompositeOperation='source-over';
-
-      fctx.globalCompositeOperation='screen';
-      fctx.drawImage(recallCanvas,0,0);
-      fctx.globalCompositeOperation='source-over';
-
-      if(hauntOn && hauntOn.checked){
-        const p     = Math.max(0, Math.min(1, +hauntPersist.value || 0.85));
-        const stick = +hauntStick.value || 1.3;
-        const tint  = (hauntColor && hauntColor.value) ? hauntColor.value : '#4a5e8a';
-
-        const decayOut = Math.max(0.001, 0.06 * (1 - p));
-        hauntCtx.globalCompositeOperation='destination-out';
-        hauntCtx.fillStyle=`rgba(0,0,0,${decayOut})`;
-        hauntCtx.fillRect(0,0,hauntCanvas.width,hauntCanvas.height);
-
-        hauntCtx.globalCompositeOperation='lighter';
-        hauntCtx.globalAlpha = Math.min(1, 0.55 * stick);
-        hauntCtx.drawImage(recallCanvas,0,0);
-        hauntCtx.globalAlpha = 1;
-        hauntCtx.globalCompositeOperation='source-over';
-
-        tintCtx.clearRect(0,0,tintCanvas.width,tintCanvas.height);
-        tintCtx.globalCompositeOperation='copy';
-        tintCtx.drawImage(hauntCanvas,0,0);
-        tintCtx.globalCompositeOperation='source-in';
-        tintCtx.fillStyle = tint;
-        tintCtx.fillRect(0,0,tintCanvas.width,tintCanvas.height);
-        tintCtx.globalCompositeOperation='source-over';
-
-        fctx.globalCompositeOperation='screen';
-        fctx.globalAlpha=0.9;
-        fctx.drawImage(tintCanvas,0,0);
-        fctx.globalAlpha=1;
-        fctx.globalCompositeOperation='source-over';
-      }
-
-      edgeCtx.clearRect(0,0,edgeCanvas.width,edgeCanvas.height);
-
-      const TH = (+edgeThr.value | 0) || 40;
-      const TL = Math.max(0, Math.floor(TH*0.5));
-
-      function drawOutlineFrom(srcCanvas, colorHex, alpha01){
-        const W = srcCanvas.width, H = srcCanvas.height;
-        if(!W||!H) return;
-
-        const sctx2 = srcCanvas.getContext('2d');
-        const img  = sctx2.getImageData(0,0,W,H);
-        const d    = img.data;
-
-        const L = new Uint8ClampedArray(W*H);
-        for(let i=0,j=0;i<d.length;i+=4,++j){
-          const lum = d[i]*0.2126 + d[i+1]*0.7152 + d[i+2]*0.0722;
-          const a   = d[i+3];
-          L[j] = Math.max(lum, a);
-        }
-
-        const E = new Uint8ClampedArray(W*H);
-        for(let y=1;y<H-1;y++){
-          let idx=y*W+1;
-          for(let x=1;x<W-1;x++,idx++){
-            const a=L[idx-W-1], b=L[idx-W],   c=L[idx-W+1];
-            const d0=L[idx-1],              f=L[idx+1];
-            const g=L[idx+W-1], h=L[idx+W], i=L[idx+W+1];
-            const gx = -a -2*b -c + g +2*h + i;
-            const gy = -a -2*d0 -g + c +2*f + i;
-            const mag = Math.abs(gx)+Math.abs(gy);
-
-            let aa;
-            if(mag>=TH) aa=255;
-            else if(mag<=TL) aa=0;
-            else aa=Math.round((mag-TL)/(TH-TL)*255);
-
-            E[idx]=aa;
-          }
-        }
-
-        for(let k=0,j=0;k<d.length;k+=4,++j){
-          E[j] = Math.round(E[j] * (d[k+3]/255));
-        }
-
-        edgeLayerCtx.clearRect(0,0,edgeLayerCanvas.width,edgeLayerCanvas.height);
-        const [r,g,b,a01Out] = rgbaFrom(colorHex, alpha01);
-        const mask = edgeLayerCtx.createImageData(W,H);
-        const md   = mask.data;
-        for(let j=0,p=0;j<E.length;j++,p+=4){
-          const a = E[j];
-          if(!a){
-            md[p]=md[p+1]=md[p+2]=md[p+3]=0;
-            continue;
-          }
-          md[p]   = r;
-          md[p+1] = g;
-          md[p+2] = b;
-          md[p+3] = Math.min(255, Math.round(a*a01Out));
-        }
-        edgeLayerCtx.putImageData(mask,0,0);
-
-        edgeCtx.globalCompositeOperation='source-over';
-        edgeCtx.drawImage(edgeLayerCanvas,0,0);
-      }
-
-      if(ghostEdgeOn && ghostEdgeOn.checked)
-        drawOutlineFrom(can.ghost, ghostEdgeColor.value, +ghostEdgeAlpha.value||0.8);
-      if(stainEdgeOn && stainEdgeOn.checked)
-        drawOutlineFrom(can.stain, stainEdgeColor.value, +stainEdgeAlpha.value||0.7);
-      if(recallEdgeOn && recallEdgeOn.checked)
-        drawOutlineFrom(recallCanvas, recallEdgeColor.value, +recallEdgeAlpha.value||0.7);
-      if(lingerEdgeOn && lingerEdgeOn.checked)
-        drawOutlineFrom(hauntCanvas, lingerEdgeColor.value, +lingerEdgeAlpha.value||0.8);
-
-      fctx.drawImage(edgeCanvas,0,0);
-      octx.drawImage(can.final, 0, 0); // copy final full-res frame to outCanvas
-    }
-
-    const safetyMs = (isFinite(vid.duration)?vid.duration:60)*1000 + 15000;
-    const safetyTimer = setTimeout(()=>{
-      try{ vid.pause(); }catch(_){}
+    // Safety timeout
+    const safetyMs = (isFinite(vid.duration) ? vid.duration : 60) * 1000 + 5000;
+    const safetyTimer = setTimeout(() => {
+      console.log('Safety timeout reached');
       finalizeExport();
     }, safetyMs);
 
-    expRecorder.start(250);
+    // Start recording
+    expRecorder.start(1000); // Collect data every second for better reliability
 
-    await new Promise(res=>{
-      const h=()=>{ vid.removeEventListener('seeked',h); res(); };
-      try{
-        vid.addEventListener('seeked',h);
-        vid.currentTime=0;
-      }catch(_){ res(); }
+    // Seek to beginning
+    await new Promise(resolve => {
+      const onSeeked = () => {
+        vid.removeEventListener('seeked', onSeeked);
+        resolve();
+      };
+      vid.addEventListener('seeked', onSeeked, {once: true});
+      vid.currentTime = 0;
     });
 
-    let lastFrameTimeMs = performance.now();
+    let lastFrameTime = 0;
+    const frameInterval = 1000 / 30; // Target 30 FPS
 
-    async function stepFrame(){
-      drawVideoContainedExact(pctx, vid, vw, vh, +el.preblur.value);
+    function processFrame() {
+      const now = performance.now();
+      if (now - lastFrameTime < frameInterval) {
+        return; // Skip frame to maintain consistent frame rate
+      }
+      lastFrameTime = now;
+
+      // Process video frame
+      drawVideoContained(pctx, vid, vw, vh, +el.preblur.value);
       const {changedCount} = buildGhostAndStain(vw, vh, vid.currentTime);
 
-      const nowMs = performance.now();
-      const dtMs = nowMs - lastFrameTimeMs;
-      lastFrameTimeMs = nowMs;
-
-      fadeRecallLayer(dtMs);
-      await maybeDoRecall(changedCount, vid.currentTime);
-
+      // Process recalls and other effects
+      fadeRecallLayer(frameInterval);
+      maybeDoRecall(changedCount, vid.currentTime);
       drawHauntAndCompositeFinal(vw, vh);
+
+      // Draw to output canvas for recording
+      octx.drawImage(can.final, 0, 0, vw, vh);
     }
 
-    function finalizeExport(){
+    let animationId;
+    function renderLoop() {
+      if (vid.ended || vid.paused) {
+        cancelAnimationFrame(animationId);
+        finalizeExport();
+        return;
+      }
+      processFrame();
+      animationId = requestAnimationFrame(renderLoop);
+    }
+
+    // Start playback and processing
+    try {
+      await vid.play();
+      lastFrameTime = performance.now();
+      renderLoop();
+    } catch (error) {
+      console.error('Playback failed:', error);
+      finalizeExport();
+    }
+
+    async function finalizeExport() {
       clearTimeout(safetyTimer);
+      cancelAnimationFrame(animationId);
 
-      try{ expRecorder.stop(); }catch(_){}
+      // Wait a bit to ensure all frames are processed
+      await new Promise(resolve => setTimeout(resolve, 500));
 
+      if (expRecorder.state === 'recording') {
+        expRecorder.stop();
+      }
+
+      // Wait for recording to fully stop
+      await recDone;
+
+      // Restore original canvas sizes
       can.final.width  = restoreSizes.finW;   can.final.height  = restoreSizes.finH;
       can.stain.width  = restoreSizes.stainW; can.stain.height  = restoreSizes.stainH;
       can.ghost.width  = restoreSizes.ghostW; can.ghost.height  = restoreSizes.ghostH;
@@ -1296,54 +1054,319 @@
       edgeCanvas.width      = restoreSizes.edgeW;      edgeCanvas.height      = restoreSizes.edgeH;
       edgeLayerCanvas.width = restoreSizes.edgeLayerW; edgeLayerCanvas.height = restoreSizes.edgeLayerH;
 
+      // Restore video state
       vid.loop = prev.loop;
       vid.playbackRate = prev.rate;
-      try{ vid.currentTime = prev.t; }catch(_){}
-      if(!prev.paused){
-        vid.play().catch(()=>{});
+      try { vid.currentTime = prev.t; } catch(_) {}
+      if (!prev.paused) {
+        vid.play().catch(() => {});
       }
 
       exportOneBtn.disabled = false;
       recStartBtn.disabled  = false;
-
-      // resume live rendering
       suspendLive = false;
 
-      const blob = new Blob(expChunks, {type: mime});
-      const a = document.createElement('a');
-      a.download = `wind_on_wall_1x_${vw}x${vh}_${Date.now()}.mp4`;
-      a.href = URL.createObjectURL(blob);
-      a.click();
-    }
-
-    const useVFC = typeof vid.requestVideoFrameCallback === 'function';
-    let done = false;
-    function doneOnce(){
-      if(done) return;
-      done = true;
-      finalizeExport();
-    }
-    vid.addEventListener('ended', doneOnce, {once:true});
-
-    if(useVFC){
-      function loopVFC(){
-        if(done) return;
-        stepFrame();
-        vid.requestVideoFrameCallback(loopVFC);
+      // Create and download the file
+      if (expChunks.length > 0) {
+        const blob = new Blob(expChunks, {type: mime});
+        const a = document.createElement('a');
+        a.download = `wind_on_wall_1x_${vw}x${vh}_${Date.now()}.mp4`;
+        a.href = URL.createObjectURL(blob);
+        a.click();
+        
+        // Clean up URL
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      } else {
+        alert('Export failed: No video data recorded');
       }
-      await vid.play().catch(()=>{});
-      loopVFC();
-    } else {
-      function loopRAF(){
-        if(done) return;
-        stepFrame();
-        requestAnimationFrame(loopRAF);
-      }
-      await vid.play().catch(()=>{});
-      loopRAF();
     }
 
-    await recDone;
+    // Set up end detection
+    vid.addEventListener('ended', finalizeExport, {once: true});
+  }
+
+  // Helper functions for export processing
+  function drawVideoContainedExact(ctx, video, W, H, blurPx){
+    ctx.save();
+    ctx.clearRect(0,0,W,H);
+    if(blurPx>0) ctx.filter=`blur(${blurPx}px)`;
+
+    const vw0 = video.videoWidth  || 0;
+    const vh0 = video.videoHeight || 0;
+    if(vw0 && vh0){
+      const s = Math.min(W/vw0, H/vh0);
+      const dw = Math.round(vw0*s), dh = Math.round(vh0*s);
+      const dx = Math.floor((W-dw)/2), dy = Math.floor((H-dh)/2);
+      ctx.drawImage(video, dx, dy, dw, dh);
+    }
+    ctx.restore();
+  }
+
+  function buildGhostAndStain(W,H,tNow){
+    const currImg = pctx.getImageData(0,0,W,H);
+    pushFrame(currImg, tNow);
+    const past = getPastFrame(+el.dt.value);
+    gctx.clearRect(0,0,W,H);
+
+    if(!past){
+      return {changedCount:0};
+    }
+
+    const c = currImg.data;
+    const p = past.data;
+    const ghostImg = gctx.createImageData(W,H);
+    const gd = ghostImg.data;
+    const thr = +el.thr.value;
+    const maskArr = new Uint8ClampedArray(W*H);
+
+    let changedCount=0;
+    for(let i=0,j=0;i<c.length;i+=4,j++){
+      const r=c[i],g=c[i+1],b=c[i+2];
+      const pr=p[i],pg=p[i+1],pb=p[i+2];
+      const lc=r*0.2126+g*0.7152+b*0.0722;
+      const lp=pr*0.2126+pg*0.7152+pb*0.0722;
+      const d=Math.abs(lc-lp);
+
+      if(d>thr){
+        changedCount++;
+        maskArr[j]=255;
+        if(gUseColor.checked){
+          const m=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(gColor.value);
+          const cr=m?parseInt(m[1],16):255;
+          const cg=m?parseInt(m[2],16):255;
+          const cb=m?parseInt(m[3],16):255;
+          const a=Math.max(40,Math.min(255,(d-thr)*8));
+          gd[i]=cr; gd[i+1]=cg; gd[i+2]=cb; gd[i+3]=a;
+        } else {
+          gd[i]=(r+(255-pr))*0.5;
+          gd[i+1]=(g+(255-pg))*0.5;
+          gd[i+2]=(b+(255-pb))*0.5;
+          gd[i+3]=255;
+        }
+      } else {
+        gd[i]=gd[i+1]=gd[i+2]=0;
+        gd[i+3]=0;
+      }
+    }
+    gctx.putImageData(ghostImg,0,0);
+
+    if(stainOn.checked){
+      const decay=+el.decay.value;
+      sctx.globalCompositeOperation='destination-out';
+      sctx.fillStyle=`rgba(0,0,0,${1-decay})`;
+      sctx.fillRect(0,0,W,H);
+      sctx.globalCompositeOperation='source-over';
+
+      const mImg = maskCtx.createImageData(W,H);
+      const mdat = mImg.data;
+      for(let j=0,k=0;j<maskArr.length;j++,k+=4){
+        const v=maskArr[j];
+        mdat[k]=mdat[k+1]=mdat[k+2]=v;
+        mdat[k+3]=v;
+      }
+      maskCtx.putImageData(mImg,0,0);
+
+      colCtx.clearRect(0,0,W,H);
+      const expand=+el.expand.value;
+      if(expand>0) colCtx.filter=`blur(${expand}px)`;
+      colCtx.drawImage(maskCanvas,0,0);
+      colCtx.filter='none';
+
+      colCtx.globalCompositeOperation='source-in';
+      colCtx.fillStyle=sColor.value;
+      colCtx.globalAlpha=+el.strength.value;
+      colCtx.fillRect(0,0,W,H);
+
+      colCtx.globalCompositeOperation='source-over';
+      colCtx.globalAlpha=1;
+      sctx.drawImage(colCanvas,0,0);
+    }
+
+    return {changedCount};
+  }
+
+  function fadeRecallLayer(dtMs){
+    const lingerS = Math.max(0.2, +recallLinger.value || 1.2);
+    const fade    = 1 - Math.exp(-(dtMs)/(lingerS*1000));
+    recallCtx.globalCompositeOperation='destination-out';
+    recallCtx.fillStyle=`rgba(0,0,0,${fade})`;
+    recallCtx.fillRect(0,0,recallCanvas.width,recallCanvas.height);
+    recallCtx.globalCompositeOperation='source-over';
+  }
+
+  async function maybeDoRecall(changedNow, tNow){
+    if(changedNow>0){
+      try {
+        let img;
+        if('createImageBitmap' in window){
+          img = await createImageBitmap(can.ghost);
+        } else {
+          const c2=document.createElement('canvas');
+          c2.width=can.ghost.width; c2.height=can.ghost.height;
+          c2.getContext('2d').drawImage(can.ghost,0,0);
+          img=c2;
+        }
+        recallBank.push({img, t:tNow});
+        capRecallBank((+recallCap.value|0) || 40);
+      } catch(_){}
+    }
+
+    if(recallOn && recallOn.checked){
+      const prob = +recallProb.value || 0;
+      if(Math.random() < prob && !activeBurst){
+        startRandomBurst();
+      }
+    }
+
+    if(activeBurst && activeBurst.frames && activeBurst.frames.length){
+      const color = recallColor ? recallColor.value : '#00e7ff';
+      drawTinted(recallCtx, activeBurst.frames[activeBurst.i], color);
+      activeBurst.i++;
+      if(activeBurst.i >= activeBurst.frames.length){
+        activeBurst = null;
+      }
+    }
+  }
+
+  function drawHauntAndCompositeFinal(W,H){
+    fctx.clearRect(0,0,W,H);
+
+    const grey = +el.grey.value;
+    fctx.fillStyle=`rgb(${grey},${grey},${grey})`;
+    fctx.fillRect(0,0,W,H);
+
+    if(stainOn.checked){
+      fctx.globalCompositeOperation='multiply';
+      fctx.drawImage(can.stain,0,0);
+      fctx.globalCompositeOperation='source-over';
+    }
+
+    fctx.globalAlpha = +el.gAlpha.value;
+    fctx.globalCompositeOperation = gBlend.value;
+    fctx.drawImage(can.ghost,0,0);
+    fctx.globalAlpha = 1;
+    fctx.globalCompositeOperation='source-over';
+
+    fctx.globalCompositeOperation='screen';
+    fctx.drawImage(recallCanvas,0,0);
+    fctx.globalCompositeOperation='source-over';
+
+    if(hauntOn && hauntOn.checked){
+      const p     = Math.max(0, Math.min(1, +hauntPersist.value || 0.85));
+      const stick = +hauntStick.value || 1.3;
+      const tint  = (hauntColor && hauntColor.value) ? hauntColor.value : '#4a5e8a';
+
+      const decayOut = Math.max(0.001, 0.06 * (1 - p));
+      hauntCtx.globalCompositeOperation='destination-out';
+      hauntCtx.fillStyle=`rgba(0,0,0,${decayOut})`;
+      hauntCtx.fillRect(0,0,hauntCanvas.width,hauntCanvas.height);
+
+      hauntCtx.globalCompositeOperation='lighter';
+      hauntCtx.globalAlpha = Math.min(1, 0.55 * stick);
+      hauntCtx.drawImage(recallCanvas,0,0);
+      hauntCtx.globalAlpha = 1;
+      hauntCtx.globalCompositeOperation='source-over';
+
+      tintCtx.clearRect(0,0,tintCanvas.width,tintCanvas.height);
+      tintCtx.globalCompositeOperation='copy';
+      tintCtx.drawImage(hauntCanvas,0,0);
+      tintCtx.globalCompositeOperation='source-in';
+      tintCtx.fillStyle = tint;
+      tintCtx.fillRect(0,0,tintCanvas.width,tintCanvas.height);
+      tintCtx.globalCompositeOperation='source-over';
+
+      fctx.globalCompositeOperation='screen';
+      fctx.globalAlpha=0.9;
+      fctx.drawImage(tintCanvas,0,0);
+      fctx.globalAlpha=1;
+      fctx.globalCompositeOperation='source-over';
+    }
+
+    edgeCtx.clearRect(0,0,edgeCanvas.width,edgeCanvas.height);
+
+    const TH = (+edgeThr.value | 0) || 40;
+    const TL = Math.max(0, Math.floor(TH*0.5));
+
+    function drawOutlineFrom(srcCanvas, colorHex, alpha01){
+      const W = srcCanvas.width, H = srcCanvas.height;
+      if(!W||!H) return;
+
+      const sctx2 = srcCanvas.getContext('2d');
+      const img  = sctx2.getImageData(0,0,W,H);
+      const d    = img.data;
+
+      const L = new Uint8ClampedArray(W*H);
+      for(let i=0,j=0;i<d.length;i+=4,++j){
+        const lum = d[i]*0.2126 + d[i+1]*0.7152 + d[i+2]*0.0722;
+        const a   = d[i+3];
+        L[j] = Math.max(lum, a);
+      }
+
+      const E = new Uint8ClampedArray(W*H);
+      for(let y=1;y<H-1;y++){
+        let idx=y*W+1;
+        for(let x=1;x<W-1;x++,idx++){
+          const a=L[idx-W-1], b=L[idx-W],   c=L[idx-W+1];
+          const d0=L[idx-1],              f=L[idx+1];
+          const g=L[idx+W-1], h=L[idx+W], i=L[idx+W+1];
+          const gx = -a -2*b -c + g +2*h + i;
+          const gy = -a -2*d0 -g + c +2*f + i;
+          const mag = Math.abs(gx)+Math.abs(gy);
+
+          let aa;
+          if(mag>=TH) aa=255;
+          else if(mag<=TL) aa=0;
+          else aa=Math.round((mag-TL)/(TH-TL)*255);
+
+          E[idx]=aa;
+        }
+      }
+
+      for(let k=0,j=0;k<d.length;k+=4,++j){
+        E[j] = Math.round(E[j] * (d[k+3]/255));
+      }
+
+      edgeLayerCtx.clearRect(0,0,edgeLayerCanvas.width,edgeLayerCanvas.height);
+      const [r,g,b,a01Out] = rgbaFrom(colorHex, alpha01);
+      const mask = edgeLayerCtx.createImageData(W,H);
+      const md   = mask.data;
+      for(let j=0,p=0;j<E.length;j++,p+=4){
+        const a = E[j];
+        if(!a){
+          md[p]=md[p+1]=md[p+2]=md[p+3]=0;
+          continue;
+        }
+        md[p]   = r;
+        md[p+1] = g;
+        md[p+2] = b;
+        md[p+3] = Math.min(255, Math.round(a*a01Out));
+      }
+      edgeLayerCtx.putImageData(mask,0,0);
+
+      edgeCtx.globalCompositeOperation='source-over';
+      edgeCtx.drawImage(edgeLayerCanvas,0,0);
+    }
+
+    if(ghostEdgeOn && ghostEdgeOn.checked)
+      drawOutlineFrom(can.ghost, ghostEdgeColor.value, +ghostEdgeAlpha.value||0.8);
+    if(stainEdgeOn && stainEdgeOn.checked)
+      drawOutlineFrom(can.stain, stainEdgeColor.value, +stainEdgeAlpha.value||0.7);
+    if(recallEdgeOn && recallEdgeOn.checked)
+      drawOutlineFrom(recallCanvas, recallEdgeColor.value, +recallEdgeAlpha.value||0.7);
+    if(lingerEdgeOn && lingerEdgeOn.checked)
+      drawOutlineFrom(hauntCanvas, lingerEdgeColor.value, +lingerEdgeAlpha.value||0.8);
+
+    fctx.drawImage(edgeCanvas,0,0);
+  }
+
+  function rgbaFrom(hex, a01){
+    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex||'#000000');
+    return [
+      parseInt(m[1],16),
+      parseInt(m[2],16),
+      parseInt(m[3],16),
+      Math.max(0,Math.min(1,a01||1))
+    ];
   }
 })();
 </script>

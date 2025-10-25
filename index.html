@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -211,6 +212,7 @@
   const shotBtn = document.getElementById('shot');
   const exportOneBtn = document.getElementById('exportOne');
   const matchPreview = document.getElementById('matchPreview');
+  const hud = document.getElementById('hud');
   const recHUD = document.getElementById('recHUD');
   const recTime = document.getElementById('recTime');
   const dbg = document.getElementById('dbg');
@@ -300,7 +302,7 @@
     }
   }
 
-  /* ---------- Canvases for processing ---------- */
+  /* ---------- Sizing ---------- */
   const proc = document.createElement('canvas'); const pctx = proc.getContext('2d',{willReadFrequently:true});
   const maskCanvas = document.createElement('canvas'); const maskCtx = maskCanvas.getContext('2d');
   const colCanvas = document.createElement('canvas'); const colCtx = colCanvas.getContext('2d');
@@ -328,7 +330,7 @@
   }
   new ResizeObserver(fit).observe(can.final); fit();
 
-  /* ---------- Frame buffer for temporal diff ---------- */
+  /* ---------- Buffers ---------- */
   const buf=[]; const MAX_SEC=14;
   function pushFrame(img,t){
     buf.push({t,data:new Uint8ClampedArray(img.data),w:img.width,h:img.height});
@@ -343,7 +345,6 @@
     return buf[0]||null;
   }
 
-  /* ---------- Draw helper ---------- */
   function drawVideoContained(ctx, video, W, H, blurPx){
     ctx.save(); ctx.clearRect(0,0,W,H);
     if(blurPx>0) ctx.filter=`blur(${blurPx}px)`;
@@ -357,7 +358,7 @@
     ctx.restore();
   }
 
-  /* ---------- Recording capability check ---------- */
+  /* ---------- Recording helpers ---------- */
   function bestSupported(){
     const mp4='video/mp4;codecs=avc1.42E01E,mp4a.40.2';
     const webm='video/webm;codecs=vp9,opus';
@@ -374,7 +375,7 @@
   }
 
   function preferMp4(){
-    // Safari heuristic: UA has Safari but not Chrome/Chromium/Android
+    // Safari heuristic: has "Safari" but not Chrome/Chromium/Android
     const ua = navigator.userAgent || "";
     const isSafari = /^((?!chrome|chromium|android).)*safari/i.test(ua);
     const s = bestSupported();
@@ -392,7 +393,6 @@
   }
   refreshSupportNote();
 
-  /* ---------- Live recording ---------- */
   let recorder=null, chunks=[], recStartTime=0, recTimer=null, recMime="", recExt="webm";
 
   function startRecording(){
@@ -407,6 +407,7 @@
       mime = s.webm;
       ext  = "webm";
     } else if (s.canMp4) {
+      // last resort if browser says mp4 but not safari
       mime = s.mp4;
       ext  = "mp4";
     } else {
@@ -467,7 +468,6 @@
   recStartBtn.addEventListener('click', startRecording);
   recStopBtn.addEventListener('click',  stopRecording);
 
-  /* ---------- Snapshot ---------- */
   shotBtn.addEventListener('click', ()=>{
     const a=document.createElement('a');
     a.download='still_'+Date.now()+'.png';
@@ -519,7 +519,6 @@
   }
   replayBtn.addEventListener('click', replay);
   replayFloat.addEventListener('click', replay);
-
   document.addEventListener('keydown', (e)=>{
     const t=e.target;
     if(t&&(t.tagName==='INPUT'||t.tagName==='SELECT'||t.tagName==='TEXTAREA'||t.isContentEditable)) return;
@@ -527,7 +526,7 @@
     else if(e.code==='Space'){ e.preventDefault(); vid.paused?vid.play():vid.pause(); }
   });
 
-  /* ---------- Recall / Burst memory ---------- */
+  /* ---------- Recall ---------- */
   const recallOn = document.getElementById('recallOn');
   const recallProb = document.getElementById('recallProb'); const recallProbV = document.getElementById('recallProbV');
   const recallCap  = document.getElementById('recallCap');  const recallCapV  = document.getElementById('recallCapV');
@@ -545,16 +544,16 @@
   [recallOn,recallProb,recallCap,recallColor,recallLinger,recallSpan].forEach(x=>x&&x.addEventListener('input',syncRecall));
   syncRecall();
 
-  const recallBank=[]; let activeBurst=null;
+  const recallBank=[]; let recallBurst=0; let activeBurst=null;
   function capRecallBank(max){
     while(recallBank.length>max) recallBank.shift();
   }
   async function snapshotGhost(tNow){
     try{
       let img;
-      if('createImageBitmap' in window){
+      if('createImageBitmap' in window)
         img=await createImageBitmap(can.ghost);
-      } else {
+      else {
         const c=document.createElement('canvas');
         c.width=can.ghost.width; c.height=can.ghost.height;
         c.getContext('2d').drawImage(can.ghost,0,0);
@@ -573,8 +572,7 @@
     activeBurst={frames:frames.length?frames:[recallBank[r].img],i:0};
   }
   if(recallNowB) recallNowB.addEventListener('click', ()=>{
-    // force a burst immediately in live mode
-    startRandomBurst();
+    recallBurst+=1;
   });
   function drawTinted(dstCtx,src,color){
     dstCtx.globalCompositeOperation='source-over';
@@ -585,7 +583,7 @@
     dstCtx.globalCompositeOperation='source-over';
   }
 
-  /* ---------- Linger ("haunt") ---------- */
+  /* ---------- Linger ---------- */
   const hauntOn      = document.getElementById('hauntOn');
   const hauntPersist = document.getElementById('hauntPersist');
   const hauntRadius  = document.getElementById('hauntRadius');
@@ -604,7 +602,7 @@
   [hauntOn,hauntPersist,hauntRadius,hauntStick,hauntColor].forEach(x=>x&&x.addEventListener('input',syncHaunt));
   syncHaunt();
 
-  /* ---------- Outline controls ---------- */
+  /* ---------- Outlines controls ---------- */
   const edgeThr      = document.getElementById('edgeThr');
   const edgeThrV     = document.getElementById('edgeThrV');
 
@@ -634,7 +632,7 @@
   [edgeThr,ghostEdgeOn,ghostEdgeColor,ghostEdgeAlpha,stainEdgeOn,stainEdgeColor,stainEdgeAlpha,recallEdgeOn,recallEdgeColor,recallEdgeAlpha,lingerEdgeOn,lingerEdgeColor,lingerEdgeAlpha].forEach(x=>x&&x.addEventListener('input',syncEdges));
   syncEdges();
 
-  /* ---------- Live loop ---------- */
+  /* ---------- Live render loop ---------- */
   let lastT=performance.now(), fpsEMA=0, suspendLive=false;
   requestAnimationFrame(function tick(now){
     requestAnimationFrame(tick);
@@ -731,24 +729,23 @@
       fctx.drawImage(can.stain,0,0);
       fctx.globalCompositeOperation='source-over';
     }
-
     fctx.globalAlpha=+el.gAlpha.value;
     fctx.globalCompositeOperation=gBlend.value;
     fctx.drawImage(can.ghost,0,0);
     fctx.globalAlpha=1;
     fctx.globalCompositeOperation='source-over';
 
-    // fade old recall trails
-    const ms=Math.max(1,now-lastT);
-    const lingerS=Math.max(0.2,+recallLinger.value||1.2);
-    const fade=1-Math.exp(-ms/(lingerS*1000));
-    recallCtx.globalCompositeOperation='destination-out';
-    recallCtx.fillStyle=`rgba(0,0,0,${fade})`;
-    recallCtx.fillRect(0,0,recallCanvas.width,recallCanvas.height);
-    recallCtx.globalCompositeOperation='source-over';
-
-    // generate recall bursts live (full aesthetic here)
     if(changedCount>0) snapshotGhost(vid.currentTime);
+
+    {
+      const lingerS=Math.max(0.2,+recallLinger.value||1.2);
+      const ms=Math.max(1,now-lastT);
+      const fade=1-Math.exp(-ms/(lingerS*1000));
+      recallCtx.globalCompositeOperation='destination-out';
+      recallCtx.fillStyle=`rgba(0,0,0,${fade})`;
+      recallCtx.fillRect(0,0,recallCanvas.width,recallCanvas.height);
+      recallCtx.globalCompositeOperation='source-over';
+    }
     if(recallOn && recallOn.checked){
       const prob=+recallProb.value||0;
       if(Math.random()<prob && !activeBurst) startRandomBurst();
@@ -759,123 +756,123 @@
       activeBurst.i++;
       if(activeBurst.i>=activeBurst.frames.length) activeBurst=null;
     }
-
     fctx.globalCompositeOperation='screen';
     fctx.drawImage(recallCanvas,0,0);
     fctx.globalCompositeOperation='source-over';
 
-    // linger / haunt live (full aesthetic here)
     if(hauntOn && hauntOn.checked){
       const p     = Math.max(0, Math.min(1, +hauntPersist.value || 0.85));
       const stick = +hauntStick.value || 1.3;
       const tint  = (hauntColor && hauntColor.value) ? hauntColor.value : '#4a5e8a';
 
       const decayOut = Math.max(0.001, 0.06 * (1 - p));
-      hauntCtx.globalCompositeOperation='destination-out';
-      hauntCtx.fillStyle=`rgba(0,0,0,${decayOut})`;
+      hauntCtx.globalCompositeOperation = 'destination-out';
+      hauntCtx.fillStyle = `rgba(0,0,0,${decayOut})`;
       hauntCtx.fillRect(0,0,hauntCanvas.width,hauntCanvas.height);
 
-      hauntCtx.globalCompositeOperation='lighter';
+      hauntCtx.globalCompositeOperation = 'lighter';
       hauntCtx.globalAlpha = Math.min(1, 0.55 * stick);
       hauntCtx.drawImage(recallCanvas,0,0);
       hauntCtx.globalAlpha = 1;
-      hauntCtx.globalCompositeOperation='source-over';
+
+      hauntCtx.globalCompositeOperation = 'source-over';
 
       tintCtx.clearRect(0,0,tintCanvas.width,tintCanvas.height);
-      tintCtx.globalCompositeOperation='copy';
+      tintCtx.globalCompositeOperation = 'copy';
       tintCtx.drawImage(hauntCanvas,0,0);
-      tintCtx.globalCompositeOperation='source-in';
+      tintCtx.globalCompositeOperation = 'source-in';
       tintCtx.fillStyle = tint;
       tintCtx.fillRect(0,0,tintCanvas.width,tintCanvas.height);
-      tintCtx.globalCompositeOperation='source-over';
+      tintCtx.globalCompositeOperation = 'source-over';
 
-      fctx.globalCompositeOperation='screen';
-      fctx.globalAlpha=0.9;
+      fctx.globalCompositeOperation = 'screen';
+      fctx.globalAlpha = 0.9;
       fctx.drawImage(tintCanvas,0,0);
-      fctx.globalAlpha=1;
+      fctx.globalAlpha = 1;
+      fctx.globalCompositeOperation = 'source-over';
+    }
+
+    if (edgeThr) edgeThrV.textContent = edgeThr.value;
+    if (document.getElementById('edgeThr')) {
+      const TH = (+edgeThr.value | 0) || 40;
+      const TL = Math.max(0, Math.floor(TH * 0.5));
+
+      function rgbaFrom(hex, a01){
+        const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex||'#000000');
+        return [
+          parseInt(m[1],16),
+          parseInt(m[2],16),
+          parseInt(m[3],16),
+          Math.max(0,Math.min(1,a01||1))
+        ];
+      }
+      function drawOutlineFrom(srcCanvas, colorHex, alpha01){
+        const W = srcCanvas.width, H = srcCanvas.height;
+        if (!W || !H) return;
+        const sctx2 = srcCanvas.getContext('2d');
+        const img  = sctx2.getImageData(0,0,W,H);
+        const d    = img.data;
+
+        const L = new Uint8ClampedArray(W*H);
+        for (let i=0,j=0;i<d.length;i+=4,++j){
+          const lum = d[i]*0.2126 + d[i+1]*0.7152 + d[i+2]*0.0722;
+          const a   = d[i+3];
+          L[j] = Math.max(lum, a);
+        }
+
+        const E = new Uint8ClampedArray(W*H);
+        for (let y=1;y<H-1;y++){
+          let idx=y*W+1;
+          for (let x=1;x<W-1;x++,idx++){
+            const a=L[idx-W-1], b=L[idx-W],   c=L[idx-W+1];
+            const d0=L[idx-1],              f=L[idx+1];
+            const g=L[idx+W-1], h=L[idx+W], i=L[idx+W+1];
+            const gx = -a -2*b -c + g +2*h + i;
+            const gy = -a -2*d0 -g + c +2*f + i;
+            const mag = Math.abs(gx) + Math.abs(gy);
+            let aa;
+            if (mag >= TH) aa = 255;
+            else if (mag <= TL) aa = 0;
+            else aa = Math.round((mag - TL)/(TH - TL)*255);
+            E[idx] = aa;
+          }
+        }
+        for (let k=0,j=0;k<d.length;k+=4,++j){
+          E[j] = Math.round(E[j] * (d[k+3]/255));
+        }
+
+        edgeLayerCtx.clearRect(0,0,edgeLayerCanvas.width,edgeLayerCanvas.height);
+        const [r,g,b,a01Out] = rgbaFrom(colorHex, alpha01);
+        const mask = edgeLayerCtx.createImageData(W,H);
+        const md = mask.data;
+        for (let j=0,p=0;j<E.length;j++,p+=4){
+          const a = E[j];
+          if (!a){
+            md[p]=md[p+1]=md[p+2]=md[p+3]=0;
+            continue;
+          }
+          md[p]=r; md[p+1]=g; md[p+2]=b;
+          md[p+3]=Math.min(255, Math.round(a*a01Out));
+        }
+        edgeLayerCtx.putImageData(mask,0,0);
+
+        edgeCtx.globalCompositeOperation='source-over';
+        edgeCtx.drawImage(edgeLayerCanvas,0,0);
+      }
+
+      edgeCtx.clearRect(0,0,edgeCanvas.width,edgeCanvas.height);
+      if (ghostEdgeOn && ghostEdgeOn.checked)
+        drawOutlineFrom(can.ghost,    ghostEdgeColor.value,  +ghostEdgeAlpha.value||0.8);
+      if (stainEdgeOn && stainEdgeOn.checked)
+        drawOutlineFrom(can.stain,    stainEdgeColor.value,  +stainEdgeAlpha.value||0.7);
+      if (recallEdgeOn && recallEdgeOn.checked)
+        drawOutlineFrom(recallCanvas, recallEdgeColor.value, +recallEdgeAlpha.value||0.7);
+      if (lingerEdgeOn && lingerEdgeOn.checked)
+        drawOutlineFrom(hauntCanvas,  lingerEdgeColor.value, +lingerEdgeAlpha.value||0.8);
+
       fctx.globalCompositeOperation='source-over';
+      fctx.drawImage(edgeCanvas,0,0);
     }
-
-    // outlines live (full aesthetic here)
-    const TH = (+edgeThr.value | 0) || 40;
-    const TL = Math.max(0, Math.floor(TH * 0.5));
-
-    function rgbaFrom(hex, a01){
-      const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex||'#000000');
-      return [
-        parseInt(m[1],16),
-        parseInt(m[2],16),
-        parseInt(m[3],16),
-        Math.max(0,Math.min(1,a01||1))
-      ];
-    }
-    function drawOutlineFrom(srcCanvas, colorHex, alpha01){
-      const W = srcCanvas.width, H = srcCanvas.height;
-      if (!W || !H) return;
-      const sctx2 = srcCanvas.getContext('2d');
-      const img  = sctx2.getImageData(0,0,W,H);
-      const d    = img.data;
-
-      const L = new Uint8ClampedArray(W*H);
-      for (let i=0,j=0;i<d.length;i+=4,++j){
-        const lum = d[i]*0.2126 + d[i+1]*0.7152 + d[i+2]*0.0722;
-        const a   = d[i+3];
-        L[j] = Math.max(lum, a);
-      }
-
-      const E = new Uint8ClampedArray(W*H);
-      for (let y=1;y<H-1;y++){
-        let idx=y*W+1;
-        for (let x=1;x<W-1;x++,idx++){
-          const a=L[idx-W-1], b=L[idx-W],   c=L[idx-W+1];
-          const d0=L[idx-1],              f=L[idx+1];
-          const g=L[idx+W-1], h=L[idx+W], i=L[idx+W+1];
-          const gx = -a -2*b -c + g +2*h + i;
-          const gy = -a -2*d0 -g + c +2*f + i;
-          const mag = Math.abs(gx) + Math.abs(gy);
-          let aa;
-          if (mag >= TH) aa = 255;
-          else if (mag <= TL) aa = 0;
-          else aa = Math.round((mag - TL)/(TH - TL)*255);
-          E[idx] = aa;
-        }
-      }
-
-      for (let k=0,j=0;k<d.length;k+=4,++j){
-        E[j] = Math.round(E[j] * (d[k+3]/255));
-      }
-
-      edgeLayerCtx.clearRect(0,0,edgeLayerCanvas.width,edgeLayerCanvas.height);
-      const [r,g,b,a01Out] = rgbaFrom(colorHex, alpha01);
-      const mask = edgeLayerCtx.createImageData(W,H);
-      const md = mask.data;
-      for (let j=0,p=0;j<E.length;j++,p+=4){
-        const a = E[j];
-        if (!a){
-          md[p]=md[p+1]=md[p+2]=md[p+3]=0;
-          continue;
-        }
-        md[p]=r; md[p+1]=g; md[p+2]=b;
-        md[p+3]=Math.min(255, Math.round(a*a01Out));
-      }
-      edgeLayerCtx.putImageData(mask,0,0);
-
-      edgeCtx.globalCompositeOperation='source-over';
-      edgeCtx.drawImage(edgeLayerCanvas,0,0);
-    }
-
-    edgeCtx.clearRect(0,0,edgeCanvas.width,edgeCanvas.height);
-    if (ghostEdgeOn && ghostEdgeOn.checked)
-      drawOutlineFrom(can.ghost,    ghostEdgeColor.value,  +ghostEdgeAlpha.value||0.8);
-    if (stainEdgeOn && stainEdgeOn.checked)
-      drawOutlineFrom(can.stain,    stainEdgeColor.value,  +stainEdgeAlpha.value||0.7);
-    if (recallEdgeOn && recallEdgeOn.checked)
-      drawOutlineFrom(recallCanvas, recallEdgeColor.value, +recallEdgeAlpha.value||0.7);
-    if (lingerEdgeOn && lingerEdgeOn.checked)
-      drawOutlineFrom(hauntCanvas,  lingerEdgeColor.value, +lingerEdgeAlpha.value||0.8);
-
-    fctx.globalCompositeOperation='source-over';
-    fctx.drawImage(edgeCanvas,0,0);
 
     const dt=now-lastT; lastT=now;
     const inst=dt>0?1000/dt:0;
@@ -889,7 +886,7 @@
     vid.play().catch(()=>{});
   });
 
-  /* ---------- Export 1:1 (performance-optimized) ---------- */
+  /* ---------- Export 1:1 (hi-res, browser-stable mime) ---------- */
   exportOneBtn.addEventListener('click', exportSourceOnce);
   async function exportSourceOnce(){
     if(vid.srcObject){
@@ -912,10 +909,10 @@
       return;
     }
 
-    // Pick codec/container
     const s = bestSupported();
     let mime = "";
     let ext  = "";
+
     if (preferMp4()) {
       mime = s.mp4;
       ext  = "mp4";
@@ -933,7 +930,6 @@
     exportOneBtn.disabled = true;
     recStartBtn.disabled  = true;
 
-    // Save playback state
     const prev = {
       loop: vid.loop,
       rate: vid.playbackRate,
@@ -941,14 +937,10 @@
       t: vid.currentTime
     };
 
-    // We'll just record live playback like before (realtime),
-    // BUT we'll simplify visual pipeline during export to keep framerate high.
-
     vid.pause();
     vid.loop = false;
     vid.playbackRate = 1.0;
 
-    // Resize all internal buffers to native source res
     const restoreSizes = {
       finW: can.final.width, finH: can.final.height,
       stainW: can.stain.width, stainH: can.stain.height,
@@ -967,19 +959,22 @@
       can.final.width = vw;   can.final.height = vh;
       can.stain.width = vw;   can.stain.height = vh;
       can.ghost.width = vw;   can.ghost.height = vh;
+
       proc.width = vw;        proc.height = vh;
       maskCanvas.width = vw;  maskCanvas.height = vh;
       colCanvas.width  = vw;  colCanvas.height  = vh;
+
       recallCanvas.width = vw;  recallCanvas.height = vh;
       hauntCanvas.width  = vw;  hauntCanvas.height  = vh;
       tintCanvas.width   = vw;  tintCanvas.height   = vh;
+
       edgeCanvas.width      = vw;  edgeCanvas.height      = vh;
       edgeLayerCanvas.width = vw;  edgeLayerCanvas.height = vh;
+
       resetState();
     }
     resizeAllToNative();
 
-    // Output canvas is native size
     const outCanvas = document.createElement('canvas');
     outCanvas.width  = vw;
     outCanvas.height = vh;
@@ -1002,17 +997,15 @@
       expRecorder.onstop = resolve;
     });
 
-    // --- PERFORMANCE MODE FLAGS ---
-    // Goal: keep file fps smooth.
-    // We disable most expensive layers for export:
-    // - NO outlines
-    // - NO haunt/linger accumulation
-    // - NO new recall bursts (but we keep existing recallCanvas fading and drawing so memory glow still visible if present)
-    // - Simpler recall update (always fade + reuse last captured ghosts, but don't spawn new bursts stochastically)
-    const EXPORT_MODE = true;
-
-    // We keep snapshotGhost() so recallCanvas isn't empty entire time,
-    // but we won't random-burst during export. We'll just keep fading existing recallCanvas.
+    function rgbaFrom(hex, a01){
+      const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex||'#000000');
+      return [
+        parseInt(m[1],16),
+        parseInt(m[2],16),
+        parseInt(m[3],16),
+        Math.max(0,Math.min(1,a01||1))
+      ];
+    }
 
     function drawVideoContainedExact(ctx, video, W, H, blurPx){
       ctx.save();
@@ -1031,9 +1024,6 @@
     }
 
     function buildGhostAndStain(W,H,tNow){
-      // draw current video frame to proc
-      drawVideoContainedExact(pctx, vid, W, H, +el.preblur.value);
-
       const currImg = pctx.getImageData(0,0,W,H);
       pushFrame(currImg, tNow);
       const past = getPastFrame(+el.dt.value);
@@ -1125,11 +1115,9 @@
       recallCtx.globalCompositeOperation='source-over';
     }
 
-    async function updateRecall(changedNow,tNow){
-      // even in export, we keep capturing ghosts so recallCanvas glows,
-      // but we don't trigger random bursts and we don't animate bursts frame-by-frame.
+    async function maybeDoRecall(changedNow, tNow){
       if(changedNow>0){
-        try{
+        try {
           let img;
           if('createImageBitmap' in window){
             img = await createImageBitmap(can.ghost);
@@ -1139,21 +1127,29 @@
             c2.getContext('2d').drawImage(can.ghost,0,0);
             img=c2;
           }
-          recallBank.push({img,t:tNow});
-          capRecallBank((+recallCap.value|0)||40);
-        }catch(_){}
+          recallBank.push({img, t:tNow});
+          capRecallBank((+recallCap.value|0) || 40);
+        } catch(_){}
       }
 
-      // Instead of bursts, just overlay most recent memory softly
-      const last = recallBank[recallBank.length-1];
-      if(last){
-        const color=recallColor?recallColor.value:'#00e7ff';
-        drawTinted(recallCtx,last.img,color);
+      if(recallOn && recallOn.checked){
+        const prob = +recallProb.value || 0;
+        if(Math.random() < prob && !activeBurst){
+          startRandomBurst();
+        }
+      }
+
+      if(activeBurst && activeBurst.frames && activeBurst.frames.length){
+        const color = recallColor ? recallColor.value : '#00e7ff';
+        drawTinted(recallCtx, activeBurst.frames[activeBurst.i], color);
+        activeBurst.i++;
+        if(activeBurst.i >= activeBurst.frames.length){
+          activeBurst = null;
+        }
       }
     }
 
-    function compositeFinalSimple(W,H){
-      // PERFORMANCE: no haunt accumulation, no outlines
+    function drawHauntAndCompositeFinal(W,H){
       fctx.clearRect(0,0,W,H);
 
       const grey = +el.grey.value;
@@ -1176,14 +1172,116 @@
       fctx.drawImage(recallCanvas,0,0);
       fctx.globalCompositeOperation='source-over';
 
-      // Skip haunt / linger heavy blending
-      // Skip outlines (edgeCanvas)
+      if(hauntOn && hauntOn.checked){
+        const p     = Math.max(0, Math.min(1, +hauntPersist.value || 0.85));
+        const stick = +hauntStick.value || 1.3;
+        const tint  = (hauntColor && hauntColor.value) ? hauntColor.value : '#4a5e8a';
 
-      octx.clearRect(0,0,W,H);
-      octx.drawImage(can.final, 0, 0);
+        const decayOut = Math.max(0.001, 0.06 * (1 - p));
+        hauntCtx.globalCompositeOperation='destination-out';
+        hauntCtx.fillStyle=`rgba(0,0,0,${decayOut})`;
+        hauntCtx.fillRect(0,0,hauntCanvas.width,hauntCanvas.height);
+
+        hauntCtx.globalCompositeOperation='lighter';
+        hauntCtx.globalAlpha = Math.min(1, 0.55 * stick);
+        hauntCtx.drawImage(recallCanvas,0,0);
+        hauntCtx.globalAlpha = 1;
+        hauntCtx.globalCompositeOperation='source-over';
+
+        tintCtx.clearRect(0,0,tintCanvas.width,tintCanvas.height);
+        tintCtx.globalCompositeOperation='copy';
+        tintCtx.drawImage(hauntCanvas,0,0);
+        tintCtx.globalCompositeOperation='source-in';
+        tintCtx.fillStyle = tint;
+        tintCtx.fillRect(0,0,tintCanvas.width,tintCanvas.height);
+        tintCtx.globalCompositeOperation='source-over';
+
+        fctx.globalCompositeOperation='screen';
+        fctx.globalAlpha=0.9;
+        fctx.drawImage(tintCanvas,0,0);
+        fctx.globalAlpha=1;
+        fctx.globalCompositeOperation='source-over';
+      }
+
+      edgeCtx.clearRect(0,0,edgeCanvas.width,edgeCanvas.height);
+
+      const TH = (+edgeThr.value | 0) || 40;
+      const TL = Math.max(0, Math.floor(TH*0.5));
+
+      function drawOutlineFrom(srcCanvas, colorHex, alpha01){
+        const W = srcCanvas.width, H = srcCanvas.height;
+        if(!W||!H) return;
+
+        const sctx2 = srcCanvas.getContext('2d');
+        const img  = sctx2.getImageData(0,0,W,H);
+        const d    = img.data;
+
+        const L = new Uint8ClampedArray(W*H);
+        for(let i=0,j=0;i<d.length;i+=4,++j){
+          const lum = d[i]*0.2126 + d[i+1]*0.7152 + d[i+2]*0.0722;
+          const a   = d[i+3];
+          L[j] = Math.max(lum, a);
+        }
+
+        const E = new Uint8ClampedArray(W*H);
+        for(let y=1;y<H-1;y++){
+          let idx=y*W+1;
+          for(let x=1;x<W-1;x++,idx++){
+            const a=L[idx-W-1], b=L[idx-W],   c=L[idx-W+1];
+            const d0=L[idx-1],              f=L[idx+1];
+            const g=L[idx+W-1], h=L[idx+W], i=L[idx+W+1];
+            const gx = -a -2*b -c + g +2*h + i;
+            const gy = -a -2*d0 -g + c +2*f + i;
+            const mag = Math.abs(gx)+Math.abs(gy);
+
+            let aa;
+            if(mag>=TH) aa=255;
+            else if(mag<=TL) aa=0;
+            else aa=Math.round((mag-TL)/(TH-TL)*255);
+
+            E[idx]=aa;
+          }
+        }
+
+        for(let k=0,j=0;k<d.length;k+=4,++j){
+          E[j] = Math.round(E[j] * (d[k+3]/255));
+        }
+
+        edgeLayerCtx.clearRect(0,0,edgeLayerCanvas.width,edgeLayerCanvas.height);
+        const [r,g,b,a01Out] = rgbaFrom(colorHex, alpha01);
+        const mask = edgeLayerCtx.createImageData(W,H);
+        const md   = mask.data;
+        for(let j=0,p=0;j<E.length;j++,p+=4){
+          const a = E[j];
+          if(!a){
+            md[p]=md[p+1]=md[p+2]=md[p+3]=0;
+            continue;
+          }
+          md[p]   = r;
+          md[p+1] = g;
+          md[p+2] = b;
+          md[p+3] = Math.min(255, Math.round(a*a01Out));
+        }
+        edgeLayerCtx.putImageData(mask,0,0);
+
+        edgeCtx.globalCompositeOperation='source-over';
+        edgeCtx.drawImage(edgeLayerCanvas,0,0);
+      }
+
+      if(ghostEdgeOn && ghostEdgeOn.checked)
+        drawOutlineFrom(can.ghost, ghostEdgeColor.value, +ghostEdgeAlpha.value||0.8);
+      if(stainEdgeOn && stainEdgeOn.checked)
+        drawOutlineFrom(can.stain, stainEdgeColor.value, +stainEdgeAlpha.value||0.7);
+      if(recallEdgeOn && recallEdgeOn.checked)
+        drawOutlineFrom(recallCanvas, recallEdgeColor.value, +recallEdgeAlpha.value||0.7);
+      if(lingerEdgeOn && lingerEdgeOn.checked)
+        drawOutlineFrom(hauntCanvas, lingerEdgeColor.value, +lingerEdgeAlpha.value||0.8);
+
+      fctx.drawImage(edgeCanvas,0,0);
+
+      octx.drawImage(can.final, 0, 0); // 1:1 native pixels
     }
 
-    // safety timer: stop if something goes weird
     const safetyMs = (isFinite(vid.duration)?vid.duration:60)*1000 + 15000;
     const safetyTimer = setTimeout(()=>{
       try{ vid.pause(); }catch(_){}
@@ -1192,7 +1290,6 @@
 
     expRecorder.start(250);
 
-    // reset video to t=0 and then run realtime
     await new Promise(res=>{
       const h=()=>{ vid.removeEventListener('seeked',h); res(); };
       try{
@@ -1204,18 +1301,17 @@
     let lastFrameTimeMs = performance.now();
 
     async function stepFrame(){
+      drawVideoContainedExact(pctx, vid, vw, vh, +el.preblur.value);
+      const {changedCount} = buildGhostAndStain(vw, vh, vid.currentTime);
+
       const nowMs = performance.now();
       const dtMs = nowMs - lastFrameTimeMs;
       lastFrameTimeMs = nowMs;
 
-      const {changedCount} = buildGhostAndStain(vw, vh, vid.currentTime);
-
-      // maintain rolling recall glow, but cheap
       fadeRecallLayer(dtMs);
-      await updateRecall(changedCount, vid.currentTime);
+      await maybeDoRecall(changedCount, vid.currentTime);
 
-      // final composite without haunt / outlines
-      compositeFinalSimple(vw, vh);
+      drawHauntAndCompositeFinal(vw, vh);
     }
 
     function finalizeExport(){
@@ -1223,16 +1319,18 @@
 
       try{ expRecorder.stop(); }catch(_){}
 
-      // restore sizes
       can.final.width  = restoreSizes.finW;   can.final.height  = restoreSizes.finH;
       can.stain.width  = restoreSizes.stainW; can.stain.height  = restoreSizes.stainH;
       can.ghost.width  = restoreSizes.ghostW; can.ghost.height  = restoreSizes.ghostH;
+
       proc.width       = restoreSizes.procW;  proc.height       = restoreSizes.procH;
       maskCanvas.width = restoreSizes.maskW;  maskCanvas.height = restoreSizes.maskH;
       colCanvas.width  = restoreSizes.colW;   colCanvas.height  = restoreSizes.colH;
+
       recallCanvas.width = restoreSizes.recallW; recallCanvas.height = restoreSizes.recallH;
       hauntCanvas.width  = restoreSizes.hauntW;  hauntCanvas.height  = restoreSizes.hauntH;
       tintCanvas.width   = restoreSizes.tintW;   tintCanvas.height   = restoreSizes.tintH;
+
       edgeCanvas.width      = restoreSizes.edgeW;      edgeCanvas.height      = restoreSizes.edgeH;
       edgeLayerCanvas.width = restoreSizes.edgeLayerW; edgeLayerCanvas.height = restoreSizes.edgeLayerH;
 
@@ -1248,8 +1346,7 @@
 
       const blob = new Blob(expChunks, {type: mime});
       const a = document.createElement('a');
-      const tag = "perf";
-      a.download = `wind_on_wall_1x_${vw}x${vh}_${tag}_${Date.now()}.${ext}`;
+      a.download = `wind_on_wall_1x_${vw}x${vh}_${Date.now()}.${ext}`;
       a.href = URL.createObjectURL(blob);
       a.click();
     }

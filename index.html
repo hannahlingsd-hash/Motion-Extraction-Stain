@@ -37,7 +37,6 @@
     object-fit:contain;
     background:#000;
     border:0; outline:0; box-shadow:none; display:block;
-    transform:translateZ(0.001px);
   }
 
   aside.panel{padding-top:4px; padding-right:14px; padding-left:4px; overflow:auto; scrollbar-width:thin}
@@ -102,6 +101,7 @@
   </main>
 
   <aside class="panel">
+    <!-- Controls remain the same as before -->
     <div class="group">Source</div>
     <div class="btnRow">
       <input id="file" type="file" accept="video/*">
@@ -279,7 +279,7 @@
     if(!mediaStream){
       if(errLast && (errLast.name==='NotAllowedError'||errLast.name==='SecurityError'))
         throw new Error('Camera permission blocked. Allow access in site settings.');
-      if(errLast && errLast.name==='NotFoundError')
+      if(errLast && (errLast.name==='NotFoundError'||errLast.name==='OverconstrainedError'))
         throw new Error('No camera device found.');
       throw errLast || new Error('Unable to access camera.');
     }
@@ -339,7 +339,6 @@
     tintCanvas.width = PROCESS_WIDTH; tintCanvas.height = PROCESS_HEIGHT;
     edgeCanvas.width = PROCESS_WIDTH; edgeCanvas.height = PROCESS_HEIGHT;
     edgeLayerCanvas.width = PROCESS_WIDTH; edgeLayerCanvas.height = PROCESS_HEIGHT;
-    processFinal.width = PROCESS_WIDTH; processFinal.height = PROCESS_HEIGHT;
   }
   new ResizeObserver(fit).observe(can.final); fit();
 
@@ -365,8 +364,12 @@
     
     const vw=video.videoWidth||0, vh=video.videoHeight||0;
     if(vw && vh){
-      // Draw video at exact 1920x1080 - no scaling, no cropping
-      ctx.drawImage(video, 0, 0, vw, vh, 0, 0, PROCESS_WIDTH, PROCESS_HEIGHT);
+      // Draw video centered and scaled to fit 1920x1080 without cropping
+      const scale = Math.min(PROCESS_WIDTH/vw, PROCESS_HEIGHT/vh);
+      const dw = Math.round(vw*scale), dh = Math.round(vh*scale);
+      const dx = Math.floor((PROCESS_WIDTH-dw)/2), dy = Math.floor((PROCESS_HEIGHT-dh)/2);
+      
+      ctx.drawImage(video, 0, 0, vw, vh, dx, dy, dw, dh);
     }
     ctx.restore();
   }
@@ -375,8 +378,12 @@
     ctx.save();
     ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
     
-    // Draw the 1920x1080 processing result to fit the display
-    ctx.drawImage(sourceCanvas, 0, 0, PROCESS_WIDTH, PROCESS_HEIGHT, 0, 0, ctx.canvas.width, ctx.canvas.height);
+    // Draw the 1920x1080 processing result to fit the display while maintaining aspect ratio
+    const scale = Math.min(ctx.canvas.width/PROCESS_WIDTH, ctx.canvas.height/PROCESS_HEIGHT);
+    const dw = Math.round(PROCESS_WIDTH*scale), dh = Math.round(PROCESS_HEIGHT*scale);
+    const dx = Math.floor((ctx.canvas.width-dw)/2), dy = Math.floor((ctx.canvas.height-dh)/2);
+    
+    ctx.drawImage(sourceCanvas, 0, 0, PROCESS_WIDTH, PROCESS_HEIGHT, dx, dy, dw, dh);
     ctx.restore();
   }
 
@@ -409,10 +416,15 @@
       return;
     }
 
-    // Use the processing canvas for recording at 1920x1080
-    const stream = processFinal.captureStream
-      ? processFinal.captureStream(30)
-      : processFinal.mozCaptureStream(30);
+    // Create a separate canvas for recording at 1920x1080
+    const recordCanvas = document.createElement('canvas');
+    recordCanvas.width = PROCESS_WIDTH;
+    recordCanvas.height = PROCESS_HEIGHT;
+    const recordCtx = recordCanvas.getContext('2d');
+
+    const stream = recordCanvas.captureStream
+      ? recordCanvas.captureStream(30)
+      : recordCanvas.mozCaptureStream(30);
 
     chunks=[];
     recorder = new MediaRecorder(stream,{
@@ -432,6 +444,12 @@
       stopRecUI();
     };
 
+    // Record the processing result at 1920x1080
+    const recordInterval = setInterval(() => {
+      recordCtx.clearRect(0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
+      recordCtx.drawImage(processFinal, 0, 0, PROCESS_WIDTH, PROCESS_HEIGHT);
+    }, 33); // ~30fps
+
     recorder.start(250);
 
     recStartTime=performance.now();
@@ -445,6 +463,16 @@
     recHUD.style.display='flex';
     recStartBtn.disabled=true;
     recStopBtn.disabled=false;
+
+    // Store original stop function and override
+    const originalStop = stopRecording;
+    stopRecording = function() {
+      clearInterval(recordInterval);
+      if(recorder && recorder.state==='recording'){
+        recorder.stop();
+      }
+      stopRecording = originalStop;
+    };
   }
   
   function stopRecording(){

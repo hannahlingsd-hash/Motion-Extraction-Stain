@@ -315,6 +315,17 @@
   const PROCESS_WIDTH = 1920;
   const PROCESS_HEIGHT = 1080;
 
+  // Create temporary 1920x1080 canvases for ghost and stain processing
+  const tempGhost = document.createElement('canvas');
+  tempGhost.width = PROCESS_WIDTH;
+  tempGhost.height = PROCESS_HEIGHT;
+  const tempGhostCtx = tempGhost.getContext('2d');
+
+  const tempStain = document.createElement('canvas');
+  tempStain.width = PROCESS_WIDTH;
+  tempStain.height = PROCESS_HEIGHT;
+  const tempStainCtx = tempStain.getContext('2d');
+
   function fit(){
     const dpr = Math.max(1, window.devicePixelRatio||1);
     const r = can.final.getBoundingClientRect();
@@ -363,7 +374,7 @@
     
     const vw=video.videoWidth||0, vh=video.videoHeight||0;
     if(vw && vh){
-      // FIXED: Draw video directly without any scaling - perfect 1:1 copy
+      // Draw video directly without scaling - perfect 1:1 copy for 1920x1080
       ctx.drawImage(video, 0, 0);
     }
     ctx.restore();
@@ -684,11 +695,15 @@
     if(!past) return;
 
     const c=curr.data, p=past.data;
-    const ghostImg=gctx.createImageData(PROCESS_WIDTH,PROCESS_HEIGHT);
+
+    // Process ghost at 1920x1080
+    tempGhostCtx.clearRect(0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
+    const ghostImg=tempGhostCtx.createImageData(PROCESS_WIDTH,PROCESS_HEIGHT);
     const gd=ghostImg.data;
     const thr=+el.thr.value;
     const mask=new Uint8ClampedArray(PROCESS_WIDTH*PROCESS_HEIGHT);
     let changedCount=0;
+
     for(let i=0,j=0;i<c.length;i+=4,j++){
       const r=c[i], g=c[i+1], b=c[i+2];
       const pr=p[i], pg=p[i+1], pb=p[i+2];
@@ -716,14 +731,24 @@
         gd[i+3]=0;
       }
     }
-    gctx.putImageData(ghostImg,0,0);
+    tempGhostCtx.putImageData(ghostImg,0,0);
+
+    // Draw the processed ghost to display (scaled properly)
+    gctx.clearRect(0,0,gctx.canvas.width,gctx.canvas.height);
+    const ghostScale = Math.min(gctx.canvas.width/PROCESS_WIDTH, gctx.canvas.height/PROCESS_HEIGHT);
+    const ghostDw = Math.round(PROCESS_WIDTH*ghostScale), ghostDh = Math.round(PROCESS_HEIGHT*ghostScale);
+    const ghostDx = Math.floor((gctx.canvas.width-ghostDw)/2), ghostDy = Math.floor((gctx.canvas.height-ghostDh)/2);
+    gctx.drawImage(tempGhost, 0, 0, PROCESS_WIDTH, PROCESS_HEIGHT, ghostDx, ghostDy, ghostDw, ghostDh);
 
     if(stainOn.checked){
+      // Process stain at 1920x1080
+      tempStainCtx.clearRect(0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
+      
       const decay=+el.decay.value;
-      sctx.globalCompositeOperation='destination-out';
-      sctx.fillStyle=`rgba(0,0,0,${1-decay})`;
-      sctx.fillRect(0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
-      sctx.globalCompositeOperation='source-over';
+      tempStainCtx.globalCompositeOperation='destination-out';
+      tempStainCtx.fillStyle=`rgba(0,0,0,${1-decay})`;
+      tempStainCtx.fillRect(0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
+      tempStainCtx.globalCompositeOperation='source-over';
 
       const mImg=maskCtx.createImageData(PROCESS_WIDTH,PROCESS_HEIGHT);
       const mdat=mImg.data;
@@ -747,17 +772,25 @@
       colCtx.globalCompositeOperation='source-over';
       colCtx.globalAlpha=1;
 
-      sctx.drawImage(colCanvas,0,0);
+      tempStainCtx.drawImage(colCanvas,0,0);
+
+      // Draw the processed stain to display (scaled properly)
+      sctx.clearRect(0,0,sctx.canvas.width,sctx.canvas.height);
+      const stainScale = Math.min(sctx.canvas.width/PROCESS_WIDTH, sctx.canvas.height/PROCESS_HEIGHT);
+      const stainDw = Math.round(PROCESS_WIDTH*stainScale), stainDh = Math.round(PROCESS_HEIGHT*stainScale);
+      const stainDx = Math.floor((sctx.canvas.width-stainDw)/2), stainDy = Math.floor((sctx.canvas.height-stainDh)/2);
+      sctx.drawImage(tempStain, 0, 0, PROCESS_WIDTH, PROCESS_HEIGHT, stainDx, stainDy, stainDw, stainDh);
     }
 
+    // Composite all layers to final processing canvas
     if(stainOn.checked){
       processFinalCtx.globalCompositeOperation='multiply';
-      processFinalCtx.drawImage(can.stain,0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
+      processFinalCtx.drawImage(tempStain,0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
       processFinalCtx.globalCompositeOperation='source-over';
     }
     processFinalCtx.globalAlpha=+el.gAlpha.value;
     processFinalCtx.globalCompositeOperation=gBlend.value;
-    processFinalCtx.drawImage(can.ghost,0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
+    processFinalCtx.drawImage(tempGhost,0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
     processFinalCtx.globalAlpha=1;
     processFinalCtx.globalCompositeOperation='source-over';
 
@@ -887,9 +920,9 @@
 
       edgeCtx.clearRect(0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
       if (ghostEdgeOn && ghostEdgeOn.checked)
-        drawOutlineFrom(can.ghost,    ghostEdgeColor.value,  +ghostEdgeAlpha.value||0.8);
+        drawOutlineFrom(tempGhost,    ghostEdgeColor.value,  +ghostEdgeAlpha.value||0.8);
       if (stainEdgeOn && stainEdgeOn.checked)
-        drawOutlineFrom(can.stain,    stainEdgeColor.value,  +stainEdgeAlpha.value||0.7);
+        drawOutlineFrom(tempStain,    stainEdgeColor.value,  +stainEdgeAlpha.value||0.7);
       if (recallEdgeOn && recallEdgeOn.checked)
         drawOutlineFrom(recallCanvas, recallEdgeColor.value, +recallEdgeAlpha.value||0.7);
       if (lingerEdgeOn && lingerEdgeOn.checked)

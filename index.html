@@ -26,15 +26,15 @@
   .stage{
     position:relative;
     width:100%;
-    height:100%;
-    aspect-ratio:16/9;
-    background:#fff;
+    height:0;
+    padding-bottom:56.25%; /* 16:9 aspect ratio (1080/1920 = 0.5625) */
+    background:#000;
     overflow:hidden;
   }
   canvas{
     position:absolute; inset:0;
     width:100%; height:100%;
-    object-fit:contain;
+    object-fit:contain; /* Changed from cover to contain for no cropping */
     background:#000;
     border:0; outline:0; box-shadow:none; display:block;
     transform:translateZ(0.001px);
@@ -312,15 +312,15 @@
   const edgeLayerCanvas = document.createElement('canvas');
   const edgeLayerCtx = edgeLayerCanvas.getContext('2d', { willReadFrequently:true });
 
-  // Fixed 1920x1080 resolution for all processing
-  const FIXED_WIDTH = 1920;
-  const FIXED_HEIGHT = 1080;
+  // Use the video's native resolution for processing
+  let PROCESS_WIDTH = 1920;
+  let PROCESS_HEIGHT = 1080;
 
   function fit(){
     const dpr = Math.max(1, window.devicePixelRatio||1);
     const r = can.final.getBoundingClientRect();
     
-    // Always use fixed 1920x1080 for processing, but scale display
+    // Set display size to match the 16:9 container
     const displayWidth = Math.max(2, Math.ceil(r.width*dpr));
     const displayHeight = Math.max(2, Math.ceil(r.height*dpr));
     
@@ -329,18 +329,26 @@
       can[k].width = displayWidth; 
       can[k].height = displayHeight; 
     }
-    
-    // Set processing size (fixed 1920x1080 for all effects)
-    proc.width = FIXED_WIDTH; proc.height = FIXED_HEIGHT;
-    maskCanvas.width = FIXED_WIDTH; maskCanvas.height = FIXED_HEIGHT;
-    colCanvas.width = FIXED_WIDTH; colCanvas.height = FIXED_HEIGHT;
-    recallCanvas.width = FIXED_WIDTH; recallCanvas.height = FIXED_HEIGHT;
-    hauntCanvas.width = FIXED_WIDTH; hauntCanvas.height = FIXED_HEIGHT;
-    tintCanvas.width = FIXED_WIDTH; tintCanvas.height = FIXED_HEIGHT;
-    edgeCanvas.width = FIXED_WIDTH; edgeCanvas.height = FIXED_HEIGHT;
-    edgeLayerCanvas.width = FIXED_WIDTH; edgeLayerCanvas.height = FIXED_HEIGHT;
   }
   new ResizeObserver(fit).observe(can.final); fit();
+
+  function updateProcessingSize(videoWidth, videoHeight) {
+    PROCESS_WIDTH = videoWidth;
+    PROCESS_HEIGHT = videoHeight;
+    
+    // Update all processing canvases to match video resolution
+    proc.width = PROCESS_WIDTH; proc.height = PROCESS_HEIGHT;
+    maskCanvas.width = PROCESS_WIDTH; maskCanvas.height = PROCESS_HEIGHT;
+    colCanvas.width = PROCESS_WIDTH; colCanvas.height = PROCESS_HEIGHT;
+    recallCanvas.width = PROCESS_WIDTH; recallCanvas.height = PROCESS_HEIGHT;
+    hauntCanvas.width = PROCESS_WIDTH; hauntCanvas.height = PROCESS_HEIGHT;
+    tintCanvas.width = PROCESS_WIDTH; tintCanvas.height = PROCESS_HEIGHT;
+    edgeCanvas.width = PROCESS_WIDTH; edgeCanvas.height = PROCESS_HEIGHT;
+    edgeLayerCanvas.width = PROCESS_WIDTH; edgeLayerCanvas.height = PROCESS_HEIGHT;
+    
+    // Reset state for new video
+    resetState();
+  }
 
   /* ---------- Buffers ---------- */
   const buf=[]; const MAX_SEC=14;
@@ -359,16 +367,13 @@
 
   function drawVideoToProcessingCanvas(ctx, video, blurPx){
     ctx.save(); 
-    ctx.clearRect(0,0,FIXED_WIDTH,FIXED_HEIGHT);
+    ctx.clearRect(0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
     if(blurPx>0) ctx.filter=`blur(${blurPx}px)`;
     
+    // Draw video at its native resolution, centered
     const vw=video.videoWidth||0, vh=video.videoHeight||0;
     if(vw && vh){
-      // Scale to fit 1920x1080 without cropping
-      const scale = Math.min(FIXED_WIDTH/vw, FIXED_HEIGHT/vh);
-      const dw = Math.round(vw*scale), dh = Math.round(vh*scale);
-      const dx = Math.floor((FIXED_WIDTH-dw)/2), dy = Math.floor((FIXED_HEIGHT-dh)/2);
-      ctx.drawImage(video,dx,dy,dw,dh);
+      ctx.drawImage(video, 0, 0, vw, vh, 0, 0, PROCESS_WIDTH, PROCESS_HEIGHT);
     }
     ctx.restore();
   }
@@ -377,9 +382,9 @@
     ctx.save();
     ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
     
-    // Scale the 1920x1080 processing result to fit the display
-    const scale = Math.min(ctx.canvas.width/FIXED_WIDTH, ctx.canvas.height/FIXED_HEIGHT);
-    const dw = Math.round(FIXED_WIDTH*scale), dh = Math.round(FIXED_HEIGHT*scale);
+    // Scale the processing result to fit the display while maintaining aspect ratio
+    const scale = Math.min(ctx.canvas.width/PROCESS_WIDTH, ctx.canvas.height/PROCESS_HEIGHT);
+    const dw = Math.round(PROCESS_WIDTH*scale), dh = Math.round(PROCESS_HEIGHT*scale);
     const dx = Math.floor((ctx.canvas.width-dw)/2), dy = Math.floor((ctx.canvas.height-dh)/2);
     
     ctx.drawImage(sourceCanvas,dx,dy,dw,dh);
@@ -400,7 +405,6 @@
   }
 
   function refreshSupportNote(){
-    // Always MP4-only now
     supportNote.innerHTML = 'Recording format: MP4 only (Safari recommended)';
   }
   refreshSupportNote();
@@ -416,10 +420,10 @@
       return;
     }
 
-    // Create a separate canvas for recording at 1920x1080
+    // Create a separate canvas for recording at video's native resolution
     const recordCanvas = document.createElement('canvas');
-    recordCanvas.width = FIXED_WIDTH;
-    recordCanvas.height = FIXED_HEIGHT;
+    recordCanvas.width = PROCESS_WIDTH;
+    recordCanvas.height = PROCESS_HEIGHT;
     const recordCtx = recordCanvas.getContext('2d');
 
     const stream = recordCanvas.captureStream
@@ -444,14 +448,10 @@
       stopRecUI();
     };
 
-    // Override the final canvas drawing for recording
-    const originalFinalDraw = drawProcessingToDisplay.bind(null, fctx, can.final);
-    
-    // Replace the final display function during recording
+    // Record the processing result at native resolution
     const recordInterval = setInterval(() => {
-      // Draw the processing result to recording canvas at full 1920x1080
-      recordCtx.clearRect(0,0,FIXED_WIDTH,FIXED_HEIGHT);
-      recordCtx.drawImage(can.final, 0, 0, FIXED_WIDTH, FIXED_HEIGHT);
+      recordCtx.clearRect(0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
+      recordCtx.drawImage(processFinal, 0, 0, PROCESS_WIDTH, PROCESS_HEIGHT);
     }, 33); // ~30fps
 
     recorder.start(250);
@@ -475,7 +475,7 @@
       if(recorder && recorder.state==='recording'){
         recorder.stop();
       }
-      stopRecording = originalStop; // Restore original function
+      stopRecording = originalStop;
     };
   }
   
@@ -496,7 +496,6 @@
   recStopBtn.addEventListener('click',  stopRecording);
 
   shotBtn.addEventListener('click', ()=>{
-    // Export PNG at display resolution
     const a=document.createElement('a');
     a.download='still_'+Date.now()+'.png';
     a.href=can.final.toDataURL('image/png');
@@ -663,21 +662,29 @@
   /* ---------- Live render loop ---------- */
   let lastT=performance.now(), fpsEMA=0, suspendLive=false;
   
-  // Processing canvas for 1920x1080
+  // Processing canvas for video's native resolution
   const processFinal = document.createElement('canvas');
-  processFinal.width = FIXED_WIDTH;
-  processFinal.height = FIXED_HEIGHT;
-  const processFinalCtx = processFinal.getContext('2d');
+  let processFinalCtx = processFinal.getContext('2d');
+
+  // Update processing size when video loads
+  vid.addEventListener('loadedmetadata', () => {
+    if (vid.videoWidth && vid.videoHeight) {
+      updateProcessingSize(vid.videoWidth, vid.videoHeight);
+      processFinal.width = PROCESS_WIDTH;
+      processFinal.height = PROCESS_HEIGHT;
+    }
+    vid.play().catch(()=>{});
+  });
 
   requestAnimationFrame(function tick(now){
     requestAnimationFrame(tick);
     if(suspendLive) return;
 
     // Clear processing canvas
-    processFinalCtx.clearRect(0,0,FIXED_WIDTH,FIXED_HEIGHT);
+    processFinalCtx.clearRect(0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
     const grey=+el.grey.value;
     processFinalCtx.fillStyle=`rgb(${grey},${grey},${grey})`;
-    processFinalCtx.fillRect(0,0,FIXED_WIDTH,FIXED_HEIGHT);
+    processFinalCtx.fillRect(0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
 
     if(vid.readyState<2){
       nosrc.style.display='block';
@@ -686,18 +693,18 @@
       nosrc.style.display='none';
     }
 
-    // Process video at 1920x1080
+    // Process video at its native resolution
     drawVideoToProcessingCanvas(pctx,vid,+el.preblur.value);
-    const curr=pctx.getImageData(0,0,FIXED_WIDTH,FIXED_HEIGHT);
+    const curr=pctx.getImageData(0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
     pushFrame(curr,vid.currentTime);
     const past=getPastFrame(+el.dt.value);
     if(!past) return;
 
     const c=curr.data, p=past.data;
-    const ghostImg=gctx.createImageData(FIXED_WIDTH,FIXED_HEIGHT);
+    const ghostImg=gctx.createImageData(PROCESS_WIDTH,PROCESS_HEIGHT);
     const gd=ghostImg.data;
     const thr=+el.thr.value;
-    const mask=new Uint8ClampedArray(FIXED_WIDTH*FIXED_HEIGHT);
+    const mask=new Uint8ClampedArray(PROCESS_WIDTH*PROCESS_HEIGHT);
     let changedCount=0;
     for(let i=0,j=0;i<c.length;i+=4,j++){
       const r=c[i], g=c[i+1], b=c[i+2];
@@ -732,10 +739,10 @@
       const decay=+el.decay.value;
       sctx.globalCompositeOperation='destination-out';
       sctx.fillStyle=`rgba(0,0,0,${1-decay})`;
-      sctx.fillRect(0,0,FIXED_WIDTH,FIXED_HEIGHT);
+      sctx.fillRect(0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
       sctx.globalCompositeOperation='source-over';
 
-      const mImg=maskCtx.createImageData(FIXED_WIDTH,FIXED_HEIGHT);
+      const mImg=maskCtx.createImageData(PROCESS_WIDTH,PROCESS_HEIGHT);
       const mdat=mImg.data;
       for(let j=0,k=0;j<mask.length;j++,k+=4){
         const v=mask[j];
@@ -744,7 +751,7 @@
       }
       maskCtx.putImageData(mImg,0,0);
 
-      colCtx.clearRect(0,0,FIXED_WIDTH,FIXED_HEIGHT);
+      colCtx.clearRect(0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
       const expand=+el.expand.value;
       if(expand>0) colCtx.filter=`blur(${expand}px)`;
       colCtx.drawImage(maskCanvas,0,0);
@@ -753,7 +760,7 @@
       colCtx.globalCompositeOperation='source-in';
       colCtx.fillStyle=sColor.value;
       colCtx.globalAlpha=+el.strength.value;
-      colCtx.fillRect(0,0,FIXED_WIDTH,FIXED_HEIGHT);
+      colCtx.fillRect(0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
       colCtx.globalCompositeOperation='source-over';
       colCtx.globalAlpha=1;
 
@@ -762,12 +769,12 @@
 
     if(stainOn.checked){
       processFinalCtx.globalCompositeOperation='multiply';
-      processFinalCtx.drawImage(can.stain,0,0,FIXED_WIDTH,FIXED_HEIGHT);
+      processFinalCtx.drawImage(can.stain,0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
       processFinalCtx.globalCompositeOperation='source-over';
     }
     processFinalCtx.globalAlpha=+el.gAlpha.value;
     processFinalCtx.globalCompositeOperation=gBlend.value;
-    processFinalCtx.drawImage(can.ghost,0,0,FIXED_WIDTH,FIXED_HEIGHT);
+    processFinalCtx.drawImage(can.ghost,0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
     processFinalCtx.globalAlpha=1;
     processFinalCtx.globalCompositeOperation='source-over';
 
@@ -779,7 +786,7 @@
       const fade=1-Math.exp(-ms/(lingerS*1000));
       recallCtx.globalCompositeOperation='destination-out';
       recallCtx.fillStyle=`rgba(0,0,0,${fade})`;
-      recallCtx.fillRect(0,0,FIXED_WIDTH,FIXED_HEIGHT);
+      recallCtx.fillRect(0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
       recallCtx.globalCompositeOperation='source-over';
     }
     if(recallOn && recallOn.checked){
@@ -793,7 +800,7 @@
       if(activeBurst.i>=activeBurst.frames.length) activeBurst=null;
     }
     processFinalCtx.globalCompositeOperation='screen';
-    processFinalCtx.drawImage(recallCanvas,0,0,FIXED_WIDTH,FIXED_HEIGHT);
+    processFinalCtx.drawImage(recallCanvas,0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
     processFinalCtx.globalCompositeOperation='source-over';
 
     if(hauntOn && hauntOn.checked){
@@ -804,26 +811,26 @@
       const decayOut = Math.max(0.001, 0.06 * (1 - p));
       hauntCtx.globalCompositeOperation = 'destination-out';
       hauntCtx.fillStyle = `rgba(0,0,0,${decayOut})`;
-      hauntCtx.fillRect(0,0,FIXED_WIDTH,FIXED_HEIGHT);
+      hauntCtx.fillRect(0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
 
       hauntCtx.globalCompositeOperation = 'lighter';
       hauntCtx.globalAlpha = Math.min(1, 0.55 * stick);
-      hauntCtx.drawImage(recallCanvas,0,0,FIXED_WIDTH,FIXED_HEIGHT);
+      hauntCtx.drawImage(recallCanvas,0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
       hauntCtx.globalAlpha = 1;
 
       hauntCtx.globalCompositeOperation = 'source-over';
 
-      tintCtx.clearRect(0,0,FIXED_WIDTH,FIXED_HEIGHT);
+      tintCtx.clearRect(0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
       tintCtx.globalCompositeOperation = 'copy';
-      tintCtx.drawImage(hauntCanvas,0,0,FIXED_WIDTH,FIXED_HEIGHT);
+      tintCtx.drawImage(hauntCanvas,0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
       tintCtx.globalCompositeOperation = 'source-in';
       tintCtx.fillStyle = tint;
-      tintCtx.fillRect(0,0,FIXED_WIDTH,FIXED_HEIGHT);
+      tintCtx.fillRect(0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
       tintCtx.globalCompositeOperation = 'source-over';
 
       processFinalCtx.globalCompositeOperation = 'screen';
       processFinalCtx.globalAlpha = 0.9;
-      processFinalCtx.drawImage(tintCanvas,0,0,FIXED_WIDTH,FIXED_HEIGHT);
+      processFinalCtx.drawImage(tintCanvas,0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
       processFinalCtx.globalAlpha = 1;
       processFinalCtx.globalCompositeOperation = 'source-over';
     }
@@ -843,7 +850,7 @@
         ];
       }
       function drawOutlineFrom(srcCanvas, colorHex, alpha01){
-        const W = FIXED_WIDTH, H = FIXED_HEIGHT;
+        const W = PROCESS_WIDTH, H = PROCESS_HEIGHT;
         const sctx2 = srcCanvas.getContext('2d');
         const img  = sctx2.getImageData(0,0,W,H);
         const d    = img.data;
@@ -895,7 +902,7 @@
         edgeCtx.drawImage(edgeLayerCanvas,0,0);
       }
 
-      edgeCtx.clearRect(0,0,FIXED_WIDTH,FIXED_HEIGHT);
+      edgeCtx.clearRect(0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
       if (ghostEdgeOn && ghostEdgeOn.checked)
         drawOutlineFrom(can.ghost,    ghostEdgeColor.value,  +ghostEdgeAlpha.value||0.8);
       if (stainEdgeOn && stainEdgeOn.checked)
@@ -906,7 +913,7 @@
         drawOutlineFrom(hauntCanvas,  lingerEdgeColor.value, +lingerEdgeAlpha.value||0.8);
 
       processFinalCtx.globalCompositeOperation='source-over';
-      processFinalCtx.drawImage(edgeCanvas,0,0,FIXED_WIDTH,FIXED_HEIGHT);
+      processFinalCtx.drawImage(edgeCanvas,0,0,PROCESS_WIDTH,PROCESS_HEIGHT);
     }
 
     // Draw the final processed image to display canvas
@@ -916,11 +923,7 @@
     const inst=dt>0?1000/dt:0;
     fpsEMA=fpsEMA?fpsEMA*0.9+inst*0.1:inst;
 
-    dbg.textContent=`buffer: ${buf.length} | fps ~ ${fpsEMA.toFixed(1)} | 1920x1080`;
-  });
-
-  vid.addEventListener('loadeddata', ()=>{
-    vid.play().catch(()=>{});
+    dbg.textContent=`buffer: ${buf.length} | fps ~ ${fpsEMA.toFixed(1)} | ${PROCESS_WIDTH}x${PROCESS_HEIGHT}`;
   });
 
   /* ---------- Export 1:1 (MP4-only, pause live loop) ---------- */
@@ -975,7 +978,7 @@
 
     const expChunks = [];
     
-    // Use the processing canvas for recording at 1920x1080
+    // Use the processing canvas for recording at video's native resolution
     const stream = processFinal.captureStream
       ? processFinal.captureStream(30)
       : processFinal.mozCaptureStream(30);
@@ -1006,14 +1009,13 @@
     await new Promise(resolve => {
       const onSeeked = () => {
         vid.removeEventListener('seeked', onSeeked);
-        resetState(); // Reset again after seek to ensure clean start
+        resetState();
         resolve();
       };
       vid.addEventListener('seeked', onSeeked, {once: true});
       vid.currentTime = 0;
     });
 
-    // Use the existing render loop but with our canvas at native resolution
     let exportFinished = false;
     
     function finalizeExport() {
@@ -1025,13 +1027,11 @@
       // Stop the video first
       vid.pause();
       
-      // Wait a moment for any pending frames
       setTimeout(() => {
         if (expRecorder.state === 'recording') {
           expRecorder.stop();
         }
         
-        // Wait for recording to fully stop
         recDone.then(() => {
           // Restore video state
           vid.loop = prev.loop;
@@ -1053,7 +1053,6 @@
             a.href = URL.createObjectURL(blob);
             a.click();
             
-            // Clean up URL
             setTimeout(() => URL.revokeObjectURL(a.href), 1000);
           } else {
             alert('Export failed: No video data recorded');
@@ -1065,7 +1064,7 @@
     // Set up end detection
     vid.addEventListener('ended', finalizeExport, {once: true});
 
-    // Start playback - the existing render loop will handle the processing
+    // Start playback
     try {
       await vid.play();
     } catch (error) {

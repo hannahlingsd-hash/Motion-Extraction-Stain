@@ -101,7 +101,6 @@
   </main>
 
   <aside class="panel">
-    <!-- Controls remain the same as before -->
     <div class="group">Source</div>
     <div class="btnRow">
       <input id="file" type="file" accept="video/*">
@@ -364,12 +363,8 @@
     
     const vw=video.videoWidth||0, vh=video.videoHeight||0;
     if(vw && vh){
-      // Draw video centered and scaled to fit 1920x1080 without cropping
-      const scale = Math.min(PROCESS_WIDTH/vw, PROCESS_HEIGHT/vh);
-      const dw = Math.round(vw*scale), dh = Math.round(vh*scale);
-      const dx = Math.floor((PROCESS_WIDTH-dw)/2), dy = Math.floor((PROCESS_HEIGHT-dh)/2);
-      
-      ctx.drawImage(video, 0, 0, vw, vh, dx, dy, dw, dh);
+      // FIXED: Draw video directly without any scaling - perfect 1:1 copy
+      ctx.drawImage(video, 0, 0);
     }
     ctx.restore();
   }

@@ -254,9 +254,18 @@
     stopWebcam();
     resetState();
     vid.src = URL.createObjectURL(f);
-    vid.play();
+    vid.play().catch(e => console.log('Play failed:', e));
   });
-  playBtn.addEventListener('click', ()=> vid.paused ? vid.play() : vid.pause());
+  
+  // FIXED: Proper play/pause button functionality
+  playBtn.addEventListener('click', ()=> {
+    if(vid.paused) {
+      vid.play().catch(e => console.log('Play failed:', e));
+    } else {
+      vid.pause();
+    }
+  });
+  
   webcamBtn.addEventListener('click', ()=> startWebcam().catch(e=>alert('Webcam failed: '+(e && e.message ? e.message : e))));
 
   async function startWebcam(){
@@ -487,7 +496,7 @@
       resetState();
       const onSeeked=()=>{
         vid.removeEventListener('seeked',onSeeked);
-        vid.play();
+        vid.play().catch(e => console.log('Play failed:', e));
       };
       vid.addEventListener('seeked',onSeeked,{once:true});
       vid.currentTime=0;
@@ -496,7 +505,7 @@
       if(s){
         resetState();
         vid.src=s;
-        vid.play();
+        vid.play().catch(e => console.log('Play failed:', e));
       }
     }
   }
@@ -506,7 +515,7 @@
     const t=e.target;
     if(t&&(t.tagName==='INPUT'||t.tagName==='SELECT'||t.tagName==='TEXTAREA'||t.isContentEditable)) return;
     if(e.code==='KeyR'){ e.preventDefault(); replay(); }
-    else if(e.code==='Space'){ e.preventDefault(); vid.paused?vid.play():vid.pause(); }
+    else if(e.code==='Space'){ e.preventDefault(); vid.paused?vid.play().catch(e => console.log('Play failed:', e)):vid.pause(); }
   });
 
   /* ---------- Recall ---------- */
@@ -866,7 +875,7 @@
   });
 
   vid.addEventListener('loadeddata', ()=>{
-    vid.play().catch(()=>{});
+    vid.play().catch(e => console.log('Autoplay failed:', e));
   });
 
   /* ---------- Export 1:1 (MP4-only, pause live loop) ---------- */
@@ -986,7 +995,7 @@
           vid.playbackRate = prev.rate;
           try { vid.currentTime = prev.t; } catch(_) {}
           if (!prev.paused) {
-            vid.play().catch(() => {});
+            vid.play().catch(e => console.log('Play failed:', e));
           }
 
           exportOneBtn.disabled = false;

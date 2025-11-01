@@ -253,7 +253,6 @@
     vid.play().catch(e => console.log('Play failed:', e));
   });
   
-  // FIXED: Proper play/pause button functionality
   playBtn.addEventListener('click', ()=> {
     if(vid.paused) {
       vid.play().catch(e => console.log('Play failed:', e));
@@ -310,7 +309,6 @@
   const maskCanvas = document.createElement('canvas'); const maskCtx = maskCanvas.getContext('2d');
   const colCanvas = document.createElement('canvas'); const colCtx = colCanvas.getContext('2d');
   const hauntCanvas = document.createElement('canvas'); const hauntCtx = hauntCanvas.getContext('2d');
-  const tintCanvas  = document.createElement('canvas'); const tintCtx  = tintCanvas.getContext('2d');
   const edgeCanvas  = document.createElement('canvas'); const edgeCtx  = edgeCanvas.getContext('2d', { willReadFrequently:true });
   const edgeLayerCanvas = document.createElement('canvas');
   const edgeLayerCtx = edgeLayerCanvas.getContext('2d', { willReadFrequently:true });
@@ -319,22 +317,18 @@
     const dpr = Math.max(1, window.devicePixelRatio||1);
     const r = can.final.getBoundingClientRect();
     
-    // Set display size to match the 16:9 container - PROCESS AT DISPLAY RESOLUTION for crispness
     const displayWidth = Math.max(2, Math.ceil(r.width*dpr));
     const displayHeight = Math.max(2, Math.ceil(r.height*dpr));
     
-    // Set ALL canvases to the same display resolution
     for(const k in can){ 
       can[k].width = displayWidth; 
       can[k].height = displayHeight; 
     }
     
-    // Set all processing canvases to display resolution (not fixed 1920x1080)
     proc.width = displayWidth; proc.height = displayHeight;
     maskCanvas.width = displayWidth; maskCanvas.height = displayHeight;
     colCanvas.width = displayWidth; colCanvas.height = displayHeight;
     hauntCanvas.width = displayWidth; hauntCanvas.height = displayHeight;
-    tintCanvas.width = displayWidth; tintCanvas.height = displayHeight;
     edgeCanvas.width = displayWidth; edgeCanvas.height = displayHeight;
     edgeLayerCanvas.width = displayWidth; edgeLayerCanvas.height = displayHeight;
   }
@@ -362,7 +356,6 @@
     
     const vw=video.videoWidth||0, vh=video.videoHeight||0;
     if(vw && vh){
-      // Draw video contained within the canvas (maintains aspect ratio)
       const scale = Math.min(ctx.canvas.width/vw, ctx.canvas.height/vh);
       const dw = Math.round(vw*scale), dh = Math.round(vh*scale);
       const dx = Math.floor((ctx.canvas.width-dw)/2), dy = Math.floor((ctx.canvas.height-dh)/2);
@@ -400,7 +393,6 @@
       return;
     }
 
-    // Use the final canvas for recording
     const stream = can.final.captureStream
       ? can.final.captureStream(30)
       : can.final.mozCaptureStream(30);
@@ -467,7 +459,6 @@
     sctx.clearRect(0,0,can.stain.width,can.stain.height);
     gctx.clearRect(0,0,can.ghost.width,can.ghost.height);
     hauntCtx.clearRect(0,0,hauntCanvas.width,hauntCanvas.height);
-    tintCtx.clearRect(0,0,tintCanvas.width,tintCanvas.height);
     edgeCtx.clearRect(0,0,edgeCanvas.width,edgeCanvas.height);
   }
   function replay(){
@@ -564,7 +555,6 @@
     const grey=+el.grey.value;
     fctx.clearRect(0,0,W,H);
     
-    // Show original video background if toggle is on
     if(showOriginal && showOriginal.checked){
       drawVideoContained(fctx,vid,0);
     } else {
@@ -579,7 +569,6 @@
       nosrc.style.display='none';
     }
 
-    // Process video at display resolution for crispness
     drawVideoContained(pctx,vid,+el.preblur.value);
     const curr=pctx.getImageData(0,0,W,H);
     pushFrame(curr,vid.currentTime);
@@ -664,37 +653,34 @@
     fctx.globalAlpha=1;
     fctx.globalCompositeOperation='source-over';
 
-    // Linger now based on stain (long-term memory accumulation) - FIXED COLOR ISSUE
+    // Linger now based on stain (long-term memory accumulation) - FIXED
     if(hauntOn && hauntOn.checked && stainOn.checked){
-      const p     = Math.max(0, Math.min(1, +hauntPersist.value || 0.85));
+      const p = Math.max(0, Math.min(1, +hauntPersist.value || 0.85));
       const stick = +hauntStick.value || 1.3;
-      const tint  = (hauntColor && hauntColor.value) ? hauntColor.value : '#4a5e8a';
+      const tint = (hauntColor && hauntColor.value) ? hauntColor.value : '#4a5e8a';
 
-      const decayOut = Math.max(0.001, 0.06 * (1 - p));
+      // First, decay the existing linger
+      const decayOut = Math.max(0.001, 0.1 * (1 - p));
       hauntCtx.globalCompositeOperation = 'destination-out';
       hauntCtx.fillStyle = `rgba(0,0,0,${decayOut})`;
       hauntCtx.fillRect(0,0,W,H);
-
-      // Draw the stain with proper alpha for accumulation
       hauntCtx.globalCompositeOperation = 'source-over';
-      hauntCtx.globalAlpha = Math.min(1, 0.3 * stick);
+
+      // Add new stain content to linger with controlled opacity
+      hauntCtx.globalAlpha = Math.min(0.5, 0.2 * stick);
       hauntCtx.drawImage(can.stain,0,0);
       hauntCtx.globalAlpha = 1;
 
-      // Apply color tint using multiply to preserve darkness
-      tintCtx.clearRect(0,0,W,H);
-      tintCtx.globalCompositeOperation = 'source-over';
-      tintCtx.fillStyle = tint;
-      tintCtx.fillRect(0,0,W,H);
-      
-      tintCtx.globalCompositeOperation = 'multiply';
-      tintCtx.drawImage(hauntCanvas,0,0);
-      tintCtx.globalCompositeOperation = 'source-over';
+      // Apply color tint directly to the haunt canvas
+      hauntCtx.globalCompositeOperation = 'source-atop';
+      hauntCtx.fillStyle = tint;
+      hauntCtx.fillRect(0,0,W,H);
+      hauntCtx.globalCompositeOperation = 'source-over';
 
-      // Use normal blend mode for final composite to preserve dark colors
+      // Draw the linger onto the final canvas with normal blend mode
       fctx.globalCompositeOperation = 'normal';
       fctx.globalAlpha = 0.8;
-      fctx.drawImage(tintCanvas,0,0);
+      fctx.drawImage(hauntCanvas,0,0);
       fctx.globalAlpha = 1;
       fctx.globalCompositeOperation = 'source-over';
     }
@@ -813,7 +799,6 @@
       return;
     }
 
-    // Enforce MP4-only
     let mime;
     try {
       mime = ensureMP4SupportOrDie();
@@ -822,7 +807,6 @@
       return;
     }
 
-    // Stop live loop during export
     suspendLive = true;
 
     exportOneBtn.disabled = true;
@@ -841,7 +825,6 @@
 
     const expChunks = [];
     
-    // Create a canvas for 1:1 export at source resolution
     const exportCanvas = document.createElement('canvas');
     exportCanvas.width = vw;
     exportCanvas.height = vh;
@@ -863,17 +846,14 @@
       expRecorder.onstop = resolve;
     });
 
-    // Safety timeout
     const safetyMs = (isFinite(vid.duration) ? vid.duration : 60) * 1000 + 10000;
     const safetyTimer = setTimeout(() => {
       console.log('Safety timeout reached');
       finalizeExport();
     }, safetyMs);
 
-    // Start recording
     expRecorder.start(1000);
 
-    // Seek to beginning and reset state
     await new Promise(resolve => {
       const onSeeked = () => {
         vid.removeEventListener('seeked', onSeeked);
@@ -892,7 +872,6 @@
       
       clearTimeout(safetyTimer);
       
-      // Stop the video first
       vid.pause();
       
       setTimeout(() => {
@@ -901,7 +880,6 @@
         }
         
         recDone.then(() => {
-          // Restore video state
           vid.loop = prev.loop;
           vid.playbackRate = prev.rate;
           try { vid.currentTime = prev.t; } catch(_) {}
@@ -913,7 +891,6 @@
           recStartBtn.disabled  = false;
           suspendLive = false;
 
-          // Create and download the file
           if (expChunks.length > 0) {
             const blob = new Blob(expChunks, {type: mime});
             const a = document.createElement('a');
@@ -929,10 +906,8 @@
       }, 500);
     }
 
-    // Set up end detection
     vid.addEventListener('ended', finalizeExport, {once: true});
 
-    // Start playback
     try {
       await vid.play();
     } catch (error) {

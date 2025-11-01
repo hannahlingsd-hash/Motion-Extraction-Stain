@@ -664,7 +664,7 @@
     fctx.globalAlpha=1;
     fctx.globalCompositeOperation='source-over';
 
-    // Linger now based on stain (long-term memory accumulation)
+    // Linger now based on stain (long-term memory accumulation) - FIXED COLOR ISSUE
     if(hauntOn && hauntOn.checked && stainOn.checked){
       const p     = Math.max(0, Math.min(1, +hauntPersist.value || 0.85));
       const stick = +hauntStick.value || 1.3;
@@ -675,24 +675,26 @@
       hauntCtx.fillStyle = `rgba(0,0,0,${decayOut})`;
       hauntCtx.fillRect(0,0,W,H);
 
-      hauntCtx.globalCompositeOperation = 'lighter';
-      hauntCtx.globalAlpha = Math.min(1, 0.55 * stick);
+      // Draw the stain with proper alpha for accumulation
+      hauntCtx.globalCompositeOperation = 'source-over';
+      hauntCtx.globalAlpha = Math.min(1, 0.3 * stick);
       hauntCtx.drawImage(can.stain,0,0);
       hauntCtx.globalAlpha = 1;
 
-      hauntCtx.globalCompositeOperation = 'source-over';
-
+      // Apply color tint using multiply to preserve darkness
       tintCtx.clearRect(0,0,W,H);
-      tintCtx.globalCompositeOperation = 'copy';
-      tintCtx.drawImage(hauntCanvas,0,0);
-      tintCtx.globalCompositeOperation = 'source-in';
+      tintCtx.globalCompositeOperation = 'source-over';
       tintCtx.fillStyle = tint;
       tintCtx.fillRect(0,0,W,H);
+      
+      tintCtx.globalCompositeOperation = 'multiply';
+      tintCtx.drawImage(hauntCanvas,0,0);
       tintCtx.globalCompositeOperation = 'source-over';
 
-      fctx.globalCompositeOperation = 'screen';
-      fctx.globalAlpha = 0.9;
-      fctx.drawImage(tintCanvas,0,0); // All layers now at same resolution - perfect alignment
+      // Use normal blend mode for final composite to preserve dark colors
+      fctx.globalCompositeOperation = 'normal';
+      fctx.globalAlpha = 0.8;
+      fctx.drawImage(tintCanvas,0,0);
       fctx.globalAlpha = 1;
       fctx.globalCompositeOperation = 'source-over';
     }

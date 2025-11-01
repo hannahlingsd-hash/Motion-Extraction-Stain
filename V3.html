@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Wind-on-Wall — Linger from Stain (No Recall)</title>
+<title>Wind-on-Wall — Ghosts + Stain (1920x1080)</title>
+
 <style>
   :root{
     --bg:#fff; --fg:#000; --mut:#333; --line:#000;
@@ -21,193 +22,939 @@
     grid-template-columns: minmax(0,1fr) var(--colR);
     gap:16px; height:100vh; padding:12px; overflow:hidden;
   }
-  main{position:relative;display:flex;align-items:center;justify-content:center;background:#000}
-  video,canvas{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;}
-  aside{overflow-y:auto;padding-right:4px}
-  h2{margin:8px 0;font-size:15px;border-bottom:1px solid var(--mut);}
-  .slider-row{display:flex;align-items:center;gap:8px;margin:4px 0;}
-  .slider-row input[type=range]{flex:1;}
+  main{position:relative;display:flex;align-items:center;justify-content:center;min-width:0}
+  .stage{
+    position:relative;
+    width:100%;
+    height:0;
+    padding-bottom:56.25%; /* 16:9 aspect ratio */
+    background:#000;
+    overflow:hidden;
+  }
+  canvas{
+    position:absolute; inset:0;
+    width:100%; height:100%;
+    object-fit:contain;
+    background:#000;
+    border:0; outline:0; box-shadow:none; display:block;
+  }
+
+  aside.panel{padding-top:4px; padding-right:14px; padding-left:4px; overflow:auto; scrollbar-width:thin}
+  aside.panel::-webkit-scrollbar{width:10px}
+  aside.panel::-webkit-scrollbar-thumb{background:#bbb}
+  aside.panel::-webkit-scrollbar-track{background:#eee}
+
+  .group{font-weight:700;margin:18px 0 6px}
+  .row{display:grid;align-items:center;gap:8px;margin:6px 0;grid-template-columns:1fr minmax(120px,1.6fr) 44px}
+  .row.compact{grid-template-columns:1fr auto 44px}
+  .row > span{text-align:right;color:#000}
+  .row label{color:var(--fg)}
+
+  .row.colorop{
+    grid-template-columns: 1fr auto 110px 44px !important;
+  }
+  .row.colorop input[type="range"]{
+    width:110px !important;
+    max-width:110px !important;
+    justify-self:start;
+  }
+
+  .btnRow{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
+  .inlineRow{display:flex;align-items:center;gap:8px;margin:6px 0}
+
+  .exportGrid{display:grid;gap:8px;margin:6px 0;grid-template-columns:1fr 1fr 1fr}
+  .exportGrid .full{grid-column:1 / -1}
+
+  .btn{appearance:none;background:#fff;color:#000;border:1px solid var(--line);padding:6px 10px;cursor:pointer}
+  .btn.secondary{background:#fff}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+
+  input[type="range"]{appearance:none;height:2px;outline:none;background:linear-gradient(to right,var(--track-fill) 0 var(--p,0%),var(--track-bg) var(--p,0%) 100%)}
+  input[type="range"]::-webkit-slider-thumb{appearance:none;width:10px;height:10px;background:#000;border:1px solid #000}
+  input[type="range"]::-moz-range-thumb{width:10px;height:10px;background:#000;border:1px solid #000}
+  input[type="range"]::-moz-range-track{height:2px;background:var(--track-bg)}
+  input[type="range"]::-moz-range-progress{height:2px;background:var(--track-fill)}
+
+  input[type="color"]{width:32px;height:22px;border:1px solid #000;background:#fff;padding:0}
+
+  .hud{display:none!important}
+  .rec{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.6);color:#fff;padding:6px 10px;display:flex;align-items:center;gap:8px}
+  .dot{width:8px;height:8px;background:#ff5b5b}
+  .nosrc{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#888;font:12px ui-monospace;pointer-events:none}
+  .fab{display:none}
+  .small{font-size:12px;color:#333}
 </style>
 </head>
+
 <body>
 <div class="wrap">
   <main>
-    <video id="vid" playsinline muted loop></video>
-    <canvas id="ghost"></canvas>
-    <canvas id="stain"></canvas>
-    <canvas id="linger"></canvas>
-    <canvas id="final"></canvas>
+    <div class="stage">
+      <canvas id="stain"></canvas>
+      <canvas id="ghost"></canvas>
+      <canvas id="final"></canvas>
+      <div id="hud" class="hud"></div>
+      <div id="recHUD" class="rec" style="display:none;"><span class="dot"></span><span id="recTime">REC 00:00</span></div>
+      <div id="nosrc" class="nosrc" style="display:none;">load a clip or use the webcam</div>
+      <button id="replayFloat" class="fab" title="Replay (R)">↺</button>
+    </div>
   </main>
-  <aside>
-    <h2>Video</h2>
-    <button id="fileBtn">Load Video</button>
-    <input id="file" type="file" accept="video/*" hidden>
-    <button id="recStart">Start Recording</button>
-    <button id="recStop" disabled>Stop</button>
 
-    <h2>Motion Extraction</h2>
-    <div class="slider-row"><label>Δt</label><input id="dt" type="range" min="1" max="10" step="0.5" value="6"></div>
-    <div class="slider-row"><label>Threshold</label><input id="thr" type="range" min="4" max="60" step="1" value="40"></div>
-    <div class="slider-row"><label>Decay</label><input id="decay" type="range" min="0.9" max="0.995" step="0.001" value="0.94"></div>
+  <aside class="panel">
+    <div class="group">Source</div>
+    <div class="btnRow">
+      <input id="file" type="file" accept="video/*">
+    </div>
+    <div class="btnRow">
+      <button id="webcam" class="btn">Webcam</button>
+      <button id="play" class="btn secondary">Play/Pause</button>
+      <button id="replay" class="btn secondary">Replay</button>
+    </div>
 
-    <h2>Drawing</h2>
-    <div><button id="drawClear">Clear</button> <label><input type="checkbox" id="drawToggle"> Draw Mode</label></div>
-    <canvas id="draw" width="300" height="200" style="display:none;border:1px solid #aaa;margin-top:4px"></canvas>
-    <div class="slider-row"><label>Linger Color</label><input id="dColor" type="color" value="#00b7ff"></div>
-    <label><input type="checkbox" id="showOriginal"> Show Original Video</label>
+    <div class="group">Temporal window</div>
+    <div class="row"><label>Δt (seconds)</label><input id="dt" type="range" min="2" max="10" step="0.5" value="6"><span id="dtV">6.0</span></div>
+    <div class="row"><label>Diff threshold</label><input id="thr" type="range" min="4" max="60" value="60"><span id="thrV">60</span></div>
+    <div class="row"><label>Grey level</label><input id="grey" type="range" min="60" max="200" value="200"><span id="greyV">200</span></div>
+    <div class="row"><label>Pre-blur (px)</label><input id="preblur" type="range" min="0" max="3" value="0"><span id="preblurV">0</span></div>
+
+    <div class="group">Ghosts</div>
+    <div class="row"><label>Ghost opacity</label><input id="gAlpha" type="range" min="0" max="1" step="0.05" value="0.75"><span id="gAlphaV">0.75</span></div>
+    <div class="row">
+      <label>Blend mode</label>
+      <select id="gBlend">
+        <option value="normal" selected>Normal</option>
+        <option value="screen">Screen</option>
+        <option value="lighter">Lighter (Add)</option>
+        <option value="multiply">Multiply</option>
+        <option value="difference">Difference</option>
+      </select>
+      <span></span>
+    </div>
+    <div class="row compact">
+      <label>Ghost color</label>
+      <input id="gUseColor" type="checkbox" checked style="display:none">
+      <input id="gColor" type="color" value="#000000">
+    </div>
+
+    <div class="group">Stain</div>
+    <div class="row compact"><label>Enable stain</label><input id="stainOn" type="checkbox" checked></div>
+    <div class="row"><label>Decay</label><input id="decay" type="range" min="0.90" max="0.995" step="0.001" value="0.925"><span id="decayV">0.925</span></div>
+    <div class="row"><label>Strength</label><input id="strength" type="range" min="0.1" max="1" step="0.05" value="0.35"><span id="strengthV">0.35</span></div>
+    <div class="row"><label>Expand (px)</label><input id="expand" type="range" min="0" max="8" step="1" value="0"><span id="expandV">0</span></div>
+    <div class="row compact"><label>Stain color</label><input id="sColor" type="color" value="#223b7a"></div>
+
+    <div class="group">Linger</div>
+    <div class="row compact"><label>Enable linger</label><input id="hauntOn" type="checkbox"></div>
+    <div class="row"><label>Persistence</label><input id="hauntPersist" type="range" min="0" max="1" step="0.01" value="0.70"><span id="hauntPersistV">0.70</span></div>
+    <div class="row"><label>Reinforce radius (px)</label><input id="hauntRadius" type="range" min="10" max="60" step="1" value="30"><span id="hauntRadiusV">30</span></div>
+    <div class="row"><label>Stickiness</label><input id="hauntStick" type="range" min="0" max="2" step="0.1" value="1.0"><span id="hauntStickV">1.0</span></div>
+    <div class="row compact"><label>Linger color</label><input id="hauntColor" type="color" value="#4a5e8a"></div>
+
+    <div class="group">Drawing Filter (Outlines)</div>
+    <div class="row"><label>Threshold</label><input id="edgeThr" type="range" min="0" max="255" step="1" value="40"><span id="edgeThrV">40</span></div>
+
+    <div class="row compact"><label>Ghost outline</label><input id="ghostEdgeOn" type="checkbox"></div>
+    <div class="row colorop"><label>color / opacity</label><input id="ghostEdgeColor" type="color" value="#000000"><input id="ghostEdgeAlpha" type="range" min="0" max="1" step="0.05" value="0.75"><span id="ghostEdgeAlphaV">0.75</span></div>
+
+    <div class="row compact"><label>Stain outline</label><input id="stainEdgeOn" type="checkbox"></div>
+    <div class="row colorop"><label>color / opacity</label><input id="stainEdgeColor" type="color" value="#000000"><input id="stainEdgeAlpha" type="range" min="0" max="1" step="0.05" value="0.30"><span id="stainEdgeAlphaV">0.30</span></div>
+
+    <div class="row compact"><label>Linger outline</label><input id="lingerEdgeOn" type="checkbox"></div>
+    <div class="row colorop"><label>color / opacity</label><input id="lingerEdgeColor" type="color" value="#ff0000"><input id="lingerEdgeAlpha" type="range" min="0" max="1" step="0.05" value="0.75"><span id="lingerEdgeAlphaV">0.75</span></div>
+
+    <div class="group">Display</div>
+    <div class="row compact">
+      <label for="showOriginal">Show original video</label>
+      <input id="showOriginal" type="checkbox">
+      <span></span>
+    </div>
+
+    <div class="group">Export</div>
+    <div class="row compact">
+      <label for="matchPreview">Match preview</label>
+      <input id="matchPreview" type="checkbox" checked>
+      <span></span>
+    </div>
+    <div class="exportGrid">
+      <button id="recStart" class="btn">Start Recording</button>
+      <button id="recStop" class="btn" disabled>Stop &amp; Save</button>
+      <button id="shot" class="btn secondary">Export PNG</button>
+      <button id="exportOne" class="btn full">Export 1:1 (source)</button>
+    </div>
+
+    <div class="small" id="supportNote"></div>
+    <div class="small" id="dbg">buffer: 0 | fps —</div>
   </aside>
 </div>
 
 <script>
-const vid = document.getElementById("vid");
-const can = {
-  ghost: document.getElementById("ghost"),
-  stain: document.getElementById("stain"),
-  linger: document.getElementById("linger"),
-  final: document.getElementById("final")
-};
-const ctx = {
-  ghost: can.ghost.getContext("2d"),
-  stain: can.stain.getContext("2d"),
-  linger: can.linger.getContext("2d"),
-  final: can.final.getContext("2d")
-};
-const el = {
-  dt: document.getElementById("dt"),
-  thr: document.getElementById("thr"),
-  decay: document.getElementById("decay"),
-  dColor: document.getElementById("dColor"),
-  showOriginal: document.getElementById("showOriginal")
-};
-const fileBtn = document.getElementById("fileBtn");
-const file = document.getElementById("file");
-const recStart = document.getElementById("recStart");
-const recStop = document.getElementById("recStop");
+(function(){
+  /* ---------- Elements ---------- */
+  const can = { stain:stain, ghost:ghost, final:final };
+  const sctx = can.stain.getContext('2d');
+  const gctx = can.ghost.getContext('2d');
+  const fctx = can.final.getContext('2d');
 
-/* ---------- Fit canvases ---------- */
-function fit(){
-  const dpr = devicePixelRatio || 1;
-  const W = innerWidth - 320, H = innerHeight;
-  for(const k in can){
-    can[k].width = W * dpr;
-    can[k].height = H * dpr;
+  const file = document.getElementById('file');
+  const webcamBtn = document.getElementById('webcam');
+  const playBtn = document.getElementById('play');
+  const replayBtn = document.getElementById('replay');
+  const replayFloat = document.getElementById('replayFloat');
+  const recStartBtn = document.getElementById('recStart');
+  const recStopBtn  = document.getElementById('recStop');
+  const shotBtn = document.getElementById('shot');
+  const exportOneBtn = document.getElementById('exportOne');
+  const matchPreview = document.getElementById('matchPreview');
+  const showOriginal = document.getElementById('showOriginal');
+  const hud = document.getElementById('hud');
+  const recHUD = document.getElementById('recHUD');
+  const recTime = document.getElementById('recTime');
+  const dbg = document.getElementById('dbg');
+  const supportNote = document.getElementById('supportNote');
+  const nosrc = document.getElementById('nosrc');
+
+  const ids = ["dt","thr","grey","preblur","gAlpha","decay","strength","expand"];
+  const el  = Object.fromEntries(ids.map(id=>[id, document.getElementById(id)]));
+  const out = Object.fromEntries(ids.map(id=>[id+"V", document.getElementById(id+"V")]));
+  const stainOn = document.getElementById('stainOn');
+  const sColor  = document.getElementById('sColor');
+  const gBlend  = document.getElementById('gBlend');
+  const gUseColor = document.getElementById('gUseColor');
+  const gColor    = document.getElementById('gColor');
+
+  function sync(){
+    out.dtV.textContent      = (+el.dt.value).toFixed(1);
+    out.thrV.textContent     = el.thr.value;
+    out.greyV.textContent    = el.grey.value;
+    out.preblurV.textContent = el.preblur.value;
+    out.gAlphaV.textContent  = (+el.gAlpha.value).toFixed(2);
+    out.decayV.textContent   = (+el.decay.value).toFixed(3);
+    out.strengthV.textContent= (+el.strength.value).toFixed(2);
+    out.expandV.textContent  = el.expand.value;
   }
-}
-addEventListener('resize', fit);fit();
+  [...ids.map(id=>el[id]), stainOn, sColor, gBlend, gUseColor, gColor].forEach(x=>x.addEventListener('input', sync));
+  sync();
 
-/* ---------- Video Load ---------- */
-fileBtn.onclick = ()=>file.click();
-file.onchange = e=>{
-  const f = e.target.files[0];
-  if(!f) return;
-  vid.src = URL.createObjectURL(f);
-  vid.onloadedmetadata = ()=>{vid.play();};
-};
+  /* ---------- Source ---------- */
+  const vid = document.createElement('video');
+  vid.crossOrigin = "anonymous";
+  vid.playsInline = true; vid.muted = true; vid.loop = true; vid.preload = "auto";
 
-/* ---------- Frame Buffer ---------- */
-const buf = []; const MAX_SEC = 12;
-function pushFrame(img,t){buf.push({t,data:new Uint8ClampedArray(img.data)});while(buf.length&&buf[0].t<t-MAX_SEC)buf.shift();}
-function getPast(delta){const target=vid.currentTime-delta;for(let i=buf.length-1;i>=0;i--){if(buf[i].t<=target)return buf[i];}return buf[0]||null;}
-const proc=document.createElement('canvas');
-const pctx=proc.getContext('2d',{willReadFrequently:true});
+  const qs = new URLSearchParams(location.search);
+  const src = qs.get('src'); if(src){ vid.src = src; }
 
-/* ---------- Record ---------- */
-let rec=null,chunks=[];
-function startRec(){
-  if(!MediaRecorder.isTypeSupported('video/mp4')){alert('Use Safari for MP4');return;}
-  const s=can.final.captureStream(30);
-  rec=new MediaRecorder(s,{mimeType:'video/mp4;codecs=avc1'});
-  rec.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data);};
-  rec.onstop=()=>{
-    const blob=new Blob(chunks,{type:'video/mp4'});
+  let mediaStream = null;
+  file.addEventListener('change', e=>{
+    const f = e.target.files[0];
+    if(!f) return;
+    stopWebcam();
+    resetState();
+    vid.src = URL.createObjectURL(f);
+    vid.play().catch(e => console.log('Play failed:', e));
+  });
+  
+  // FIXED: Proper play/pause button functionality
+  playBtn.addEventListener('click', ()=> {
+    if(vid.paused) {
+      vid.play().catch(e => console.log('Play failed:', e));
+    } else {
+      vid.pause();
+    }
+  });
+  
+  webcamBtn.addEventListener('click', ()=> startWebcam().catch(e=>alert('Webcam failed: '+(e && e.message ? e.message : e))));
+
+  async function startWebcam(){
+    const secure = (location.protocol==='https:'||location.hostname==='localhost'||location.hostname==='127.0.0.1');
+    if(!secure) throw new Error('Camera requires HTTPS or localhost.');
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia) throw new Error('getUserMedia is not available in this browser.');
+
+    stopWebcam(); resetState();
+    const tries=[
+      {video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false},
+      {video:true,audio:false}
+    ];
+    let errLast=null;
+    for(const constraints of tries){
+      try{
+        mediaStream=await navigator.mediaDevices.getUserMedia(constraints); break;
+      }catch(err){errLast=err;mediaStream=null;}
+    }
+    if(!mediaStream){
+      if(errLast && (errLast.name==='NotAllowedError'||errLast.name==='SecurityError'))
+        throw new Error('Camera permission blocked. Allow access in site settings.');
+      if(errLast && (errLast.name==='NotFoundError'||errLast.name==='OverconstrainedError'))
+        throw new Error('No camera device found.');
+      throw errLast || new Error('Unable to access camera.');
+    }
+    vid.srcObject = mediaStream;
+    await new Promise(res=>{
+      if(vid.readyState>=1) return res();
+      vid.addEventListener('loadedmetadata',res,{once:true});
+    });
+    try{ await vid.play(); }
+    catch(_){ throw new Error('Autoplay failed. Click Play or allow autoplay.'); }
+  }
+  function stopWebcam(){
+    if(mediaStream){
+      try{mediaStream.getTracks().forEach(t=>t.stop());}catch(_){}
+      mediaStream=null;
+    }
+    if(vid && vid.srcObject){
+      try{vid.srcObject=null;}catch(_){}
+    }
+  }
+
+  /* ---------- Sizing ---------- */
+  const proc = document.createElement('canvas'); const pctx = proc.getContext('2d',{willReadFrequently:true});
+  const maskCanvas = document.createElement('canvas'); const maskCtx = maskCanvas.getContext('2d');
+  const colCanvas = document.createElement('canvas'); const colCtx = colCanvas.getContext('2d');
+  const hauntCanvas = document.createElement('canvas'); const hauntCtx = hauntCanvas.getContext('2d');
+  const tintCanvas  = document.createElement('canvas'); const tintCtx  = tintCanvas.getContext('2d');
+  const edgeCanvas  = document.createElement('canvas'); const edgeCtx  = edgeCanvas.getContext('2d', { willReadFrequently:true });
+  const edgeLayerCanvas = document.createElement('canvas');
+  const edgeLayerCtx = edgeLayerCanvas.getContext('2d', { willReadFrequently:true });
+
+  function fit(){
+    const dpr = Math.max(1, window.devicePixelRatio||1);
+    const r = can.final.getBoundingClientRect();
+    
+    // Set display size to match the 16:9 container - PROCESS AT DISPLAY RESOLUTION for crispness
+    const displayWidth = Math.max(2, Math.ceil(r.width*dpr));
+    const displayHeight = Math.max(2, Math.ceil(r.height*dpr));
+    
+    // Set ALL canvases to the same display resolution
+    for(const k in can){ 
+      can[k].width = displayWidth; 
+      can[k].height = displayHeight; 
+    }
+    
+    // Set all processing canvases to display resolution (not fixed 1920x1080)
+    proc.width = displayWidth; proc.height = displayHeight;
+    maskCanvas.width = displayWidth; maskCanvas.height = displayHeight;
+    colCanvas.width = displayWidth; colCanvas.height = displayHeight;
+    hauntCanvas.width = displayWidth; hauntCanvas.height = displayHeight;
+    tintCanvas.width = displayWidth; tintCanvas.height = displayHeight;
+    edgeCanvas.width = displayWidth; edgeCanvas.height = displayHeight;
+    edgeLayerCanvas.width = displayWidth; edgeLayerCanvas.height = displayHeight;
+  }
+  new ResizeObserver(fit).observe(can.final); fit();
+
+  /* ---------- Buffers ---------- */
+  const buf=[]; const MAX_SEC=14;
+  function pushFrame(img,t){
+    buf.push({t,data:new Uint8ClampedArray(img.data),w:img.width,h:img.height});
+    const cutoff=t-(MAX_SEC+2);
+    while(buf.length && buf[0].t<cutoff) buf.shift();
+  }
+  function getPastFrame(delta){
+    const target=vid.currentTime-delta;
+    for(let i=buf.length-1;i>=0;i--){
+      if(buf[i].t<=target) return buf[i];
+    }
+    return buf[0]||null;
+  }
+
+  function drawVideoContained(ctx, video, blurPx){
+    ctx.save(); 
+    ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
+    if(blurPx>0) ctx.filter=`blur(${blurPx}px)`;
+    
+    const vw=video.videoWidth||0, vh=video.videoHeight||0;
+    if(vw && vh){
+      // Draw video contained within the canvas (maintains aspect ratio)
+      const scale = Math.min(ctx.canvas.width/vw, ctx.canvas.height/vh);
+      const dw = Math.round(vw*scale), dh = Math.round(vh*scale);
+      const dx = Math.floor((ctx.canvas.width-dw)/2), dy = Math.floor((ctx.canvas.height-dh)/2);
+      ctx.drawImage(video, dx, dy, dw, dh);
+    }
+    ctx.restore();
+  }
+
+  /* ---------- Recording helpers (MP4 ONLY) ---------- */
+
+  const REC_MIME_MP4 = 'video/mp4;codecs=avc1.42E01E,mp4a.40.2';
+
+  function ensureMP4SupportOrDie() {
+    if (!window.MediaRecorder ||
+        !MediaRecorder.isTypeSupported ||
+        !MediaRecorder.isTypeSupported(REC_MIME_MP4)) {
+      throw new Error('MP4 recording not supported in this browser. Use Safari.');
+    }
+    return REC_MIME_MP4;
+  }
+
+  function refreshSupportNote(){
+    supportNote.innerHTML = 'Recording format: MP4 only (Safari recommended)';
+  }
+  refreshSupportNote();
+
+  let recorder=null, chunks=[], recStartTime=0, recTimer=null;
+
+  function startRecording(){
+    let mime;
+    try {
+      mime = ensureMP4SupportOrDie();
+    } catch (err) {
+      alert(err.message || err);
+      return;
+    }
+
+    // Use the final canvas for recording
+    const stream = can.final.captureStream
+      ? can.final.captureStream(30)
+      : can.final.mozCaptureStream(30);
+
+    chunks=[];
+    recorder = new MediaRecorder(stream,{
+      mimeType: mime,
+      videoBitsPerSecond: 8_000_000
+    });
+
+    recorder.ondataavailable = e=>{
+      if(e.data && e.data.size) chunks.push(e.data);
+    };
+    recorder.onstop = ()=>{
+      const blob=new Blob(chunks,{type:mime});
+      const a=document.createElement('a');
+      a.download=`wind_on_wall_${Date.now()}.mp4`;
+      a.href=URL.createObjectURL(blob);
+      a.click();
+      stopRecUI();
+    };
+
+    recorder.start(250);
+
+    recStartTime=performance.now();
+    recTimer=setInterval(()=>{
+      const t=Math.floor((performance.now()-recStartTime)/1000);
+      const mm=String(Math.floor(t/60)).padStart(2,'0');
+      const ss=String(t%60).padStart(2,'0');
+      recTime.textContent=`REC ${mm}:${ss}`;
+    },250);
+
+    recHUD.style.display='flex';
+    recStartBtn.disabled=true;
+    recStopBtn.disabled=false;
+  }
+  
+  function stopRecording(){
+    if(recorder && recorder.state==='recording'){
+      recorder.stop();
+    }
+  }
+  
+  function stopRecUI(){
+    clearInterval(recTimer); recTimer=null;
+    recHUD.style.display='none';
+    recStartBtn.disabled=false;
+    recStopBtn.disabled=true;
+  }
+  
+  recStartBtn.addEventListener('click', startRecording);
+  recStopBtn.addEventListener('click',  stopRecording);
+
+  shotBtn.addEventListener('click', ()=>{
     const a=document.createElement('a');
-    a.download='wind_on_wall_'+Date.now()+'.mp4';
-    a.href=URL.createObjectURL(blob);a.click();
-  };
-  chunks=[];rec.start();recStart.disabled=true;recStop.disabled=false;
-}
-function stopRec(){if(rec&&rec.state==='recording'){rec.stop();recStart.disabled=false;recStop.disabled=true;}}
-recStart.onclick=startRec;recStop.onclick=stopRec;
+    a.download='still_'+Date.now()+'.png';
+    a.href=can.final.toDataURL('image/png');
+    a.click();
+  });
 
-/* ---------- Drawing ---------- */
-const draw = document.getElementById("draw");
-const drawCtx = draw.getContext("2d");
-const drawToggle = document.getElementById("drawToggle");
-const drawClear = document.getElementById("drawClear");
-let drawing=false;
-drawToggle.onchange=()=>{draw.style.display=drawToggle.checked?"block":"none";}
-draw.onmousedown=e=>{drawing=true;drawCtx.beginPath();drawCtx.moveTo(e.offsetX,e.offsetY);}
-draw.onmousemove=e=>{if(drawing){drawCtx.lineTo(e.offsetX,e.offsetY);drawCtx.stroke();}}
-draw.onmouseup=()=>drawing=false;
-drawClear.onclick=()=>drawCtx.clearRect(0,0,draw.width,draw.height);
-
-/* ---------- Draw video full screen ---------- */
-function drawVideoCover(ctx, video, W, H){
-  const vw=video.videoWidth||0, vh=video.videoHeight||0;
-  if(!vw||!vh) return;
-  const scale=Math.max(W/vw, H/vh);
-  const dw=vw*scale, dh=vh*scale;
-  const dx=(W-dw)/2, dy=(H-dh)/2;
-  ctx.drawImage(video, dx, dy, dw, dh);
-}
-
-/* ---------- Loop ---------- */
-requestAnimationFrame(function loop(){
-  requestAnimationFrame(loop);
-  const W=can.final.width, H=can.final.height;
-  if(!vid.readyState||vid.readyState<2) return;
-
-  drawVideoCover(pctx, vid, W, H);
-  const curr=pctx.getImageData(0,0,W,H);
-  pushFrame(curr,vid.currentTime);
-  const past=getPast(+el.dt.value);
-  if(!past) return;
-
-  const c=curr.data,p=past.data;
-  const thr=+el.thr.value;
-  const gimg=ctx.ghost.createImageData(W,H);
-  const gd=gimg.data;
-  const mask=new Uint8ClampedArray(W*H);
-
-  for(let i=0,j=0;i<c.length;i+=4,j++){
-    const lc=0.2126*c[i]+0.7152*c[i+1]+0.0722*c[i+2];
-    const lp=0.2126*p[i]+0.7152*p[i+1]+0.0722*p[i+2];
-    const d=Math.abs(lc-lp);
-    if(d>thr){mask[j]=255;gd[i]=255;gd[i+1]=255;gd[i+2]=255;gd[i+3]=180;}
+  /* ---------- Replay ---------- */
+  function resetState(){
+    buf.length=0;
+    sctx.clearRect(0,0,can.stain.width,can.stain.height);
+    gctx.clearRect(0,0,can.ghost.width,can.ghost.height);
+    hauntCtx.clearRect(0,0,hauntCanvas.width,hauntCanvas.height);
+    tintCtx.clearRect(0,0,tintCanvas.width,tintCanvas.height);
+    edgeCtx.clearRect(0,0,edgeCanvas.width,edgeCanvas.height);
   }
-  ctx.ghost.putImageData(gimg,0,0);
-
-  /* ----- Stain (short-term) ----- */
-  ctx.stain.globalCompositeOperation='destination-out';
-  ctx.stain.fillStyle=`rgba(0,0,0,${1-+el.decay.value})`;
-  ctx.stain.fillRect(0,0,W,H);
-  ctx.stain.globalCompositeOperation='source-over';
-  const sImg=ctx.stain.createImageData(W,H);
-  const sDat=sImg.data;
-  for(let j=0,k=0;j<mask.length;j++,k+=4){
-    if(mask[j]){sDat[k]=50;sDat[k+1]=100;sDat[k+2]=255;sDat[k+3]=90;}
+  function replay(){
+    if(vid.srcObject){
+      alert('Replay is for file/URL clips. Stop Webcam and load a clip to use Replay.');
+      return;
+    }
+    if(!vid.currentSrc && !vid.src){
+      alert('No clip loaded.');
+      return;
+    }
+    if(recorder && recorder.state==='recording'){
+      stopRecording();
+    }
+    try{
+      vid.pause();
+      resetState();
+      const onSeeked=()=>{
+        vid.removeEventListener('seeked',onSeeked);
+        vid.play().catch(e => console.log('Play failed:', e));
+      };
+      vid.addEventListener('seeked',onSeeked,{once:true});
+      vid.currentTime=0;
+    }catch(e){
+      const s=vid.currentSrc || vid.src;
+      if(s){
+        resetState();
+        vid.src=s;
+        vid.play().catch(e => console.log('Play failed:', e));
+      }
+    }
   }
-  ctx.stain.putImageData(sImg,0,0);
+  replayBtn.addEventListener('click', replay);
+  replayFloat.addEventListener('click', replay);
+  document.addEventListener('keydown', (e)=>{
+    const t=e.target;
+    if(t&&(t.tagName==='INPUT'||t.tagName==='SELECT'||t.tagName==='TEXTAREA'||t.isContentEditable)) return;
+    if(e.code==='KeyR'){ e.preventDefault(); replay(); }
+    else if(e.code==='Space'){ e.preventDefault(); vid.paused?vid.play().catch(e => console.log('Play failed:', e)):vid.pause(); }
+  });
 
-  /* ----- Linger (long-term memory accumulates from stain) ----- */
-  ctx.linger.globalCompositeOperation='source-over';
-  ctx.linger.globalAlpha=0.08;
-  ctx.linger.drawImage(can.stain,0,0); // accumulate from stain
-  ctx.linger.globalCompositeOperation='destination-out';
-  ctx.linger.globalAlpha=0.002; // slow decay
-  ctx.linger.fillRect(0,0,W,H);
-  ctx.linger.globalCompositeOperation='source-over';
-  ctx.linger.globalAlpha=1;
+  /* ---------- Linger (now based on stain) ---------- */
+  const hauntOn      = document.getElementById('hauntOn');
+  const hauntPersist = document.getElementById('hauntPersist');
+  const hauntRadius  = document.getElementById('hauntRadius');
+  const hauntStick   = document.getElementById('hauntStick');
+  const hauntColor   = document.getElementById('hauntColor');
 
-  /* ----- Composite ----- */
-  const f=ctx.final;
-  f.clearRect(0,0,W,H);
-  if(el.showOriginal.checked){drawVideoCover(f, vid, W, H);}
-  f.globalAlpha=0.7; f.drawImage(can.stain,0,0);
-  f.globalAlpha=0.5; f.drawImage(can.ghost,0,0);
-  f.globalAlpha=0.9; f.drawImage(can.linger,0,0);
-  f.globalAlpha=1;
-});
+  const hauntPersistV= document.getElementById('hauntPersistV');
+  const hauntRadiusV = document.getElementById('hauntRadiusV');
+  const hauntStickV  = document.getElementById('hauntStickV');
+
+  function syncHaunt(){
+    if(hauntPersistV) hauntPersistV.textContent = (+hauntPersist.value).toFixed(2);
+    if(hauntRadiusV)  hauntRadiusV.textContent  = hauntRadius.value;
+    if(hauntStickV)   hauntStickV.textContent   = (+hauntStick.value).toFixed(1);
+  }
+  [hauntOn,hauntPersist,hauntRadius,hauntStick,hauntColor].forEach(x=>x&&x.addEventListener('input',syncHaunt));
+  syncHaunt();
+
+  /* ---------- Outlines controls ---------- */
+  const edgeThr      = document.getElementById('edgeThr');
+  const edgeThrV     = document.getElementById('edgeThrV');
+
+  const ghostEdgeOn   = document.getElementById('ghostEdgeOn');
+  const ghostEdgeColor= document.getElementById('ghostEdgeColor');
+  const ghostEdgeAlpha= document.getElementById('ghostEdgeAlpha'); const ghostEdgeAlphaV=document.getElementById('ghostEdgeAlphaV');
+
+  const stainEdgeOn   = document.getElementById('stainEdgeOn');
+  const stainEdgeColor= document.getElementById('stainEdgeColor');
+  const stainEdgeAlpha= document.getElementById('stainEdgeAlpha'); const stainEdgeAlphaV=document.getElementById('stainEdgeAlphaV');
+
+  const lingerEdgeOn   = document.getElementById('lingerEdgeOn');
+  const lingerEdgeColor= document.getElementById('lingerEdgeColor');
+  const lingerEdgeAlpha= document.getElementById('lingerEdgeAlpha'); const lingerEdgeAlphaV=document.getElementById('lingerEdgeAlphaV');
+
+  function syncEdges(){
+    if(edgeThrV) edgeThrV.textContent = edgeThr.value;
+    ghostEdgeAlphaV.textContent = (+ghostEdgeAlpha.value).toFixed(2);
+    stainEdgeAlphaV.textContent = (+stainEdgeAlpha.value).toFixed(2);
+    lingerEdgeAlphaV.textContent= (+lingerEdgeAlpha.value).toFixed(2);
+  }
+  [edgeThr,ghostEdgeOn,ghostEdgeColor,ghostEdgeAlpha,stainEdgeOn,stainEdgeColor,stainEdgeAlpha,lingerEdgeOn,lingerEdgeColor,lingerEdgeAlpha].forEach(x=>x&&x.addEventListener('input',syncEdges));
+  syncEdges();
+
+  /* ---------- Live render loop ---------- */
+  let lastT=performance.now(), fpsEMA=0, suspendLive=false;
+  
+  requestAnimationFrame(function tick(now){
+    requestAnimationFrame(tick);
+    if(suspendLive) return;
+
+    const W=can.final.width, H=can.final.height;
+    const grey=+el.grey.value;
+    fctx.clearRect(0,0,W,H);
+    
+    // Show original video background if toggle is on
+    if(showOriginal && showOriginal.checked){
+      drawVideoContained(fctx,vid,0);
+    } else {
+      fctx.fillStyle=`rgb(${grey},${grey},${grey})`;
+      fctx.fillRect(0,0,W,H);
+    }
+
+    if(vid.readyState<2){
+      nosrc.style.display='block';
+      return;
+    } else {
+      nosrc.style.display='none';
+    }
+
+    // Process video at display resolution for crispness
+    drawVideoContained(pctx,vid,+el.preblur.value);
+    const curr=pctx.getImageData(0,0,W,H);
+    pushFrame(curr,vid.currentTime);
+    const past=getPastFrame(+el.dt.value);
+    if(!past) return;
+
+    const c=curr.data, p=past.data;
+    const ghostImg=gctx.createImageData(W,H);
+    const gd=ghostImg.data;
+    const thr=+el.thr.value;
+    const mask=new Uint8ClampedArray(W*H);
+    let changedCount=0;
+    for(let i=0,j=0;i<c.length;i+=4,j++){
+      const r=c[i], g=c[i+1], b=c[i+2];
+      const pr=p[i], pg=p[i+1], pb=p[i+2];
+      const lc=r*0.2126+g*0.7152+b*0.0722;
+      const lp=pr*0.2126+pg*0.7152+pb*0.0722;
+      const d=Math.abs(lc-lp);
+      if(d>thr){
+        changedCount++;
+        mask[j]=255;
+        if(gUseColor.checked){
+          const a=Math.max(40,Math.min(255,(d-thr)*8));
+          const m=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(gColor.value);
+          const cr=m?parseInt(m[1],16):255,
+                cg=m?parseInt(m[2],16):255,
+                cb=m?parseInt(m[3],16):255;
+          gd[i]=cr; gd[i+1]=cg; gd[i+2]=cb; gd[i+3]=a;
+        } else {
+          gd[i]=(r+(255-pr))*0.5;
+          gd[i+1]=(g+(255-pg))*0.5;
+          gd[i+2]=(b+(255-pb))*0.5;
+          gd[i+3]=255;
+        }
+      } else {
+        gd[i]=gd[i+1]=gd[i+2]=0;
+        gd[i+3]=0;
+      }
+    }
+    gctx.putImageData(ghostImg,0,0);
+
+    if(stainOn.checked){
+      const decay=+el.decay.value;
+      sctx.globalCompositeOperation='destination-out';
+      sctx.fillStyle=`rgba(0,0,0,${1-decay})`;
+      sctx.fillRect(0,0,W,H);
+      sctx.globalCompositeOperation='source-over';
+
+      const mImg=maskCtx.createImageData(W,H);
+      const mdat=mImg.data;
+      for(let j=0,k=0;j<mask.length;j++,k+=4){
+        const v=mask[j];
+        mdat[k]=mdat[k+1]=mdat[k+2]=v;
+        mdat[k+3]=v;
+      }
+      maskCtx.putImageData(mImg,0,0);
+
+      colCtx.clearRect(0,0,W,H);
+      const expand=+el.expand.value;
+      if(expand>0) colCtx.filter=`blur(${expand}px)`;
+      colCtx.drawImage(maskCanvas,0,0);
+      colCtx.filter='none';
+
+      colCtx.globalCompositeOperation='source-in';
+      colCtx.fillStyle=sColor.value;
+      colCtx.globalAlpha=+el.strength.value;
+      colCtx.fillRect(0,0,W,H);
+      colCtx.globalCompositeOperation='source-over';
+      colCtx.globalAlpha=1;
+
+      sctx.drawImage(colCanvas,0,0);
+    }
+
+    if(stainOn.checked){
+      fctx.globalCompositeOperation='multiply';
+      fctx.drawImage(can.stain,0,0);
+      fctx.globalCompositeOperation='source-over';
+    }
+    fctx.globalAlpha=+el.gAlpha.value;
+    fctx.globalCompositeOperation=gBlend.value;
+    fctx.drawImage(can.ghost,0,0);
+    fctx.globalAlpha=1;
+    fctx.globalCompositeOperation='source-over';
+
+    // Linger now based on stain (long-term memory accumulation)
+    if(hauntOn && hauntOn.checked && stainOn.checked){
+      const p     = Math.max(0, Math.min(1, +hauntPersist.value || 0.85));
+      const stick = +hauntStick.value || 1.3;
+      const tint  = (hauntColor && hauntColor.value) ? hauntColor.value : '#4a5e8a';
+
+      const decayOut = Math.max(0.001, 0.06 * (1 - p));
+      hauntCtx.globalCompositeOperation = 'destination-out';
+      hauntCtx.fillStyle = `rgba(0,0,0,${decayOut})`;
+      hauntCtx.fillRect(0,0,W,H);
+
+      hauntCtx.globalCompositeOperation = 'lighter';
+      hauntCtx.globalAlpha = Math.min(1, 0.55 * stick);
+      hauntCtx.drawImage(can.stain,0,0);
+      hauntCtx.globalAlpha = 1;
+
+      hauntCtx.globalCompositeOperation = 'source-over';
+
+      tintCtx.clearRect(0,0,W,H);
+      tintCtx.globalCompositeOperation = 'copy';
+      tintCtx.drawImage(hauntCanvas,0,0);
+      tintCtx.globalCompositeOperation = 'source-in';
+      tintCtx.fillStyle = tint;
+      tintCtx.fillRect(0,0,W,H);
+      tintCtx.globalCompositeOperation = 'source-over';
+
+      fctx.globalCompositeOperation = 'screen';
+      fctx.globalAlpha = 0.9;
+      fctx.drawImage(tintCanvas,0,0); // All layers now at same resolution - perfect alignment
+      fctx.globalAlpha = 1;
+      fctx.globalCompositeOperation = 'source-over';
+    }
+
+    if (edgeThr) edgeThrV.textContent = edgeThr.value;
+    if (document.getElementById('edgeThr')) {
+      const TH = (+edgeThr.value | 0) || 40;
+      const TL = Math.max(0, Math.floor(TH * 0.5));
+
+      function rgbaFrom(hex, a01){
+        const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex||'#000000');
+        return [
+          parseInt(m[1],16),
+          parseInt(m[2],16),
+          parseInt(m[3],16),
+          Math.max(0,Math.min(1,a01||1))
+        ];
+      }
+      function drawOutlineFrom(srcCanvas, colorHex, alpha01){
+        const W = srcCanvas.width, H = srcCanvas.height;
+        const sctx2 = srcCanvas.getContext('2d');
+        const img  = sctx2.getImageData(0,0,W,H);
+        const d    = img.data;
+
+        const L = new Uint8ClampedArray(W*H);
+        for (let i=0,j=0;i<d.length;i+=4,++j){
+          const lum = d[i]*0.2126 + d[i+1]*0.7152 + d[i+2]*0.0722;
+          const a   = d[i+3];
+          L[j] = Math.max(lum, a);
+        }
+
+        const E = new Uint8ClampedArray(W*H);
+        for (let y=1;y<H-1;y++){
+          let idx=y*W+1;
+          for (let x=1;x<W-1;x++,idx++){
+            const a=L[idx-W-1], b=L[idx-W],   c=L[idx-W+1];
+            const d0=L[idx-1],              f=L[idx+1];
+            const g=L[idx+W-1], h=L[idx+W], i=L[idx+W+1];
+            const gx = -a -2*b -c + g +2*h + i;
+            const gy = -a -2*d0 -g + c +2*f + i;
+            const mag = Math.abs(gx) + Math.abs(gy);
+            let aa;
+            if (mag >= TH) aa = 255;
+            else if (mag <= TL) aa = 0;
+            else aa = Math.round((mag - TL)/(TH - TL)*255);
+            E[idx] = aa;
+          }
+        }
+        for (let k=0,j=0;k<d.length;k+=4,++j){
+          E[j] = Math.round(E[j] * (d[k+3]/255));
+        }
+
+        edgeLayerCtx.clearRect(0,0,W,H);
+        const [r,g,b,a01Out] = rgbaFrom(colorHex, alpha01);
+        const mask = edgeLayerCtx.createImageData(W,H);
+        const md = mask.data;
+        for (let j=0,p=0;j<E.length;j++,p+=4){
+          const a = E[j];
+          if (!a){
+            md[p]=md[p+1]=md[p+2]=md[p+3]=0;
+            continue;
+          }
+          md[p]=r; md[p+1]=g; md[p+2]=b;
+          md[p+3]=Math.min(255, Math.round(a*a01Out));
+        }
+        edgeLayerCtx.putImageData(mask,0,0);
+
+        edgeCtx.globalCompositeOperation='source-over';
+        edgeCtx.drawImage(edgeLayerCanvas,0,0);
+      }
+
+      edgeCtx.clearRect(0,0,W,H);
+      if (ghostEdgeOn && ghostEdgeOn.checked)
+        drawOutlineFrom(can.ghost,    ghostEdgeColor.value,  +ghostEdgeAlpha.value||0.8);
+      if (stainEdgeOn && stainEdgeOn.checked)
+        drawOutlineFrom(can.stain,    stainEdgeColor.value,  +stainEdgeAlpha.value||0.7);
+      if (lingerEdgeOn && lingerEdgeOn.checked)
+        drawOutlineFrom(hauntCanvas,  lingerEdgeColor.value, +lingerEdgeAlpha.value||0.8);
+
+      fctx.globalCompositeOperation='source-over';
+      fctx.drawImage(edgeCanvas,0,0);
+    }
+
+    const dt=now-lastT; lastT=now;
+    const inst=dt>0?1000/dt:0;
+    fpsEMA=fpsEMA?fpsEMA*0.9+inst*0.1:inst;
+
+    dbg.textContent=`buffer: ${buf.length} | fps ~ ${fpsEMA.toFixed(1)} | ${W}x${H}`;
+  });
+
+  vid.addEventListener('loadeddata', ()=>{
+    vid.play().catch(e => console.log('Autoplay failed:', e));
+  });
+
+  /* ---------- Export 1:1 (MP4-only, pause live loop) ---------- */
+  exportOneBtn.addEventListener('click', exportSourceOnce);
+
+  async function exportSourceOnce(){
+    if(vid.srcObject){
+      alert('1:1 export is for file/URL clips, not webcam.');
+      return;
+    }
+    if(!(vid.currentSrc || vid.src)){
+      alert('Load a clip first.');
+      return;
+    }
+
+    if(vid.readyState < 1){
+      await new Promise(res => vid.addEventListener('loadedmetadata', res, {once:true}));
+    }
+
+    const vw = vid.videoWidth|0;
+    const vh = vid.videoHeight|0;
+    if(!vw || !vh){
+      alert('Video metadata unavailable.');
+      return;
+    }
+
+    // Enforce MP4-only
+    let mime;
+    try {
+      mime = ensureMP4SupportOrDie();
+    } catch (err) {
+      alert(err.message || err);
+      return;
+    }
+
+    // Stop live loop during export
+    suspendLive = true;
+
+    exportOneBtn.disabled = true;
+    recStartBtn.disabled = true;
+
+    const prev = {
+      loop: vid.loop,
+      rate: vid.playbackRate,
+      paused: vid.paused,
+      t: vid.currentTime
+    };
+
+    vid.pause();
+    vid.loop = false;
+    vid.playbackRate = 1.0;
+
+    const expChunks = [];
+    
+    // Create a canvas for 1:1 export at source resolution
+    const exportCanvas = document.createElement('canvas');
+    exportCanvas.width = vw;
+    exportCanvas.height = vh;
+    const exportCtx = exportCanvas.getContext('2d');
+
+    const stream = exportCanvas.captureStream
+      ? exportCanvas.captureStream(30)
+      : exportCanvas.mozCaptureStream(30);
+
+    const expRecorder = new MediaRecorder(stream, {
+      mimeType: mime,
+      videoBitsPerSecond: 8000000
+    });
+
+    const recDone = new Promise(resolve => {
+      expRecorder.ondataavailable = e => {
+        if(e.data && e.data.size) expChunks.push(e.data);
+      };
+      expRecorder.onstop = resolve;
+    });
+
+    // Safety timeout
+    const safetyMs = (isFinite(vid.duration) ? vid.duration : 60) * 1000 + 10000;
+    const safetyTimer = setTimeout(() => {
+      console.log('Safety timeout reached');
+      finalizeExport();
+    }, safetyMs);
+
+    // Start recording
+    expRecorder.start(1000);
+
+    // Seek to beginning and reset state
+    await new Promise(resolve => {
+      const onSeeked = () => {
+        vid.removeEventListener('seeked', onSeeked);
+        resetState();
+        resolve();
+      };
+      vid.addEventListener('seeked', onSeeked, {once: true});
+      vid.currentTime = 0;
+    });
+
+    let exportFinished = false;
+    
+    function finalizeExport() {
+      if (exportFinished) return;
+      exportFinished = true;
+      
+      clearTimeout(safetyTimer);
+      
+      // Stop the video first
+      vid.pause();
+      
+      setTimeout(() => {
+        if (expRecorder.state === 'recording') {
+          expRecorder.stop();
+        }
+        
+        recDone.then(() => {
+          // Restore video state
+          vid.loop = prev.loop;
+          vid.playbackRate = prev.rate;
+          try { vid.currentTime = prev.t; } catch(_) {}
+          if (!prev.paused) {
+            vid.play().catch(e => console.log('Play failed:', e));
+          }
+
+          exportOneBtn.disabled = false;
+          recStartBtn.disabled  = false;
+          suspendLive = false;
+
+          // Create and download the file
+          if (expChunks.length > 0) {
+            const blob = new Blob(expChunks, {type: mime});
+            const a = document.createElement('a');
+            a.download = `wind_on_wall_1x_${vw}x${vh}_${Date.now()}.mp4`;
+            a.href = URL.createObjectURL(blob);
+            a.click();
+            
+            setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+          } else {
+            alert('Export failed: No video data recorded');
+          }
+        });
+      }, 500);
+    }
+
+    // Set up end detection
+    vid.addEventListener('ended', finalizeExport, {once: true});
+
+    // Start playback
+    try {
+      await vid.play();
+    } catch (error) {
+      console.error('Playback failed:', error);
+      finalizeExport();
+    }
+  }
+})();
+</script>
+
+<script>
+(function(){
+  function paint(r){
+    var min=r.min?+r.min:0, max=r.max?+r.max:100;
+    var val=isNaN(+r.value)?min:+r.value;
+    var p=((val-min)/(max-min))*100;
+    r.style.setProperty('--p', p+'%');
+  }
+  var ranges=document.querySelectorAll('input[type="range"]');
+  ranges.forEach(function(r){
+    paint(r);
+    r.addEventListener('input', function(){ paint(r); });
+  });
+})();
 </script>
 </body>
 </html>

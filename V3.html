@@ -3,67 +3,115 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Wind-on-Wall — D-Memory Variant (Fullscreen Fix)</title>
+<title>Wind-on-Wall — Linger from Stain (No Recall)</title>
 <style>
-  html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:monospace}
-  canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
-  #panel{position:fixed;top:8px;left:8px;z-index:10;color:#fff;font-size:12px;
-         background:rgba(0,0,0,.4);padding:6px;border-radius:4px}
-  input[type=range]{width:100px}
+  :root{
+    --bg:#fff; --fg:#000; --mut:#333; --line:#000;
+    --colR:320px;
+    --track-fill:#111;
+    --track-bg:#cfcfcf;
+  }
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:13px/1.45 Arial, Helvetica, sans-serif}
+  body{overflow:hidden;}
+  *{box-sizing:border-box;border-radius:0}
+  button,input,select,label{font:inherit;color:var(--fg);background:#fff;margin:0}
+
+  .wrap{
+    display:grid;
+    grid-template-columns: minmax(0,1fr) var(--colR);
+    gap:16px; height:100vh; padding:12px; overflow:hidden;
+  }
+  main{position:relative;display:flex;align-items:center;justify-content:center;background:#000}
+  video,canvas{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;}
+  aside{overflow-y:auto;padding-right:4px}
+  h2{margin:8px 0;font-size:15px;border-bottom:1px solid var(--mut);}
+  .slider-row{display:flex;align-items:center;gap:8px;margin:4px 0;}
+  .slider-row input[type=range]{flex:1;}
 </style>
 </head>
 <body>
-<canvas id="stain"></canvas>
-<canvas id="ghost"></canvas>
-<canvas id="linger"></canvas>
-<canvas id="final"></canvas>
+<div class="wrap">
+  <main>
+    <video id="vid" playsinline muted loop></video>
+    <canvas id="ghost"></canvas>
+    <canvas id="stain"></canvas>
+    <canvas id="linger"></canvas>
+    <canvas id="final"></canvas>
+  </main>
+  <aside>
+    <h2>Video</h2>
+    <button id="fileBtn">Load Video</button>
+    <input id="file" type="file" accept="video/*" hidden>
+    <button id="recStart">Start Recording</button>
+    <button id="recStop" disabled>Stop</button>
 
-<div id="panel">
-  Δt <input id="dt" type="range" min="1" max="10" step="0.5" value="6">
-  Thr <input id="thr" type="range" min="4" max="60" step="1" value="40">
-  Decay <input id="decay" type="range" min="0.9" max="0.995" step="0.001" value="0.94">
-  D-Color <input id="dColor" type="color" value="#00b7ff">
-  <button id="fileBtn">Load</button><input id="file" type="file" accept="video/*" hidden>
-  <button id="recStart">Rec</button><button id="recStop" disabled>Stop</button>
-  <button id="shot">PNG</button>
+    <h2>Motion Extraction</h2>
+    <div class="slider-row"><label>Δt</label><input id="dt" type="range" min="1" max="10" step="0.5" value="6"></div>
+    <div class="slider-row"><label>Threshold</label><input id="thr" type="range" min="4" max="60" step="1" value="40"></div>
+    <div class="slider-row"><label>Decay</label><input id="decay" type="range" min="0.9" max="0.995" step="0.001" value="0.94"></div>
+
+    <h2>Drawing</h2>
+    <div><button id="drawClear">Clear</button> <label><input type="checkbox" id="drawToggle"> Draw Mode</label></div>
+    <canvas id="draw" width="300" height="200" style="display:none;border:1px solid #aaa;margin-top:4px"></canvas>
+    <div class="slider-row"><label>Linger Color</label><input id="dColor" type="color" value="#00b7ff"></div>
+    <label><input type="checkbox" id="showOriginal"> Show Original Video</label>
+  </aside>
 </div>
 
 <script>
-(async()=>{
-const can={stain,ghost,linger,final};
-const ctx={
-  stain:stain.getContext('2d'),
-  ghost:ghost.getContext('2d'),
-  linger:linger.getContext('2d'),
-  final:final.getContext('2d')
+const vid = document.getElementById("vid");
+const can = {
+  ghost: document.getElementById("ghost"),
+  stain: document.getElementById("stain"),
+  linger: document.getElementById("linger"),
+  final: document.getElementById("final")
+};
+const ctx = {
+  ghost: can.ghost.getContext("2d"),
+  stain: can.stain.getContext("2d"),
+  linger: can.linger.getContext("2d"),
+  final: can.final.getContext("2d")
+};
+const el = {
+  dt: document.getElementById("dt"),
+  thr: document.getElementById("thr"),
+  decay: document.getElementById("decay"),
+  dColor: document.getElementById("dColor"),
+  showOriginal: document.getElementById("showOriginal")
+};
+const fileBtn = document.getElementById("fileBtn");
+const file = document.getElementById("file");
+const recStart = document.getElementById("recStart");
+const recStop = document.getElementById("recStop");
+
+/* ---------- Fit canvases ---------- */
+function fit(){
+  const dpr = devicePixelRatio || 1;
+  const W = innerWidth - 320, H = innerHeight;
+  for(const k in can){
+    can[k].width = W * dpr;
+    can[k].height = H * dpr;
+  }
+}
+addEventListener('resize', fit);fit();
+
+/* ---------- Video Load ---------- */
+fileBtn.onclick = ()=>file.click();
+file.onchange = e=>{
+  const f = e.target.files[0];
+  if(!f) return;
+  vid.src = URL.createObjectURL(f);
+  vid.onloadedmetadata = ()=>{vid.play();};
 };
 
-/* ---------- Fit to window ---------- */
-function fit(){
-  const dpr=devicePixelRatio||1;
-  const W=innerWidth*dpr,H=innerHeight*dpr;
-  for(const k in can){can[k].width=W;can[k].height=H;}
-}
-addEventListener('resize',fit);fit();
-
-/* ---------- Source ---------- */
-const vid=document.createElement('video');
-vid.crossOrigin="anonymous";vid.playsInline=true;vid.muted=true;vid.loop=true;
-const buf=[];const MAX_SEC=12;
+/* ---------- Frame Buffer ---------- */
+const buf = []; const MAX_SEC = 12;
 function pushFrame(img,t){buf.push({t,data:new Uint8ClampedArray(img.data)});while(buf.length&&buf[0].t<t-MAX_SEC)buf.shift();}
 function getPast(delta){const target=vid.currentTime-delta;for(let i=buf.length-1;i>=0;i--){if(buf[i].t<=target)return buf[i];}return buf[0]||null;}
-fileBtn.onclick=()=>file.click();
-file.onchange=e=>{
-  const f=e.target.files[0];
-  if(!f)return;
-  vid.src=URL.createObjectURL(f);
-  vid.onloadedmetadata=()=>{fit();proc.width=can.final.width;proc.height=can.final.height;vid.play();};
-};
+const proc=document.createElement('canvas');
+const pctx=proc.getContext('2d',{willReadFrequently:true});
 
-/* ---------- Parameters ---------- */
-const el={dt:dt,thr:thr,decay:decay,dColor:dColor};
-
-/* ---------- Recording ---------- */
+/* ---------- Record ---------- */
 let rec=null,chunks=[];
 function startRec(){
   if(!MediaRecorder.isTypeSupported('video/mp4')){alert('Use Safari for MP4');return;}
@@ -80,19 +128,20 @@ function startRec(){
 }
 function stopRec(){if(rec&&rec.state==='recording'){rec.stop();recStart.disabled=false;recStop.disabled=true;}}
 recStart.onclick=startRec;recStop.onclick=stopRec;
-shot.onclick=()=>{const a=document.createElement('a');a.download='still_'+Date.now()+'.png';a.href=can.final.toDataURL('image/png');a.click();};
 
-/* ---------- Buffers ---------- */
-const proc=document.createElement('canvas');
-const pctx=proc.getContext('2d',{willReadFrequently:true});
+/* ---------- Drawing ---------- */
+const draw = document.getElementById("draw");
+const drawCtx = draw.getContext("2d");
+const drawToggle = document.getElementById("drawToggle");
+const drawClear = document.getElementById("drawClear");
+let drawing=false;
+drawToggle.onchange=()=>{draw.style.display=drawToggle.checked?"block":"none";}
+draw.onmousedown=e=>{drawing=true;drawCtx.beginPath();drawCtx.moveTo(e.offsetX,e.offsetY);}
+draw.onmousemove=e=>{if(drawing){drawCtx.lineTo(e.offsetX,e.offsetY);drawCtx.stroke();}}
+draw.onmouseup=()=>drawing=false;
+drawClear.onclick=()=>drawCtx.clearRect(0,0,draw.width,draw.height);
 
-/* ---------- D-field (long-term memory) ---------- */
-const D=document.createElement('canvas');
-const Dctx=D.getContext('2d');
-function resizeD(){D.width=can.final.width;D.height=can.final.height;}
-resizeD();
-
-/* ---------- Utility: draw video full screen ---------- */
+/* ---------- Draw video full screen ---------- */
 function drawVideoCover(ctx, video, W, H){
   const vw=video.videoWidth||0, vh=video.videoHeight||0;
   if(!vw||!vh) return;
@@ -105,23 +154,21 @@ function drawVideoCover(ctx, video, W, H){
 /* ---------- Loop ---------- */
 requestAnimationFrame(function loop(){
   requestAnimationFrame(loop);
-  const W=can.final.width,H=can.final.height;
-  if(!vid.readyState||vid.readyState<2)return;
-
-  ctx.final.fillStyle='rgb(180,180,180)';
-  ctx.final.fillRect(0,0,W,H);
+  const W=can.final.width, H=can.final.height;
+  if(!vid.readyState||vid.readyState<2) return;
 
   drawVideoCover(pctx, vid, W, H);
   const curr=pctx.getImageData(0,0,W,H);
   pushFrame(curr,vid.currentTime);
   const past=getPast(+el.dt.value);
-  if(!past)return;
+  if(!past) return;
 
   const c=curr.data,p=past.data;
   const thr=+el.thr.value;
   const gimg=ctx.ghost.createImageData(W,H);
   const gd=gimg.data;
   const mask=new Uint8ClampedArray(W*H);
+
   for(let i=0,j=0;i<c.length;i+=4,j++){
     const lc=0.2126*c[i]+0.7152*c[i+1]+0.0722*c[i+2];
     const lp=0.2126*p[i]+0.7152*p[i+1]+0.0722*p[i+2];
@@ -138,46 +185,29 @@ requestAnimationFrame(function loop(){
   const sImg=ctx.stain.createImageData(W,H);
   const sDat=sImg.data;
   for(let j=0,k=0;j<mask.length;j++,k+=4){
-    if(mask[j]){sDat[k]=34;sDat[k+1]=59;sDat[k+2]=122;sDat[k+3]=90;}
+    if(mask[j]){sDat[k]=50;sDat[k+1]=100;sDat[k+2]=255;sDat[k+3]=90;}
   }
   ctx.stain.putImageData(sImg,0,0);
 
-  /* ----- D-field (long-term memory) ----- */
-  Dctx.globalCompositeOperation='source-over';
-  Dctx.globalAlpha=0.02;
-  Dctx.drawImage(ghost,0,0);
-  Dctx.globalCompositeOperation='destination-out';
-  Dctx.globalAlpha=0.001;
-  Dctx.fillRect(0,0,W,H);
-  Dctx.globalCompositeOperation='source-over';
-  Dctx.globalAlpha=1;
-
-  /* ----- Deterministic recall from D ----- */
-  const Dimg=Dctx.getImageData(0,0,W,H);
-  const pd=past.data;
-  const out=ctx.final.createImageData(W,H);
-  const tint=el.dColor.value;
-  const r=parseInt(tint.substr(1,2),16),
-        g=parseInt(tint.substr(3,2),16),
-        b=parseInt(tint.substr(5,2),16);
-  for(let i=0;i<Dimg.data.length;i+=4){
-    const w=Dimg.data[i]/255;
-    if(w>0.15){
-      out.data[i]=pd[i]*0.5+r*0.5;
-      out.data[i+1]=pd[i+1]*0.5+g*0.5;
-      out.data[i+2]=pd[i+2]*0.5+b*0.5;
-      out.data[i+3]=Math.round(255*w);
-    }
-  }
-  ctx.final.putImageData(out,0,0);
+  /* ----- Linger (long-term memory accumulates from stain) ----- */
+  ctx.linger.globalCompositeOperation='source-over';
+  ctx.linger.globalAlpha=0.08;
+  ctx.linger.drawImage(can.stain,0,0); // accumulate from stain
+  ctx.linger.globalCompositeOperation='destination-out';
+  ctx.linger.globalAlpha=0.002; // slow decay
+  ctx.linger.fillRect(0,0,W,H);
+  ctx.linger.globalCompositeOperation='source-over';
+  ctx.linger.globalAlpha=1;
 
   /* ----- Composite ----- */
-  ctx.final.globalAlpha=0.8;ctx.final.drawImage(stain,0,0);
-  ctx.final.globalAlpha=0.6;ctx.final.drawImage(ghost,0,0);
-  ctx.final.globalAlpha=0.6;ctx.final.drawImage(D,0,0);
-  ctx.final.globalAlpha=1;
+  const f=ctx.final;
+  f.clearRect(0,0,W,H);
+  if(el.showOriginal.checked){drawVideoCover(f, vid, W, H);}
+  f.globalAlpha=0.7; f.drawImage(can.stain,0,0);
+  f.globalAlpha=0.5; f.drawImage(can.ghost,0,0);
+  f.globalAlpha=0.9; f.drawImage(can.linger,0,0);
+  f.globalAlpha=1;
 });
-})();
 </script>
 </body>
 </html>

@@ -1,1 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Wind-on-Wall — D-Memory Variant</title>
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:monospace}
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  #panel{position:fixed;top:8px;left:8px;z-index:10;color:#fff;font-size:12px;background:rgba(0,0,0,.4);padding:6px;border-radius:4px}
+  input[type=range]{width:100px}
+</style>
+</head>
+<body>
+<canvas id="stain"></canvas>
+<canvas id="ghost"></canvas>
+<canvas id="linger"></canvas>
+<canvas id="final"></canvas>
+
+<div id="panel">
+  Δt <input id="dt" type="range" min="1" max="10" step="0.5" value="6">
+  Thr <input id="thr" type="range" min="4" max="60" step="1" value="40">
+  Decay <input id="decay" type="range" min="0.9" max="0.995" step="0.001" value="0.94">
+  D-Color <input id="dColor" type="color" value="#00b7ff">
+  <button id="fileBtn">Load</button><input id="file" type="file" accept="video/*" hidden>
+  <button id="recStart">Rec</button><button id="recStop" disabled>Stop</button>
+  <button id="shot">PNG</button>
+</div>
+
+<script>
+(async()=>{
+const can={stain,ghost,linger,final};
+const ctx={
+  stain:stain.getContext('2d'),
+  ghost:ghost.getContext('2d'),
+  linger:linger.getContext('2d'),
+  final:final.getContext('2d')
+};
+function fit(){
+  const dpr=devicePixelRatio||1;
+  const W=innerWidth*dpr,H=innerHeight*dpr;
+  for(const k in can){can[k].width=W;can[k].height=H;}
+}
+addEventListener('resize',fit);fit();
+
+/* ---------- Source ---------- */
+const vid=document.createElement('video');
+vid.crossOrigin="anonymous";vid.playsInline=true;vid.muted=true;vid.loop=true;
+const buf=[];const MAX_SEC=12;
+function pushFrame(img,t){buf.push({t,data:new Uint8ClampedArray(img.data)});while(buf.length&&buf[0].t<t-MAX_SEC)buf.shift();}
+function getPast(delta){const target=vid.currentTime-delta;for(let i=buf.length-1;i>=0;i--){if(buf[i].t<=target)return buf[i];}return buf[0]||null;}
+fileBtn.onclick=()=>file.click();
+file.onchange=e=>{const f=e.target.files[0];if(!f)return;vid.src=URL.createObjectURL(f);vid.play();};
+
+/* ---------- Parameters ---------- */
+const el={dt:dt,thr:thr,decay:decay,dColor:dColor};
+
+/* ---------- Recording ---------- */
+let rec=null,chunks=[];
+function startRec(){
+  if(!MediaRecorder.isTypeSupported('video/mp4')){alert('Use Safari for MP4');return;}
+  const s=can.final.captureStream(30);
+  rec=new MediaRecorder(s,{mimeType:'video/mp4;codecs=avc1'});
+  rec.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data);};
+  rec.onstop=()=>{
+    const blob=new Blob(chunks,{type:'video/mp4'});
+    const a=document.createElement('a');
+    a.download='wind_on_wall_'+Date.now()+'.mp4';
+    a.href=URL.createObjectURL(blob);a.click();
+  };
+  chunks=[];rec.start();recStart.disabled=true;recStop.disabled=false;
+}
+function stopRec(){if(rec&&rec.state==='recording'){rec.stop();recStart.disabled=false;recStop.disabled=true;}}
+recStart.onclick=startRec;recStop.onclick=stopRec;
+shot.onclick=()=>{const a=document.createElement('a');a.download='still_'+Date.now()+'.png';a.href=can.final.toDataURL('image/png');a.click();};
+
+/* ---------- Buffers ---------- */
+const proc=document.createElement('canvas');
+const pctx=proc.getContext('2d',{willReadFrequently:true});
+
+/* ---------- D-field (long-term memory) ---------- */
+const D=document.createElement('canvas');
+const Dctx=D.getContext('2d');
+function resizeD(){D.width=can.final.width;D.height=can.final.height;}
+resizeD();
+
+/* ---------- Loop ---------- */
+requestAnimationFrame(function loop(){
+  requestAnimationFrame(loop);
+  const W=can.final.width,H=can.final.height;
+  const grey=180;
+  ctx.final.fillStyle=`rgb(${grey},${grey},${grey})`;
+  ctx.final.fillRect(0,0,W,H);
+  if(vid.readyState<2)return;
+
+  pctx.drawImage(vid,0,0,W,H);
+  const curr=pctx.getImageData(0,0,W,H);
+  pushFrame(curr,vid.currentTime);
+  const past=getPast(+el.dt.value);
+  if(!past)return;
+
+  const c=curr.data,p=past.data;
+  const thr=+el.thr.value;
+  const gimg=ctx.ghost.createImageData(W,H);
+  const gd=gimg.data;
+  const mask=new Uint8ClampedArray(W*H);
+  for(let i=0,j=0;i<c.length;i+=4,j++){
+    const lc=0.2126*c[i]+0.7152*c[i+1]+0.0722*c[i+2];
+    const lp=0.2126*p[i]+0.7152*p[i+1]+0.0722*p[i+2];
+    const d=Math.abs(lc-lp);
+    if(d>thr){mask[j]=255;gd[i]=255;gd[i+1]=255;gd[i+2]=255;gd[i+3]=180;}
+  }
+  ctx.ghost.putImageData(gimg,0,0);
+
+  /* ----- Stain (short-term) ----- */
+  ctx.stain.globalCompositeOperation='destination-out';
+  ctx.stain.fillStyle=`rgba(0,0,0,${1-+el.decay.value})`;
+  ctx.stain.fillRect(0,0,W,H);
+  ctx.stain.globalCompositeOperation='source-over';
+  const sImg=ctx.stain.createImageData(W,H);
+  const sDat=sImg.data;
+  for(let j=0,k=0;j<mask.length;j++,k+=4){if(mask[j]){sDat[k]=34;sDat[k+1]=59;sDat[k+2]=122;sDat[k+3]=90;}}
+  ctx.stain.putImageData(sImg,0,0);
+
+  /* ----- D-field (long-term memory) ----- */
+  Dctx.globalCompositeOperation='source-over';
+  Dctx.globalAlpha=0.02;
+  Dctx.drawImage(ghost,0,0);
+  Dctx.globalCompositeOperation='destination-out';
+  Dctx.globalAlpha=0.001;
+  Dctx.fillRect(0,0,W,H);
+  Dctx.globalCompositeOperation='source-over';
+  Dctx.globalAlpha=1;
+
+  /* ----- Deterministic recall from D ----- */
+  const Dimg=Dctx.getImageData(0,0,W,H);
+  const pd=past.data;
+  const out=ctx.final.createImageData(W,H);
+  const tint=el.dColor.value;
+  const r=parseInt(tint.substr(1,2),16),
+        g=parseInt(tint.substr(3,2),16),
+        b=parseInt(tint.substr(5,2),16);
+  for(let i=0;i<Dimg.data.length;i+=4){
+    const w=Dimg.data[i]/255; // memory weight
+    if(w>0.15){
+      out.data[i]=pd[i]*0.5+r*0.5;
+      out.data[i+1]=pd[i+1]*0.5+g*0.5;
+      out.data[i+2]=pd[i+2]*0.5+b*0.5;
+      out.data[i+3]=Math.round(255*w);
+    }
+  }
+  ctx.final.putImageData(out,0,0);
+
+  /* ----- Composite ----- */
+  ctx.final.globalAlpha=0.8;ctx.final.drawImage(stain,0,0);
+  ctx.final.globalAlpha=0.6;ctx.final.drawImage(ghost,0,0);
+  ctx.final.globalAlpha=0.6;ctx.final.drawImage(D,0,0);
+  ctx.final.globalAlpha=1;
+});
+})();
+</script>
+</body>
+</html>
 

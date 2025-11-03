@@ -383,6 +383,7 @@
   refreshSupportNote();
 
   let recorder=null, chunks=[], recStartTime=0, recTimer=null;
+  let recordingCanvas = null, recordingCtx = null;
 
   function startRecording(){
     let mime;
@@ -393,14 +394,27 @@
       return;
     }
 
-    const stream = can.final.captureStream
-      ? can.final.captureStream(30)
-      : can.final.mozCaptureStream(30);
+    // Use the same resolution as the viewport player (final canvas)
+    const recWidth = can.final.width;
+    const recHeight = can.final.height;
+
+    // Create recording canvas if it doesn't exist or needs resizing
+    if (!recordingCanvas || recordingCanvas.width !== recWidth || recordingCanvas.height !== recHeight) {
+      recordingCanvas = document.createElement('canvas');
+      recordingCanvas.width = recWidth;
+      recordingCanvas.height = recHeight;
+      recordingCtx = recordingCanvas.getContext('2d');
+    }
+
+    // Use the recording canvas for the stream
+    const stream = recordingCanvas.captureStream
+      ? recordingCanvas.captureStream(30)
+      : recordingCanvas.mozCaptureStream(30);
 
     chunks=[];
     recorder = new MediaRecorder(stream,{
       mimeType: mime,
-      videoBitsPerSecond: 8_000_000
+      videoBitsPerSecond: 12_000_000 // Higher bitrate for better quality
     });
 
     recorder.ondataavailable = e=>{
@@ -683,6 +697,13 @@
       fctx.drawImage(hauntCanvas,0,0);
       fctx.globalAlpha = 1;
       fctx.globalCompositeOperation = 'source-over';
+    }
+
+    // Render to recording canvas if recording is active
+    if (recorder && recorder.state === 'recording' && recordingCanvas && recordingCtx) {
+      // Simply copy the final canvas to recording canvas (same resolution)
+      recordingCtx.clearRect(0, 0, recordingCanvas.width, recordingCanvas.height);
+      recordingCtx.drawImage(can.final, 0, 0, recordingCanvas.width, recordingCanvas.height);
     }
 
     if (edgeThr) edgeThrV.textContent = edgeThr.value;

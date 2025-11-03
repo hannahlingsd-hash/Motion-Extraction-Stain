@@ -114,7 +114,7 @@
     <div class="group">Temporal window</div>
     <div class="row"><label>Δt (seconds)</label><input id="dt" type="range" min="2" max="10" step="0.5" value="6"><span id="dtV">6.0</span></div>
     <div class="row"><label>Diff threshold</label><input id="thr" type="range" min="4" max="60" value="60"><span id="thrV">60</span></div>
-    <div class="row"><label>Grey level</label><input id="grey" type="range" min="60" max="200" value="200"><span id="greyV">200</span></div>
+    <div class="row"><label>Grey level</label><input id="grey" type="range" min="60" max="255" value="255"><span id="greyV">255</span></div>
     <div class="row"><label>Pre-blur (px)</label><input id="preblur" type="range" min="0" max="3" value="0"><span id="preblurV">0</span></div>
 
     <div class="group">Ghosts</div>
@@ -352,7 +352,7 @@
   function drawVideoContained(ctx, video, blurPx){
     ctx.save(); 
     ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
-    if(blurPx>0) ctx.filter=`blur(${blurPx}px)`;
+    if(blurPx>0) ctx.filter=`blur(${blurPx)px)`;
     
     const vw=video.videoWidth||0, vh=video.videoHeight||0;
     if(vw && vh){

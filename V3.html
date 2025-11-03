@@ -79,7 +79,7 @@
 
   .hud{display:none!important}
   .rec{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.6);color:#fff;padding:6px 10px;display:flex;align-items:center;gap:8px}
-  .dot{width:8px;height:8px;background:#ff5b5b}
+  .dot{width:8px;height=8px;background:#ff5b5b}
   .nosrc{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#888;font:12px ui-monospace;pointer-events:none}
   .fab{display:none}
   .small{font-size:12px;color:#333}
@@ -674,18 +674,7 @@
       sctx.drawImage(colCanvas,0,0);
     }
 
-    if(stainOn.checked){
-      fctx.globalCompositeOperation='multiply';
-      fctx.drawImage(can.stain,0,0);
-      fctx.globalCompositeOperation='source-over';
-    }
-    fctx.globalAlpha=+el.gAlpha.value;
-    fctx.globalCompositeOperation=gBlend.value;
-    fctx.drawImage(can.ghost,0,0);
-    fctx.globalAlpha=1;
-    fctx.globalCompositeOperation='source-over';
-
-    // Linger now based on stain (long-term memory accumulation) - FIXED
+    // Linger now based on stain (long-term memory accumulation) - MOVED UNDERNEATH
     if(hauntOn && hauntOn.checked && stainOn.checked){
       const p = Math.max(0, Math.min(1, +hauntPersist.value || 0.85));
       const stick = +hauntStick.value || 1.3;
@@ -709,13 +698,24 @@
       hauntCtx.fillRect(0,0,W,H);
       hauntCtx.globalCompositeOperation = 'source-over';
 
-      // Draw the linger onto the final canvas with normal blend mode
+      // Draw the linger onto the final canvas with normal blend mode (UNDERNEATH other layers)
       fctx.globalCompositeOperation = 'normal';
       fctx.globalAlpha = 0.8;
       fctx.drawImage(hauntCanvas,0,0);
       fctx.globalAlpha = 1;
       fctx.globalCompositeOperation = 'source-over';
     }
+
+    if(stainOn.checked){
+      fctx.globalCompositeOperation='multiply';
+      fctx.drawImage(can.stain,0,0);
+      fctx.globalCompositeOperation='source-over';
+    }
+    fctx.globalAlpha=+el.gAlpha.value;
+    fctx.globalCompositeOperation=gBlend.value;
+    fctx.drawImage(can.ghost,0,0);
+    fctx.globalAlpha=1;
+    fctx.globalCompositeOperation='source-over';
 
     // Render to high-resolution recording canvas if recording is active
     if (recorder && recorder.state === 'recording' && recordingCanvas && recordingCtx) {
@@ -727,6 +727,15 @@
       // Draw background at high resolution
       recordingCtx.fillStyle = `rgb(${grey},${grey},${grey})`;
       recordingCtx.fillRect(0, 0, recordingCanvas.width, recordingCanvas.height);
+      
+      // Draw linger if enabled - scale to recording resolution (UNDERNEATH)
+      if(hauntOn && hauntOn.checked && stainOn.checked){
+        recordingCtx.globalCompositeOperation = 'normal';
+        recordingCtx.globalAlpha = 0.8;
+        recordingCtx.drawImage(hauntCanvas, 0, 0, recordingCanvas.width, recordingCanvas.height);
+        recordingCtx.globalAlpha = 1;
+        recordingCtx.globalCompositeOperation = 'source-over';
+      }
       
       // Draw stain if enabled - scale to recording resolution
       if(stainOn.checked){
@@ -741,15 +750,6 @@
       recordingCtx.drawImage(can.ghost, 0, 0, recordingCanvas.width, recordingCanvas.height);
       recordingCtx.globalAlpha=1;
       recordingCtx.globalCompositeOperation='source-over';
-      
-      // Draw linger if enabled - scale to recording resolution
-      if(hauntOn && hauntOn.checked && stainOn.checked){
-        recordingCtx.globalCompositeOperation = 'normal';
-        recordingCtx.globalAlpha = 0.8;
-        recordingCtx.drawImage(hauntCanvas, 0, 0, recordingCanvas.width, recordingCanvas.height);
-        recordingCtx.globalAlpha = 1;
-        recordingCtx.globalCompositeOperation = 'source-over';
-      }
       
       // Draw outlines - scale to recording resolution
       recordingCtx.drawImage(edgeCanvas, 0, 0, recordingCanvas.width, recordingCanvas.height);

@@ -384,6 +384,7 @@
 
   let recorder=null, chunks=[], recStartTime=0, recTimer=null;
   let recordingCanvas = null, recordingCtx = null;
+  let recordingFrames = 0, recordingStartTime = 0;
 
   function startRecording(){
     let mime;
@@ -394,27 +395,40 @@
       return;
     }
 
-    // Use the same resolution as the viewport player (final canvas)
-    const recWidth = can.final.width;
-    const recHeight = can.final.height;
+    // Use HIGHER resolution for recording - up to 1920x1080 native
+    const maxWidth = 1920;
+    const maxHeight = 1080;
+    
+    // Get the video source dimensions for highest possible quality
+    const vidWidth = vid.videoWidth || 1920;
+    const vidHeight = vid.videoHeight || 1080;
+    
+    // Calculate recording dimensions while maintaining aspect ratio
+    let recWidth = Math.min(vidWidth, maxWidth);
+    let recHeight = Math.min(vidHeight, maxHeight);
+    
+    // Ensure even dimensions (required by some codecs)
+    recWidth = recWidth % 2 === 0 ? recWidth : recWidth - 1;
+    recHeight = recHeight % 2 === 0 ? recHeight : recHeight - 1;
 
-    // Create recording canvas if it doesn't exist or needs resizing
-    if (!recordingCanvas || recordingCanvas.width !== recWidth || recordingCanvas.height !== recHeight) {
-      recordingCanvas = document.createElement('canvas');
-      recordingCanvas.width = recWidth;
-      recordingCanvas.height = recHeight;
-      recordingCtx = recordingCanvas.getContext('2d');
-    }
+    console.log(`Recording at ${recWidth}x${recHeight} (source: ${vidWidth}x${vidHeight})`);
 
-    // Use the recording canvas for the stream
+    // Create high-resolution recording canvas
+    recordingCanvas = document.createElement('canvas');
+    recordingCanvas.width = recWidth;
+    recordingCanvas.height = recHeight;
+    recordingCtx = recordingCanvas.getContext('2d');
+
+    // Use the recording canvas for the stream with higher frame rate
     const stream = recordingCanvas.captureStream
-      ? recordingCanvas.captureStream(30)
-      : recordingCanvas.mozCaptureStream(30);
+      ? recordingCanvas.captureStream(60) // Try 60fps
+      : recordingCanvas.mozCaptureStream(60);
 
     chunks=[];
     recorder = new MediaRecorder(stream,{
       mimeType: mime,
-      videoBitsPerSecond: 12_000_000 // Higher bitrate for better quality
+      videoBitsPerSecond: 25_000_000, // Much higher bitrate for quality
+      framerate: 60 // Request 60fps
     });
 
     recorder.ondataavailable = e=>{
@@ -423,20 +437,24 @@
     recorder.onstop = ()=>{
       const blob=new Blob(chunks,{type:mime});
       const a=document.createElement('a');
-      a.download=`wind_on_wall_${Date.now()}.mp4`;
+      a.download=`wind_on_wall_${recWidth}x${recHeight}_${Date.now()}.mp4`;
       a.href=URL.createObjectURL(blob);
       a.click();
       stopRecUI();
     };
 
-    recorder.start(250);
+    recorder.start(100); // Smaller chunks for smoother recording
 
+    recordingFrames = 0;
+    recordingStartTime = performance.now();
+    
     recStartTime=performance.now();
     recTimer=setInterval(()=>{
       const t=Math.floor((performance.now()-recStartTime)/1000);
       const mm=String(Math.floor(t/60)).padStart(2,'0');
       const ss=String(t%60).padStart(2,'0');
-      recTime.textContent=`REC ${mm}:${ss}`;
+      const fps = recordingFrames / ((performance.now() - recordingStartTime) / 1000);
+      recTime.textContent=`REC ${mm}:${ss} | ${fps.toFixed(1)}fps`;
     },250);
 
     recHUD.style.display='flex';
@@ -699,11 +717,42 @@
       fctx.globalCompositeOperation = 'source-over';
     }
 
-    // Render to recording canvas if recording is active
+    // Render to high-resolution recording canvas if recording is active
     if (recorder && recorder.state === 'recording' && recordingCanvas && recordingCtx) {
-      // Simply copy the final canvas to recording canvas (same resolution)
+      recordingFrames++;
+      
+      // Clear and render at high resolution for recording
       recordingCtx.clearRect(0, 0, recordingCanvas.width, recordingCanvas.height);
-      recordingCtx.drawImage(can.final, 0, 0, recordingCanvas.width, recordingCanvas.height);
+      
+      // Draw background at high resolution
+      recordingCtx.fillStyle = `rgb(${grey},${grey},${grey})`;
+      recordingCtx.fillRect(0, 0, recordingCanvas.width, recordingCanvas.height);
+      
+      // Draw stain if enabled - scale to recording resolution
+      if(stainOn.checked){
+        recordingCtx.globalCompositeOperation='multiply';
+        recordingCtx.drawImage(can.stain, 0, 0, recordingCanvas.width, recordingCanvas.height);
+        recordingCtx.globalCompositeOperation='source-over';
+      }
+      
+      // Draw ghost - scale to recording resolution
+      recordingCtx.globalAlpha=+el.gAlpha.value;
+      recordingCtx.globalCompositeOperation=gBlend.value;
+      recordingCtx.drawImage(can.ghost, 0, 0, recordingCanvas.width, recordingCanvas.height);
+      recordingCtx.globalAlpha=1;
+      recordingCtx.globalCompositeOperation='source-over';
+      
+      // Draw linger if enabled - scale to recording resolution
+      if(hauntOn && hauntOn.checked && stainOn.checked){
+        recordingCtx.globalCompositeOperation = 'normal';
+        recordingCtx.globalAlpha = 0.8;
+        recordingCtx.drawImage(hauntCanvas, 0, 0, recordingCanvas.width, recordingCanvas.height);
+        recordingCtx.globalAlpha = 1;
+        recordingCtx.globalCompositeOperation = 'source-over';
+      }
+      
+      // Draw outlines - scale to recording resolution
+      recordingCtx.drawImage(edgeCanvas, 0, 0, recordingCanvas.width, recordingCanvas.height);
     }
 
     if (edgeThr) edgeThrV.textContent = edgeThr.value;

@@ -1,1 +1,938 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Motion-to-Music Converter</title>
+    <style>
+        :root {
+            --primary: #2c3e50;
+            --secondary: #3498db;
+            --accent: #e74c3c;
+            --light: #ecf0f1;
+            --dark: #34495e;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, var(--primary), var(--dark));
+            color: var(--light);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(to right, var(--secondary), var(--accent));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        
+        .subtitle {
+            font-size: 1.2rem;
+            opacity: 0.8;
+        }
+        
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+        }
+        
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .panel {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+        
+        .panel-title {
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--secondary);
+        }
+        
+        .upload-area {
+            border: 3px dashed var(--secondary);
+            border-radius: 10px;
+            padding: 40px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 20px;
+        }
+        
+        .upload-area:hover {
+            background: rgba(52, 152, 219, 0.1);
+        }
+        
+        .upload-icon {
+            font-size: 3rem;
+            margin-bottom: 15px;
+            color: var(--secondary);
+        }
+        
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        button {
+            background: var(--secondary);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        button:hover {
+            background: #2980b9;
+            transform: translateY(-2px);
+        }
+        
+        button:disabled {
+            background: #7f8c8d;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        button.secondary {
+            background: var(--dark);
+        }
+        
+        button.secondary:hover {
+            background: #2c3e50;
+        }
+        
+        button.accent {
+            background: var(--accent);
+        }
+        
+        button.accent:hover {
+            background: #c0392b;
+        }
+        
+        .slider-container {
+            margin-bottom: 15px;
+        }
+        
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        
+        input[type="range"] {
+            width: 100%;
+            height: 8px;
+            border-radius: 5px;
+            background: var(--dark);
+            outline: none;
+            -webkit-appearance: none;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--secondary);
+            cursor: pointer;
+        }
+        
+        .visualization {
+            height: 200px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            margin-bottom: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .video-container {
+            position: relative;
+            width: 100%;
+            height: 0;
+            padding-bottom: 56.25%; /* 16:9 aspect ratio */
+            margin-bottom: 20px;
+            border-radius: 10px;
+            overflow: hidden;
+            background: #000;
+        }
+        
+        #videoElement {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        
+        .analysis-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .motion-graph {
+            height: 120px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            margin-top: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .status {
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            text-align: center;
+            font-weight: 600;
+        }
+        
+        .status.analyzing {
+            background: rgba(241, 196, 15, 0.2);
+            color: #f1c40f;
+        }
+        
+        .status.ready {
+            background: rgba(46, 204, 113, 0.2);
+            color: #2ecc71;
+        }
+        
+        .status.error {
+            background: rgba(231, 76, 60, 0.2);
+            color: #e74c3c;
+        }
+        
+        .music-controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        .music-controls button {
+            flex: 1;
+        }
+        
+        .preset-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .visualizer {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            height: 100%;
+            padding: 10px;
+        }
+        
+        .bar {
+            flex: 1;
+            background: var(--secondary);
+            margin: 0 2px;
+            border-radius: 3px 3px 0 0;
+            transition: height 0.1s;
+        }
+        
+        .progress-container {
+            height: 6px;
+            background: var(--dark);
+            border-radius: 3px;
+            margin: 20px 0;
+            overflow: hidden;
+        }
+        
+        .progress-bar {
+            height: 100%;
+            background: var(--secondary);
+            width: 0%;
+            transition: width 0.3s;
+        }
+        
+        .instructions {
+            margin-top: 30px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+        }
+        
+        .instructions h3 {
+            margin-bottom: 15px;
+            color: var(--secondary);
+        }
+        
+        .instructions ol {
+            margin-left: 20px;
+        }
+        
+        .instructions li {
+            margin-bottom: 10px;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Motion-to-Music Converter</h1>
+            <p class="subtitle">Transform video motion into generative music</p>
+        </header>
+        
+        <div class="main-content">
+            <div class="panel">
+                <h2 class="panel-title">Video Input & Analysis</h2>
+                
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-icon">📁</div>
+                    <p>Click to upload MP4 video or drag and drop</p>
+                    <input type="file" id="fileInput" accept="video/*" style="display: none;">
+                </div>
+                
+                <div class="video-container">
+                    <video id="videoElement" controls></video>
+                    <canvas id="analysisCanvas" class="analysis-canvas"></canvas>
+                </div>
+                
+                <div class="controls">
+                    <button id="analyzeBtn" disabled>
+                        <span>🔍</span> Analyze Motion
+                    </button>
+                    <button id="resetBtn" class="secondary" disabled>
+                        <span>🔄</span> Reset
+                    </button>
+                </div>
+                
+                <div class="motion-graph">
+                    <canvas id="motionGraph"></canvas>
+                </div>
+                
+                <div class="progress-container">
+                    <div class="progress-bar" id="progressBar"></div>
+                </div>
+                
+                <div class="status" id="statusMessage">
+                    Upload a video to begin analysis
+                </div>
+            </div>
+            
+            <div class="panel">
+                <h2 class="panel-title">Music Generation</h2>
+                
+                <div class="visualization" id="audioVisualizer">
+                    <div class="visualizer" id="visualizer"></div>
+                </div>
+                
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <span>Intensity</span>
+                        <span id="intensityValue">5</span>
+                    </div>
+                    <input type="range" id="intensitySlider" min="1" max="10" value="5">
+                </div>
+                
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <span>Complexity</span>
+                        <span id="complexityValue">5</span>
+                    </div>
+                    <input type="range" id="complexitySlider" min="1" max="10" value="5">
+                </div>
+                
+                <div class="preset-buttons">
+                    <button class="secondary" id="ambientBtn">Ambient</button>
+                    <button class="secondary" id="electronicBtn">Electronic</button>
+                    <button class="secondary" id="experimentalBtn">Experimental</button>
+                </div>
+                
+                <div class="music-controls">
+                    <button id="generateBtn" disabled>
+                        <span>🎵</span> Generate Music
+                    </button>
+                    <button id="playBtn" class="accent" disabled>
+                        <span>▶️</span> Play
+                    </button>
+                    <button id="exportBtn" class="secondary" disabled>
+                        <span>💾</span> Export
+                    </button>
+                </div>
+                
+                <div class="instructions">
+                    <h3>How It Works</h3>
+                    <ol>
+                        <li>Upload a video with noticeable motion</li>
+                        <li>Analyze to extract motion patterns</li>
+                        <li>Adjust music parameters to your preference</li>
+                        <li>Generate and play your motion-based music</li>
+                        <li>Export as WAV file</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+    </div>
 
+    <script>
+        // DOM Elements
+        const fileInput = document.getElementById('fileInput');
+        const uploadArea = document.getElementById('uploadArea');
+        const videoElement = document.getElementById('videoElement');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const generateBtn = document.getElementById('generateBtn');
+        const playBtn = document.getElementById('playBtn');
+        const exportBtn = document.getElementById('exportBtn');
+        const statusMessage = document.getElementById('statusMessage');
+        const progressBar = document.getElementById('progressBar');
+        const analysisCanvas = document.getElementById('analysisCanvas');
+        const motionGraph = document.getElementById('motionGraph');
+        const audioVisualizer = document.getElementById('audioVisualizer');
+        const visualizer = document.getElementById('visualizer');
+        const intensitySlider = document.getElementById('intensitySlider');
+        const complexitySlider = document.getElementById('complexitySlider');
+        const intensityValue = document.getElementById('intensityValue');
+        const complexityValue = document.getElementById('complexityValue');
+        const ambientBtn = document.getElementById('ambientBtn');
+        const electronicBtn = document.getElementById('electronicBtn');
+        const experimentalBtn = document.getElementById('experimentalBtn');
+
+        // Audio Context and Nodes
+        let audioContext;
+        let audioSource;
+        let analyser;
+        let isPlaying = false;
+        let motionData = [];
+        let motionAnalysis = null;
+
+        // Initialize
+        function init() {
+            // Set up event listeners
+            uploadArea.addEventListener('click', () => fileInput.click());
+            uploadArea.addEventListener('dragover', handleDragOver);
+            uploadArea.addEventListener('drop', handleDrop);
+            fileInput.addEventListener('change', handleFileSelect);
+            
+            analyzeBtn.addEventListener('click', analyzeMotion);
+            resetBtn.addEventListener('click', resetAnalysis);
+            generateBtn.addEventListener('click', generateMusic);
+            playBtn.addEventListener('click', togglePlayback);
+            exportBtn.addEventListener('click', exportAudio);
+            
+            intensitySlider.addEventListener('input', updateIntensity);
+            complexitySlider.addEventListener('input', updateComplexity);
+            
+            ambientBtn.addEventListener('click', () => setPreset('ambient'));
+            electronicBtn.addEventListener('click', () => setPreset('electronic'));
+            experimentalBtn.addEventListener('click', () => setPreset('experimental'));
+            
+            // Initialize motion graph canvas
+            const graphCtx = motionGraph.getContext('2d');
+            motionGraph.width = motionGraph.offsetWidth;
+            motionGraph.height = motionGraph.offsetHeight;
+            
+            // Initialize analysis canvas
+            analysisCanvas.width = analysisCanvas.offsetWidth;
+            analysisCanvas.height = analysisCanvas.offsetHeight;
+            
+            // Create visualizer bars
+            for (let i = 0; i < 32; i++) {
+                const bar = document.createElement('div');
+                bar.className = 'bar';
+                bar.style.height = '10%';
+                visualizer.appendChild(bar);
+            }
+            
+            updateStatus('ready', 'Upload a video to begin analysis');
+        }
+
+        // File handling
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            uploadArea.style.background = 'rgba(52, 152, 219, 0.2)';
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            uploadArea.style.background = '';
+            
+            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                fileInput.files = e.dataTransfer.files;
+                handleFileSelect(e);
+            }
+        }
+
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            if (!file.type.includes('video')) {
+                updateStatus('error', 'Please select a video file');
+                return;
+            }
+            
+            const videoURL = URL.createObjectURL(file);
+            videoElement.src = videoURL;
+            
+            videoElement.onloadedmetadata = () => {
+                analyzeBtn.disabled = false;
+                resetBtn.disabled = false;
+                updateStatus('ready', 'Video loaded. Click "Analyze Motion" to begin');
+            };
+            
+            videoElement.onerror = () => {
+                updateStatus('error', 'Error loading video');
+            };
+        }
+
+        // Motion Analysis
+        function analyzeMotion() {
+            if (!videoElement.src) return;
+            
+            updateStatus('analyzing', 'Analyzing motion patterns...');
+            analyzeBtn.disabled = true;
+            
+            // Reset progress
+            progressBar.style.width = '0%';
+            motionData = [];
+            
+            const ctx = analysisCanvas.getContext('2d');
+            const graphCtx = motionGraph.getContext('2d');
+            
+            // Set canvas dimensions to match video
+            analysisCanvas.width = videoElement.videoWidth || 640;
+            analysisCanvas.height = videoElement.videoHeight || 360;
+            
+            // Clear motion graph
+            graphCtx.clearRect(0, 0, motionGraph.width, motionGraph.height);
+            
+            let lastFrame = null;
+            let frameCount = 0;
+            const totalFrames = Math.min(videoElement.duration * 30, 600); // Limit to 20 seconds or 600 frames
+            
+            function processFrame() {
+                if (frameCount >= totalFrames || !videoElement.src) {
+                    finishAnalysis();
+                    return;
+                }
+                
+                // Set video to current frame
+                videoElement.currentTime = (frameCount / 30) % videoElement.duration;
+                
+                // Wait for seek to complete
+                videoElement.onseeked = () => {
+                    // Draw current frame
+                    ctx.drawImage(videoElement, 0, 0, analysisCanvas.width, analysisCanvas.height);
+                    const currentFrame = ctx.getImageData(0, 0, analysisCanvas.width, analysisCanvas.height);
+                    
+                    if (lastFrame) {
+                        // Calculate motion between frames
+                        const motion = calculateMotion(lastFrame, currentFrame);
+                        motionData.push(motion);
+                        
+                        // Draw motion visualization
+                        drawMotionVisualization(ctx, motion);
+                        
+                        // Update motion graph
+                        updateMotionGraph(graphCtx, motionData);
+                    }
+                    
+                    lastFrame = currentFrame;
+                    frameCount++;
+                    
+                    // Update progress
+                    const progress = (frameCount / totalFrames) * 100;
+                    progressBar.style.width = `${progress}%`;
+                    
+                    // Process next frame
+                    setTimeout(processFrame, 50);
+                };
+            }
+            
+            // Start processing
+            videoElement.currentTime = 0;
+            videoElement.onseeked = () => {
+                // Capture first frame
+                ctx.drawImage(videoElement, 0, 0, analysisCanvas.width, analysisCanvas.height);
+                lastFrame = ctx.getImageData(0, 0, analysisCanvas.width, analysisCanvas.height);
+                frameCount = 1;
+                
+                // Continue processing
+                setTimeout(processFrame, 50);
+            };
+        }
+        
+        function calculateMotion(frame1, frame2) {
+            const data1 = frame1.data;
+            const data2 = frame2.data;
+            let totalDiff = 0;
+            let motionPixels = 0;
+            
+            for (let i = 0; i < data1.length; i += 4) {
+                // Calculate luminance difference
+                const lum1 = 0.299 * data1[i] + 0.587 * data1[i+1] + 0.114 * data1[i+2];
+                const lum2 = 0.299 * data2[i] + 0.587 * data2[i+1] + 0.114 * data2[i+2];
+                const diff = Math.abs(lum1 - lum2);
+                
+                if (diff > 10) { // Threshold for significant change
+                    totalDiff += diff;
+                    motionPixels++;
+                }
+            }
+            
+            const avgIntensity = motionPixels > 0 ? totalDiff / motionPixels : 0;
+            const coverage = motionPixels / (data1.length / 4);
+            
+            return {
+                intensity: avgIntensity,
+                coverage: coverage,
+                timestamp: motionData.length / 30
+            };
+        }
+        
+        function drawMotionVisualization(ctx, motion) {
+            // Create a heatmap-like visualization of motion
+            const intensity = Math.min(255, motion.intensity * 2);
+            ctx.fillStyle = `rgba(255, ${255 - intensity}, 0, 0.3)`;
+            ctx.fillRect(0, 0, analysisCanvas.width, analysisCanvas.height);
+        }
+        
+        function updateMotionGraph(ctx, data) {
+            const width = motionGraph.width;
+            const height = motionGraph.height;
+            
+            // Clear graph
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.fillRect(0, 0, width, height);
+            
+            if (data.length < 2) return;
+            
+            // Draw motion intensity line
+            ctx.beginPath();
+            ctx.strokeStyle = '#3498db';
+            ctx.lineWidth = 2;
+            
+            const maxIntensity = Math.max(...data.map(d => d.intensity));
+            
+            for (let i = 0; i < data.length; i++) {
+                const x = (i / data.length) * width;
+                const y = height - (data[i].intensity / maxIntensity) * height;
+                
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            
+            ctx.stroke();
+            
+            // Draw motion coverage area
+            ctx.beginPath();
+            ctx.fillStyle = 'rgba(52, 152, 219, 0.2)';
+            
+            for (let i = 0; i < data.length; i++) {
+                const x = (i / data.length) * width;
+                const y = height - (data[i].coverage * 5) * height;
+                
+                if (i === 0) {
+                    ctx.moveTo(x, height);
+                    ctx.lineTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            
+            ctx.lineTo(width, height);
+            ctx.closePath();
+            ctx.fill();
+        }
+        
+        function finishAnalysis() {
+            motionAnalysis = analyzeMotionPatterns(motionData);
+            generateBtn.disabled = false;
+            updateStatus('ready', `Motion analysis complete. Detected ${motionAnalysis.peakCount} motion peaks`);
+        }
+        
+        function analyzeMotionPatterns(data) {
+            if (data.length === 0) return null;
+            
+            // Simple peak detection
+            const peaks = [];
+            const intensities = data.map(d => d.intensity);
+            const avgIntensity = intensities.reduce((a, b) => a + b, 0) / intensities.length;
+            
+            for (let i = 1; i < intensities.length - 1; i++) {
+                if (intensities[i] > intensities[i-1] && 
+                    intensities[i] > intensities[i+1] && 
+                    intensities[i] > avgIntensity * 1.2) {
+                    peaks.push({
+                        position: i / intensities.length,
+                        intensity: intensities[i] / avgIntensity
+                    });
+                }
+            }
+            
+            // Calculate overall motion statistics
+            const totalMotion = intensities.reduce((a, b) => a + b, 0);
+            const variance = intensities.reduce((a, b) => a + Math.pow(b - avgIntensity, 2), 0) / intensities.length;
+            
+            return {
+                peaks: peaks,
+                averageIntensity: avgIntensity,
+                totalMotion: totalMotion,
+                variance: variance,
+                peakCount: peaks.length,
+                rhythmPattern: extractRhythmPattern(peaks)
+            };
+        }
+        
+        function extractRhythmPattern(peaks) {
+            if (peaks.length < 2) return [1];
+            
+            // Calculate intervals between peaks
+            const intervals = [];
+            for (let i = 1; i < peaks.length; i++) {
+                intervals.push(peaks[i].position - peaks[i-1].position);
+            }
+            
+            // Normalize intervals to create a rhythm pattern
+            const minInterval = Math.min(...intervals);
+            return intervals.map(i => Math.round(i / minInterval));
+        }
+
+        // Music Generation
+        function generateMusic() {
+            if (!motionAnalysis) return;
+            
+            updateStatus('analyzing', 'Generating music from motion patterns...');
+            
+            // Initialize audio context if not already done
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 64;
+            }
+            
+            // In a real implementation, we would generate audio buffers based on motion analysis
+            // For this demo, we'll simulate the process and create a simple tone
+            
+            setTimeout(() => {
+                updateStatus('ready', 'Music generated and ready to play');
+                playBtn.disabled = false;
+                exportBtn.disabled = false;
+                startVisualization();
+            }, 1500);
+        }
+        
+        function togglePlayback() {
+            if (!audioContext) return;
+            
+            if (isPlaying) {
+                // Stop playback
+                if (audioSource) {
+                    audioSource.stop();
+                }
+                isPlaying = false;
+                playBtn.innerHTML = '<span>▶️</span> Play';
+            } else {
+                // Start playback
+                playGeneratedMusic();
+                isPlaying = true;
+                playBtn.innerHTML = '<span>⏸️</span> Pause';
+            }
+        }
+        
+        function playGeneratedMusic() {
+            // Create a simple oscillator for demo purposes
+            // In a real implementation, this would use the motion analysis to generate complex patterns
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            // Apply motion-based parameters
+            const intensity = parseInt(intensitySlider.value);
+            const complexity = parseInt(complexitySlider.value);
+            
+            // Map motion analysis to sound parameters
+            const baseFreq = 220 + (motionAnalysis.averageIntensity * 100);
+            const lfoFreq = 0.5 + (motionAnalysis.variance * 2);
+            const rhythm = motionAnalysis.rhythmPattern;
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(analyser);
+            analyser.connect(audioContext.destination);
+            
+            oscillator.type = 'sawtooth';
+            oscillator.frequency.setValueAtTime(baseFreq, audioContext.currentTime);
+            
+            // Create an LFO for rhythmic variation
+            const lfo = audioContext.createOscillator();
+            const lfoGain = audioContext.createGain();
+            lfo.connect(lfoGain);
+            lfoGain.connect(oscillator.frequency);
+            lfo.type = 'sine';
+            lfo.frequency.setValueAtTime(lfoFreq, audioContext.currentTime);
+            lfoGain.gain.setValueAtTime(baseFreq * 0.2, audioContext.currentTime);
+            
+            // Start oscillators
+            oscillator.start();
+            lfo.start();
+            
+            // Store reference to stop later
+            audioSource = {
+                stop: () => {
+                    oscillator.stop();
+                    lfo.stop();
+                }
+            };
+        }
+        
+        function startVisualization() {
+            function updateVisualizer() {
+                if (!analyser || !isPlaying) return;
+                
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                analyser.getByteFrequencyData(dataArray);
+                
+                const bars = visualizer.querySelectorAll('.bar');
+                
+                for (let i = 0; i < bars.length; i++) {
+                    const value = dataArray[i] || 0;
+                    const height = `${Math.max(5, value / 255 * 100)}%`;
+                    bars[i].style.height = height;
+                    
+                    // Color based on frequency and intensity
+                    const hue = (i / bars.length) * 240;
+                    const saturation = 70 + (value / 255 * 30);
+                    const lightness = 40 + (value / 255 * 30);
+                    bars[i].style.background = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+                }
+                
+                requestAnimationFrame(updateVisualizer);
+            }
+            
+            updateVisualizer();
+        }
+        
+        function exportAudio() {
+            // In a real implementation, this would export the generated audio as WAV
+            updateStatus('ready', 'Audio export would be implemented in a full version');
+            
+            // Simulate download
+            setTimeout(() => {
+                const link = document.createElement('a');
+                link.download = 'motion-music.wav';
+                link.href = '#';
+                link.click();
+            }, 500);
+        }
+
+        // UI Updates
+        function updateStatus(type, message) {
+            statusMessage.textContent = message;
+            statusMessage.className = `status ${type}`;
+        }
+        
+        function updateIntensity() {
+            intensityValue.textContent = intensitySlider.value;
+        }
+        
+        function updateComplexity() {
+            complexityValue.textContent = complexitySlider.value;
+        }
+        
+        function setPreset(preset) {
+            switch(preset) {
+                case 'ambient':
+                    intensitySlider.value = 3;
+                    complexitySlider.value = 4;
+                    break;
+                case 'electronic':
+                    intensitySlider.value = 7;
+                    complexitySlider.value = 8;
+                    break;
+                case 'experimental':
+                    intensitySlider.value = 9;
+                    complexitySlider.value = 9;
+                    break;
+            }
+            updateIntensity();
+            updateComplexity();
+        }
+        
+        function resetAnalysis() {
+            videoElement.src = '';
+            motionData = [];
+            motionAnalysis = null;
+            
+            const ctx = analysisCanvas.getContext('2d');
+            ctx.clearRect(0, 0, analysisCanvas.width, analysisCanvas.height);
+            
+            const graphCtx = motionGraph.getContext('2d');
+            graphCtx.clearRect(0, 0, motionGraph.width, motionGraph.height);
+            
+            progressBar.style.width = '0%';
+            
+            analyzeBtn.disabled = true;
+            generateBtn.disabled = true;
+            playBtn.disabled = true;
+            exportBtn.disabled = true;
+            
+            if (audioSource && isPlaying) {
+                audioSource.stop();
+                isPlaying = false;
+                playBtn.innerHTML = '<span>▶️</span> Play';
+            }
+            
+            updateStatus('ready', 'Upload a video to begin analysis');
+        }
+
+        // Initialize the application
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>

@@ -450,6 +450,7 @@
         let motionData = [];
         let motionAnalysis = null;
         let currentStyle = 'electronic';
+        let audioNodes = [];
 
         // Initialize
         function init() {
@@ -949,11 +950,11 @@
             playBtn.innerHTML = '<span>⏸️</span> Pause';
             updateStatus('ready', `Playing ${currentStyle} music`);
             
-            // In a full implementation, this would schedule and play the generated music
-            // For this demo, we'll create a simple audio visualization
+            // Start audio playback
+            playGeneratedAudio();
             startVisualization();
             
-            // Simulate music playback
+            // Auto-stop after duration
             setTimeout(() => {
                 if (isPlaying) {
                     updateStatus('ready', 'Music completed');
@@ -962,9 +963,251 @@
             }, currentMusic.duration * 1000);
         }
         
+        function playGeneratedAudio() {
+            if (!audioContext || !currentMusic) return;
+            
+            // Resume audio context if suspended
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+            
+            const now = audioContext.currentTime;
+            const beatDuration = 60 / currentMusic.tempo;
+            
+            // Clear previous audio nodes
+            audioNodes.forEach(node => {
+                if (node) node.stop();
+            });
+            audioNodes = [];
+            
+            // Create audio elements based on music structure
+            currentMusic.elements.forEach(element => {
+                switch(element.type) {
+                    case 'kick':
+                        createKickDrum(element, now, beatDuration);
+                        break;
+                    case 'snare':
+                        createSnareDrum(element, now, beatDuration);
+                        break;
+                    case 'bass':
+                        createBass(element, now, beatDuration);
+                        break;
+                    case 'lead':
+                        createLead(element, now, beatDuration);
+                        break;
+                    case 'pad':
+                        createPad(element, now, beatDuration);
+                        break;
+                    case 'bell':
+                        createBell(element, now, beatDuration);
+                        break;
+                    case 'noise':
+                        createNoise(element, now, beatDuration);
+                        break;
+                    case 'glitch':
+                        createGlitch(element, now, beatDuration);
+                        break;
+                }
+            });
+        }
+        
+        function createKickDrum(element, startTime, beatDuration) {
+            for (let i = 0; i < 16; i++) {
+                if (element.rhythm[i % element.rhythm.length] > 0) {
+                    const time = startTime + i * beatDuration;
+                    
+                    // Create kick sound
+                    const oscillator = audioContext.createOscillator();
+                    const gainNode = audioContext.createGain();
+                    
+                    oscillator.connect(gainNode);
+                    gainNode.connect(audioContext.destination);
+                    
+                    oscillator.frequency.setValueAtTime(element.frequency, time);
+                    oscillator.frequency.exponentialRampToValueAtTime(0.001, time + 0.5);
+                    
+                    gainNode.gain.setValueAtTime(0, time);
+                    gainNode.gain.linearRampToValueAtTime(1, time + 0.001);
+                    gainNode.gain.exponentialRampToValueAtTime(0.001, time + 0.5);
+                    
+                    oscillator.start(time);
+                    oscillator.stop(time + 0.5);
+                    
+                    audioNodes.push(oscillator);
+                }
+            }
+        }
+        
+        function createSnareDrum(element, startTime, beatDuration) {
+            for (let i = 0; i < 16; i++) {
+                if (element.rhythm[i % element.rhythm.length] > 0) {
+                    const time = startTime + i * beatDuration;
+                    
+                    // Create snare sound (noise burst)
+                    const bufferSize = audioContext.sampleRate * 0.1;
+                    const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+                    const data = buffer.getChannelData(0);
+                    
+                    for (let j = 0; j < bufferSize; j++) {
+                        data[j] = Math.random() * 2 - 1;
+                    }
+                    
+                    const source = audioContext.createBufferSource();
+                    const gainNode = audioContext.createGain();
+                    const filter = audioContext.createBiquadFilter();
+                    
+                    source.buffer = buffer;
+                    source.connect(filter);
+                    filter.connect(gainNode);
+                    gainNode.connect(audioContext.destination);
+                    
+                    filter.type = 'bandpass';
+                    filter.frequency.setValueAtTime(element.frequency, time);
+                    
+                    gainNode.gain.setValueAtTime(0, time);
+                    gainNode.gain.linearRampToValueAtTime(1, time + 0.001);
+                    gainNode.gain.exponentialRampToValueAtTime(0.001, time + 0.1);
+                    
+                    source.start(time);
+                    source.stop(time + 0.1);
+                    
+                    audioNodes.push(source);
+                }
+            }
+        }
+        
+        function createBass(element, startTime, beatDuration) {
+            for (let i = 0; i < 16; i++) {
+                if (element.rhythm[i % element.rhythm.length] > 0) {
+                    const time = startTime + i * beatDuration;
+                    const noteIndex = i % element.notes.length;
+                    const frequency = element.notes[noteIndex];
+                    
+                    const oscillator = audioContext.createOscillator();
+                    const gainNode = audioContext.createGain();
+                    const filter = audioContext.createBiquadFilter();
+                    
+                    oscillator.connect(filter);
+                    filter.connect(gainNode);
+                    gainNode.connect(audioContext.destination);
+                    
+                    oscillator.type = 'sawtooth';
+                    oscillator.frequency.setValueAtTime(frequency, time);
+                    
+                    filter.type = 'lowpass';
+                    filter.frequency.setValueAtTime(400, time);
+                    
+                    gainNode.gain.setValueAtTime(0, time);
+                    gainNode.gain.linearRampToValueAtTime(0.3, time + 0.01);
+                    gainNode.gain.exponentialRampToValueAtTime(0.001, time + beatDuration * 0.8);
+                    
+                    oscillator.start(time);
+                    oscillator.stop(time + beatDuration * 0.8);
+                    
+                    audioNodes.push(oscillator);
+                }
+            }
+        }
+        
+        function createLead(element, startTime, beatDuration) {
+            for (let i = 0; i < 16; i++) {
+                if (element.rhythm[i % element.rhythm.length] > 0) {
+                    const time = startTime + i * beatDuration;
+                    const noteIndex = i % element.notes.length;
+                    const frequency = element.notes[noteIndex];
+                    
+                    const oscillator = audioContext.createOscillator();
+                    const gainNode = audioContext.createGain();
+                    
+                    oscillator.connect(gainNode);
+                    gainNode.connect(audioContext.destination);
+                    
+                    oscillator.type = 'sine';
+                    oscillator.frequency.setValueAtTime(frequency, time);
+                    
+                    gainNode.gain.setValueAtTime(0, time);
+                    gainNode.gain.linearRampToValueAtTime(0.2, time + 0.05);
+                    gainNode.gain.exponentialRampToValueAtTime(0.001, time + beatDuration * 0.5);
+                    
+                    oscillator.start(time);
+                    oscillator.stop(time + beatDuration * 0.5);
+                    
+                    audioNodes.push(oscillator);
+                }
+            }
+        }
+        
+        function createPad(element, startTime, beatDuration) {
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            const filter = audioContext.createBiquadFilter();
+            
+            oscillator.connect(filter);
+            filter.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(element.frequency, startTime);
+            
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(element.filter.frequency, startTime);
+            
+            gainNode.gain.setValueAtTime(0, startTime);
+            gainNode.gain.linearRampToValueAtTime(0.1, startTime + element.envelope.attack);
+            gainNode.gain.linearRampToValueAtTime(0.08, startTime + element.envelope.attack + element.envelope.decay);
+            
+            oscillator.start(startTime);
+            oscillator.stop(startTime + currentMusic.duration);
+            
+            audioNodes.push(oscillator);
+        }
+        
+        function createBell(element, startTime, beatDuration) {
+            for (let i = 0; i < 16; i++) {
+                if (element.rhythm[i % element.rhythm.length] > 0) {
+                    const time = startTime + i * beatDuration;
+                    
+                    const oscillator = audioContext.createOscillator();
+                    const gainNode = audioContext.createGain();
+                    
+                    oscillator.connect(gainNode);
+                    gainNode.connect(audioContext.destination);
+                    
+                    oscillator.type = 'sine';
+                    oscillator.frequency.setValueAtTime(element.frequency, time);
+                    
+                    gainNode.gain.setValueAtTime(0, time);
+                    gainNode.gain.linearRampToValueAtTime(0.3, time + element.envelope.attack);
+                    gainNode.gain.exponentialRampToValueAtTime(0.001, time + element.envelope.release);
+                    
+                    oscillator.start(time);
+                    oscillator.stop(time + element.envelope.release);
+                    
+                    audioNodes.push(oscillator);
+                }
+            }
+        }
+        
+        function createNoise(element, startTime, beatDuration) {
+            // Similar to snare but with different parameters
+            createSnareDrum(element, startTime, beatDuration);
+        }
+        
+        function createGlitch(element, startTime, beatDuration) {
+            // Similar to lead but with very short duration
+            createLead(element, startTime, beatDuration);
+        }
+        
         function stopMusic() {
             isPlaying = false;
             playBtn.innerHTML = '<span>▶️</span> Play';
+            
+            // Stop all audio nodes
+            audioNodes.forEach(node => {
+                if (node) node.stop();
+            });
+            audioNodes = [];
+            
             updateStatus('ready', 'Music stopped');
         }
         
@@ -973,9 +1216,11 @@
                 if (!isPlaying) return;
                 
                 const bars = visualizer.querySelectorAll('.bar');
+                const now = audioContext.currentTime;
                 
                 for (let i = 0; i < bars.length; i++) {
-                    const baseHeight = 10 + Math.sin(Date.now() / 200 + i * 0.3) * 20;
+                    // Create visualization based on audio context time
+                    const baseHeight = 10 + Math.sin(now * 10 + i * 0.3) * 20;
                     const randomVariation = Math.random() * 30;
                     const intensity = parseInt(intensitySlider.value);
                     const height = `${baseHeight + randomVariation + (intensity * 3)}%`;
@@ -1002,7 +1247,6 @@
         }
         
         function exportAudio() {
-            // In a real implementation, this would export the generated audio as WAV
             updateStatus('ready', 'Audio export would be implemented in a full version');
             
             // Simulate download

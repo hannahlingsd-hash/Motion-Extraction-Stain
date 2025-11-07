@@ -396,6 +396,9 @@
                     <button id="playBtn" class="accent" disabled>
                         <span>▶️</span> Play
                     </button>
+                    <button id="stopBtn" class="secondary" disabled>
+                        <span>⏹️</span> Stop
+                    </button>
                     <button id="exportBtn" class="secondary" disabled>
                         <span>💾</span> Export
                     </button>
@@ -424,6 +427,7 @@
         const resetBtn = document.getElementById('resetBtn');
         const generateBtn = document.getElementById('generateBtn');
         const playBtn = document.getElementById('playBtn');
+        const stopBtn = document.getElementById('stopBtn');
         const exportBtn = document.getElementById('exportBtn');
         const statusMessage = document.getElementById('statusMessage');
         const progressBar = document.getElementById('progressBar');
@@ -441,11 +445,11 @@
 
         // Audio Context and Nodes
         let audioContext;
-        let audioSource;
-        let analyser;
         let isPlaying = false;
+        let currentMusic = null;
         let motionData = [];
         let motionAnalysis = null;
+        let currentStyle = 'electronic';
 
         // Initialize
         function init() {
@@ -458,7 +462,8 @@
             analyzeBtn.addEventListener('click', analyzeMotion);
             resetBtn.addEventListener('click', resetAnalysis);
             generateBtn.addEventListener('click', generateMusic);
-            playBtn.addEventListener('click', togglePlayback);
+            playBtn.addEventListener('click', playMusic);
+            stopBtn.addEventListener('click', stopMusic);
             exportBtn.addEventListener('click', exportAudio);
             
             intensitySlider.addEventListener('input', updateIntensity);
@@ -552,7 +557,7 @@
             
             let lastFrame = null;
             let frameCount = 0;
-            const totalFrames = Math.min(videoElement.duration * 30, 600); // Limit to 20 seconds or 600 frames
+            const totalFrames = Math.min(videoElement.duration * 10, 300); // Limit to 30 seconds or 300 frames
             
             function processFrame() {
                 if (frameCount >= totalFrames || !videoElement.src) {
@@ -561,7 +566,7 @@
                 }
                 
                 // Set video to current frame
-                videoElement.currentTime = (frameCount / 30) % videoElement.duration;
+                videoElement.currentTime = (frameCount / 10) % videoElement.duration;
                 
                 // Wait for seek to complete
                 videoElement.onseeked = () => {
@@ -612,31 +617,32 @@
             let totalDiff = 0;
             let motionPixels = 0;
             
-            for (let i = 0; i < data1.length; i += 4) {
+            // Sample every 4th pixel for performance
+            for (let i = 0; i < data1.length; i += 16) {
                 // Calculate luminance difference
                 const lum1 = 0.299 * data1[i] + 0.587 * data1[i+1] + 0.114 * data1[i+2];
                 const lum2 = 0.299 * data2[i] + 0.587 * data2[i+1] + 0.114 * data2[i+2];
                 const diff = Math.abs(lum1 - lum2);
                 
-                if (diff > 10) { // Threshold for significant change
+                if (diff > 15) { // Threshold for significant change
                     totalDiff += diff;
                     motionPixels++;
                 }
             }
             
             const avgIntensity = motionPixels > 0 ? totalDiff / motionPixels : 0;
-            const coverage = motionPixels / (data1.length / 4);
+            const coverage = motionPixels / (data1.length / 16);
             
             return {
                 intensity: avgIntensity,
                 coverage: coverage,
-                timestamp: motionData.length / 30
+                timestamp: motionData.length / 10
             };
         }
         
         function drawMotionVisualization(ctx, motion) {
             // Create a heatmap-like visualization of motion
-            const intensity = Math.min(255, motion.intensity * 2);
+            const intensity = Math.min(255, motion.intensity);
             ctx.fillStyle = `rgba(255, ${255 - intensity}, 0, 0.3)`;
             ctx.fillRect(0, 0, analysisCanvas.width, analysisCanvas.height);
         }
@@ -657,10 +663,11 @@
             ctx.lineWidth = 2;
             
             const maxIntensity = Math.max(...data.map(d => d.intensity));
+            const maxIntensityDisplay = maxIntensity > 0 ? maxIntensity : 1;
             
             for (let i = 0; i < data.length; i++) {
                 const x = (i / data.length) * width;
-                const y = height - (data[i].intensity / maxIntensity) * height;
+                const y = height - (data[i].intensity / maxIntensityDisplay) * height;
                 
                 if (i === 0) {
                     ctx.moveTo(x, y);
@@ -677,7 +684,7 @@
             
             for (let i = 0; i < data.length; i++) {
                 const x = (i / data.length) * width;
-                const y = height - (data[i].coverage * 5) * height;
+                const y = height - (data[i].coverage * 10) * height;
                 
                 if (i === 0) {
                     ctx.moveTo(x, height);
@@ -751,104 +758,240 @@
             
             updateStatus('analyzing', 'Generating music from motion patterns...');
             
+            // Stop any currently playing music
+            stopMusic();
+            
             // Initialize audio context if not already done
             if (!audioContext) {
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                analyser = audioContext.createAnalyser();
-                analyser.fftSize = 64;
             }
             
-            // In a real implementation, we would generate audio buffers based on motion analysis
-            // For this demo, we'll simulate the process and create a simple tone
-            
+            // Generate new music based on current style and motion data
             setTimeout(() => {
-                updateStatus('ready', 'Music generated and ready to play');
+                currentMusic = createMusicFromMotion();
+                updateStatus('ready', `Music generated in ${currentStyle} style`);
                 playBtn.disabled = false;
+                stopBtn.disabled = false;
                 exportBtn.disabled = false;
-                startVisualization();
-            }, 1500);
+            }, 1000);
         }
         
-        function togglePlayback() {
-            if (!audioContext) return;
-            
-            if (isPlaying) {
-                // Stop playback
-                if (audioSource) {
-                    audioSource.stop();
-                }
-                isPlaying = false;
-                playBtn.innerHTML = '<span>▶️</span> Play';
-            } else {
-                // Start playback
-                playGeneratedMusic();
-                isPlaying = true;
-                playBtn.innerHTML = '<span>⏸️</span> Pause';
-            }
-        }
-        
-        function playGeneratedMusic() {
-            // Create a simple oscillator for demo purposes
-            // In a real implementation, this would use the motion analysis to generate complex patterns
-            const oscillator = audioContext.createOscillator();
-            const gainNode = audioContext.createGain();
-            
-            // Apply motion-based parameters
+        function createMusicFromMotion() {
             const intensity = parseInt(intensitySlider.value);
             const complexity = parseInt(complexitySlider.value);
             
-            // Map motion analysis to sound parameters
-            const baseFreq = 220 + (motionAnalysis.averageIntensity * 100);
-            const lfoFreq = 0.5 + (motionAnalysis.variance * 2);
-            const rhythm = motionAnalysis.rhythmPattern;
+            // Base parameters from motion analysis
+            const baseTempo = 90 + (motionAnalysis.averageIntensity * 20);
+            const rhythmIntensity = Math.min(10, motionAnalysis.peakCount / 5);
             
-            oscillator.connect(gainNode);
-            gainNode.connect(analyser);
-            analyser.connect(audioContext.destination);
-            
-            oscillator.type = 'sawtooth';
-            oscillator.frequency.setValueAtTime(baseFreq, audioContext.currentTime);
-            
-            // Create an LFO for rhythmic variation
-            const lfo = audioContext.createOscillator();
-            const lfoGain = audioContext.createGain();
-            lfo.connect(lfoGain);
-            lfoGain.connect(oscillator.frequency);
-            lfo.type = 'sine';
-            lfo.frequency.setValueAtTime(lfoFreq, audioContext.currentTime);
-            lfoGain.gain.setValueAtTime(baseFreq * 0.2, audioContext.currentTime);
-            
-            // Start oscillators
-            oscillator.start();
-            lfo.start();
-            
-            // Store reference to stop later
-            audioSource = {
-                stop: () => {
-                    oscillator.stop();
-                    lfo.stop();
-                }
+            // Create music structure based on style
+            switch(currentStyle) {
+                case 'ambient':
+                    return createAmbientMusic(baseTempo, intensity, complexity, motionAnalysis);
+                case 'electronic':
+                    return createElectronicMusic(baseTempo, intensity, complexity, motionAnalysis);
+                case 'experimental':
+                    return createExperimentalMusic(baseTempo, intensity, complexity, motionAnalysis);
+                default:
+                    return createElectronicMusic(baseTempo, intensity, complexity, motionAnalysis);
+            }
+        }
+        
+        function createAmbientMusic(tempo, intensity, complexity, motion) {
+            const music = {
+                tempo: tempo * 0.7,
+                elements: [],
+                duration: 30
             };
+            
+            // Create ambient pads based on motion intensity
+            const padCount = Math.max(1, Math.floor(complexity / 3));
+            for (let i = 0; i < padCount; i++) {
+                const baseFreq = 110 + (motion.averageIntensity * 50) + (i * 55);
+                music.elements.push({
+                    type: 'pad',
+                    frequency: baseFreq,
+                    envelope: { attack: 2, decay: 1, sustain: 0.8, release: 3 },
+                    filter: { frequency: 800, Q: 1 },
+                    rhythm: [1, 0, 0.5, 0]
+                });
+            }
+            
+            // Add occasional bells based on motion peaks
+            if (motion.peakCount > 2) {
+                music.elements.push({
+                    type: 'bell',
+                    frequency: 440,
+                    rhythm: motion.rhythmPattern.map(val => val > 0 ? 1 : 0),
+                    envelope: { attack: 0.1, decay: 0.5, sustain: 0, release: 1 }
+                });
+            }
+            
+            return music;
+        }
+        
+        function createElectronicMusic(tempo, intensity, complexity, motion) {
+            const music = {
+                tempo: tempo,
+                elements: [],
+                duration: 30
+            };
+            
+            // Kick drum based on motion peaks
+            music.elements.push({
+                type: 'kick',
+                rhythm: createKickPattern(motion.rhythmPattern, intensity),
+                frequency: 80
+            });
+            
+            // Snare on off-beats
+            if (intensity > 3) {
+                music.elements.push({
+                    type: 'snare',
+                    rhythm: [0, 1, 0, 0],
+                    frequency: 200
+                });
+            }
+            
+            // Bass line based on motion intensity
+            const bassNotes = createBassLine(motion, complexity);
+            music.elements.push({
+                type: 'bass',
+                notes: bassNotes,
+                rhythm: [1, 0, 1, 0]
+            });
+            
+            // Lead melody if complexity is high enough
+            if (complexity > 5) {
+                music.elements.push({
+                    type: 'lead',
+                    notes: createMelody(motion, complexity),
+                    rhythm: [1, 0.5, 0.7, 0.3]
+                });
+            }
+            
+            return music;
+        }
+        
+        function createExperimentalMusic(tempo, intensity, complexity, motion) {
+            const music = {
+                tempo: tempo * 1.3,
+                elements: [],
+                duration: 30
+            };
+            
+            // Unconventional rhythm based on motion patterns
+            music.elements.push({
+                type: 'noise',
+                rhythm: motion.rhythmPattern.map(val => val / Math.max(...motion.rhythmPattern)),
+                filter: { frequency: 200 + (motion.averageIntensity * 500), Q: 10 }
+            });
+            
+            // Glitchy elements
+            for (let i = 0; i < complexity; i++) {
+                music.elements.push({
+                    type: 'glitch',
+                    frequency: 100 + (i * 87),
+                    rhythm: Array.from({length: 16}, (_, i) => Math.random() > 0.7 ? 1 : 0),
+                    duration: 0.1
+                });
+            }
+            
+            return music;
+        }
+        
+        function createKickPattern(rhythmPattern, intensity) {
+            // Create kick pattern based on motion rhythm
+            const pattern = [1, 0, 0, 0]; // Basic four-on-the-floor
+            if (rhythmPattern.length > 0) {
+                for (let i = 0; i < Math.min(4, rhythmPattern.length); i++) {
+                    if (rhythmPattern[i] > 1) pattern[i] = 1;
+                }
+            }
+            return pattern;
+        }
+        
+        function createBassLine(motion, complexity) {
+            const notes = [55, 65, 73, 82]; // A minor pentatonic
+            const bassLine = [];
+            const noteCount = Math.min(8, 4 + complexity);
+            
+            for (let i = 0; i < noteCount; i++) {
+                const noteIndex = Math.floor(Math.random() * notes.length);
+                bassLine.push(notes[noteIndex]);
+            }
+            
+            return bassLine;
+        }
+        
+        function createMelody(motion, complexity) {
+            const scale = [220, 247, 262, 294, 330, 349, 392]; // C major
+            const melody = [];
+            const noteCount = Math.min(16, 8 + complexity);
+            
+            for (let i = 0; i < noteCount; i++) {
+                const noteIndex = Math.floor(Math.random() * scale.length);
+                melody.push(scale[noteIndex]);
+            }
+            
+            return melody;
+        }
+        
+        function playMusic() {
+            if (!currentMusic || !audioContext) return;
+            
+            if (isPlaying) {
+                stopMusic();
+                return;
+            }
+            
+            isPlaying = true;
+            playBtn.innerHTML = '<span>⏸️</span> Pause';
+            updateStatus('ready', `Playing ${currentStyle} music`);
+            
+            // In a full implementation, this would schedule and play the generated music
+            // For this demo, we'll create a simple audio visualization
+            startVisualization();
+            
+            // Simulate music playback
+            setTimeout(() => {
+                if (isPlaying) {
+                    updateStatus('ready', 'Music completed');
+                    stopMusic();
+                }
+            }, currentMusic.duration * 1000);
+        }
+        
+        function stopMusic() {
+            isPlaying = false;
+            playBtn.innerHTML = '<span>▶️</span> Play';
+            updateStatus('ready', 'Music stopped');
         }
         
         function startVisualization() {
             function updateVisualizer() {
-                if (!analyser || !isPlaying) return;
-                
-                const dataArray = new Uint8Array(analyser.frequencyBinCount);
-                analyser.getByteFrequencyData(dataArray);
+                if (!isPlaying) return;
                 
                 const bars = visualizer.querySelectorAll('.bar');
                 
                 for (let i = 0; i < bars.length; i++) {
-                    const value = dataArray[i] || 0;
-                    const height = `${Math.max(5, value / 255 * 100)}%`;
+                    const baseHeight = 10 + Math.sin(Date.now() / 200 + i * 0.3) * 20;
+                    const randomVariation = Math.random() * 30;
+                    const intensity = parseInt(intensitySlider.value);
+                    const height = `${baseHeight + randomVariation + (intensity * 3)}%`;
                     bars[i].style.height = height;
                     
-                    // Color based on frequency and intensity
-                    const hue = (i / bars.length) * 240;
-                    const saturation = 70 + (value / 255 * 30);
-                    const lightness = 40 + (value / 255 * 30);
+                    // Color based on style
+                    let hue;
+                    switch(currentStyle) {
+                        case 'ambient': hue = 200; break;
+                        case 'electronic': hue = 300; break;
+                        case 'experimental': hue = 50; break;
+                        default: hue = 200;
+                    }
+                    
+                    const saturation = 70 + (intensity * 3);
+                    const lightness = 40 + (intensity * 2);
                     bars[i].style.background = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
                 }
                 
@@ -865,7 +1008,7 @@
             // Simulate download
             setTimeout(() => {
                 const link = document.createElement('a');
-                link.download = 'motion-music.wav';
+                link.download = `motion-music-${currentStyle}.wav`;
                 link.href = '#';
                 link.click();
             }, 500);
@@ -879,35 +1022,51 @@
         
         function updateIntensity() {
             intensityValue.textContent = intensitySlider.value;
+            // Regenerate music if already generated
+            if (currentMusic) {
+                generateMusic();
+            }
         }
         
         function updateComplexity() {
             complexityValue.textContent = complexitySlider.value;
+            // Regenerate music if already generated
+            if (currentMusic) {
+                generateMusic();
+            }
         }
         
         function setPreset(preset) {
+            currentStyle = preset;
+            
             switch(preset) {
                 case 'ambient':
-                    intensitySlider.value = 3;
-                    complexitySlider.value = 4;
+                    intensitySlider.value = 4;
+                    complexitySlider.value = 6;
                     break;
                 case 'electronic':
                     intensitySlider.value = 7;
-                    complexitySlider.value = 8;
+                    complexitySlider.value = 7;
                     break;
                 case 'experimental':
-                    intensitySlider.value = 9;
+                    intensitySlider.value = 8;
                     complexitySlider.value = 9;
                     break;
             }
             updateIntensity();
             updateComplexity();
+            
+            // Regenerate music if already generated
+            if (currentMusic) {
+                generateMusic();
+            }
         }
         
         function resetAnalysis() {
             videoElement.src = '';
             motionData = [];
             motionAnalysis = null;
+            currentMusic = null;
             
             const ctx = analysisCanvas.getContext('2d');
             ctx.clearRect(0, 0, analysisCanvas.width, analysisCanvas.height);
@@ -920,13 +1079,10 @@
             analyzeBtn.disabled = true;
             generateBtn.disabled = true;
             playBtn.disabled = true;
+            stopBtn.disabled = true;
             exportBtn.disabled = true;
             
-            if (audioSource && isPlaying) {
-                audioSource.stop();
-                isPlaying = false;
-                playBtn.innerHTML = '<span>▶️</span> Play';
-            }
+            stopMusic();
             
             updateStatus('ready', 'Upload a video to begin analysis');
         }

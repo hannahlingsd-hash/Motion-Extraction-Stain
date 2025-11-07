@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Motion-to-Music Converter</title>
     <style>
+        /* 保持之前的样式不变 */
         :root {
             --primary: #2c3e50;
             --secondary: #3498db;
@@ -314,6 +315,13 @@
             margin-bottom: 10px;
             line-height: 1.5;
         }
+        
+        .time-display {
+            text-align: center;
+            margin-top: 10px;
+            font-size: 14px;
+            color: #bbb;
+        }
     </style>
 </head>
 <body>
@@ -366,6 +374,7 @@
                 <div class="visualization" id="audioVisualizer">
                     <div class="visualizer" id="visualizer"></div>
                 </div>
+                <div class="time-display" id="timeDisplay">00:00 / 00:00</div>
                 
                 <div class="slider-container">
                     <div class="slider-label">
@@ -442,6 +451,7 @@
         const ambientBtn = document.getElementById('ambientBtn');
         const electronicBtn = document.getElementById('electronicBtn');
         const experimentalBtn = document.getElementById('experimentalBtn');
+        const timeDisplay = document.getElementById('timeDisplay');
 
         // Audio Context and Nodes
         let audioContext;
@@ -451,6 +461,9 @@
         let motionAnalysis = null;
         let currentStyle = 'electronic';
         let audioNodes = [];
+        let playbackStartTime = 0;
+        let playbackInterval = null;
+        let totalPlaybackTime = 30; // 30 seconds playback
 
         // Initialize
         function init() {
@@ -492,9 +505,10 @@
             }
             
             updateStatus('ready', 'Upload a video to begin analysis');
+            updateTimeDisplay(0, totalPlaybackTime);
         }
 
-        // File handling
+        // File handling (保持之前的代码不变)
         function handleDragOver(e) {
             e.preventDefault();
             e.stopPropagation();
@@ -535,7 +549,7 @@
             };
         }
 
-        // Motion Analysis
+        // Motion Analysis (保持之前的代码不变)
         function analyzeMotion() {
             if (!videoElement.src) return;
             
@@ -558,7 +572,7 @@
             
             let lastFrame = null;
             let frameCount = 0;
-            const totalFrames = Math.min(videoElement.duration * 10, 300); // Limit to 30 seconds or 300 frames
+            const totalFrames = Math.min(videoElement.duration * 10, 300);
             
             function processFrame() {
                 if (frameCount >= totalFrames || !videoElement.src) {
@@ -566,48 +580,34 @@
                     return;
                 }
                 
-                // Set video to current frame
                 videoElement.currentTime = (frameCount / 10) % videoElement.duration;
                 
-                // Wait for seek to complete
                 videoElement.onseeked = () => {
-                    // Draw current frame
                     ctx.drawImage(videoElement, 0, 0, analysisCanvas.width, analysisCanvas.height);
                     const currentFrame = ctx.getImageData(0, 0, analysisCanvas.width, analysisCanvas.height);
                     
                     if (lastFrame) {
-                        // Calculate motion between frames
                         const motion = calculateMotion(lastFrame, currentFrame);
                         motionData.push(motion);
-                        
-                        // Draw motion visualization
                         drawMotionVisualization(ctx, motion);
-                        
-                        // Update motion graph
                         updateMotionGraph(graphCtx, motionData);
                     }
                     
                     lastFrame = currentFrame;
                     frameCount++;
                     
-                    // Update progress
                     const progress = (frameCount / totalFrames) * 100;
                     progressBar.style.width = `${progress}%`;
                     
-                    // Process next frame
                     setTimeout(processFrame, 50);
                 };
             }
             
-            // Start processing
             videoElement.currentTime = 0;
             videoElement.onseeked = () => {
-                // Capture first frame
                 ctx.drawImage(videoElement, 0, 0, analysisCanvas.width, analysisCanvas.height);
                 lastFrame = ctx.getImageData(0, 0, analysisCanvas.width, analysisCanvas.height);
                 frameCount = 1;
-                
-                // Continue processing
                 setTimeout(processFrame, 50);
             };
         }
@@ -618,14 +618,12 @@
             let totalDiff = 0;
             let motionPixels = 0;
             
-            // Sample every 4th pixel for performance
             for (let i = 0; i < data1.length; i += 16) {
-                // Calculate luminance difference
                 const lum1 = 0.299 * data1[i] + 0.587 * data1[i+1] + 0.114 * data1[i+2];
                 const lum2 = 0.299 * data2[i] + 0.587 * data2[i+1] + 0.114 * data2[i+2];
                 const diff = Math.abs(lum1 - lum2);
                 
-                if (diff > 15) { // Threshold for significant change
+                if (diff > 15) {
                     totalDiff += diff;
                     motionPixels++;
                 }
@@ -642,7 +640,6 @@
         }
         
         function drawMotionVisualization(ctx, motion) {
-            // Create a heatmap-like visualization of motion
             const intensity = Math.min(255, motion.intensity);
             ctx.fillStyle = `rgba(255, ${255 - intensity}, 0, 0.3)`;
             ctx.fillRect(0, 0, analysisCanvas.width, analysisCanvas.height);
@@ -652,13 +649,11 @@
             const width = motionGraph.width;
             const height = motionGraph.height;
             
-            // Clear graph
             ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
             ctx.fillRect(0, 0, width, height);
             
             if (data.length < 2) return;
             
-            // Draw motion intensity line
             ctx.beginPath();
             ctx.strokeStyle = '#3498db';
             ctx.lineWidth = 2;
@@ -679,7 +674,6 @@
             
             ctx.stroke();
             
-            // Draw motion coverage area
             ctx.beginPath();
             ctx.fillStyle = 'rgba(52, 152, 219, 0.2)';
             
@@ -709,7 +703,6 @@
         function analyzeMotionPatterns(data) {
             if (data.length === 0) return null;
             
-            // Simple peak detection
             const peaks = [];
             const intensities = data.map(d => d.intensity);
             const avgIntensity = intensities.reduce((a, b) => a + b, 0) / intensities.length;
@@ -725,7 +718,6 @@
                 }
             }
             
-            // Calculate overall motion statistics
             const totalMotion = intensities.reduce((a, b) => a + b, 0);
             const variance = intensities.reduce((a, b) => a + Math.pow(b - avgIntensity, 2), 0) / intensities.length;
             
@@ -742,32 +734,27 @@
         function extractRhythmPattern(peaks) {
             if (peaks.length < 2) return [1];
             
-            // Calculate intervals between peaks
             const intervals = [];
             for (let i = 1; i < peaks.length; i++) {
                 intervals.push(peaks[i].position - peaks[i-1].position);
             }
             
-            // Normalize intervals to create a rhythm pattern
             const minInterval = Math.min(...intervals);
             return intervals.map(i => Math.round(i / minInterval));
         }
 
-        // Music Generation
+        // Music Generation - 修复播放问题
         function generateMusic() {
             if (!motionAnalysis) return;
             
             updateStatus('analyzing', 'Generating music from motion patterns...');
             
-            // Stop any currently playing music
             stopMusic();
             
-            // Initialize audio context if not already done
             if (!audioContext) {
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
             }
             
-            // Generate new music based on current style and motion data
             setTimeout(() => {
                 currentMusic = createMusicFromMotion();
                 updateStatus('ready', `Music generated in ${currentStyle} style`);
@@ -781,11 +768,8 @@
             const intensity = parseInt(intensitySlider.value);
             const complexity = parseInt(complexitySlider.value);
             
-            // Base parameters from motion analysis
             const baseTempo = 90 + (motionAnalysis.averageIntensity * 20);
-            const rhythmIntensity = Math.min(10, motionAnalysis.peakCount / 5);
             
-            // Create music structure based on style
             switch(currentStyle) {
                 case 'ambient':
                     return createAmbientMusic(baseTempo, intensity, complexity, motionAnalysis);
@@ -799,143 +783,51 @@
         }
         
         function createAmbientMusic(tempo, intensity, complexity, motion) {
-            const music = {
+            return {
                 tempo: tempo * 0.7,
-                elements: [],
-                duration: 30
+                elements: [
+                    {
+                        type: 'pad',
+                        frequency: 110 + (motion.averageIntensity * 50),
+                        envelope: { attack: 2, decay: 1, sustain: 0.8, release: 3 },
+                        rhythm: [1]
+                    }
+                ],
+                duration: totalPlaybackTime
             };
-            
-            // Create ambient pads based on motion intensity
-            const padCount = Math.max(1, Math.floor(complexity / 3));
-            for (let i = 0; i < padCount; i++) {
-                const baseFreq = 110 + (motion.averageIntensity * 50) + (i * 55);
-                music.elements.push({
-                    type: 'pad',
-                    frequency: baseFreq,
-                    envelope: { attack: 2, decay: 1, sustain: 0.8, release: 3 },
-                    filter: { frequency: 800, Q: 1 },
-                    rhythm: [1, 0, 0.5, 0]
-                });
-            }
-            
-            // Add occasional bells based on motion peaks
-            if (motion.peakCount > 2) {
-                music.elements.push({
-                    type: 'bell',
-                    frequency: 440,
-                    rhythm: motion.rhythmPattern.map(val => val > 0 ? 1 : 0),
-                    envelope: { attack: 0.1, decay: 0.5, sustain: 0, release: 1 }
-                });
-            }
-            
-            return music;
         }
         
         function createElectronicMusic(tempo, intensity, complexity, motion) {
-            const music = {
+            return {
                 tempo: tempo,
-                elements: [],
-                duration: 30
+                elements: [
+                    {
+                        type: 'kick',
+                        rhythm: [1, 0, 1, 0],
+                        frequency: 80
+                    },
+                    {
+                        type: 'bass',
+                        notes: [55, 65, 73, 82],
+                        rhythm: [1, 0, 1, 0]
+                    }
+                ],
+                duration: totalPlaybackTime
             };
-            
-            // Kick drum based on motion peaks
-            music.elements.push({
-                type: 'kick',
-                rhythm: createKickPattern(motion.rhythmPattern, intensity),
-                frequency: 80
-            });
-            
-            // Snare on off-beats
-            if (intensity > 3) {
-                music.elements.push({
-                    type: 'snare',
-                    rhythm: [0, 1, 0, 0],
-                    frequency: 200
-                });
-            }
-            
-            // Bass line based on motion intensity
-            const bassNotes = createBassLine(motion, complexity);
-            music.elements.push({
-                type: 'bass',
-                notes: bassNotes,
-                rhythm: [1, 0, 1, 0]
-            });
-            
-            // Lead melody if complexity is high enough
-            if (complexity > 5) {
-                music.elements.push({
-                    type: 'lead',
-                    notes: createMelody(motion, complexity),
-                    rhythm: [1, 0.5, 0.7, 0.3]
-                });
-            }
-            
-            return music;
         }
         
         function createExperimentalMusic(tempo, intensity, complexity, motion) {
-            const music = {
+            return {
                 tempo: tempo * 1.3,
-                elements: [],
-                duration: 30
+                elements: [
+                    {
+                        type: 'noise',
+                        rhythm: motion.rhythmPattern.map(val => val / Math.max(...motion.rhythmPattern)),
+                        filter: { frequency: 200 + (motion.averageIntensity * 500), Q: 10 }
+                    }
+                ],
+                duration: totalPlaybackTime
             };
-            
-            // Unconventional rhythm based on motion patterns
-            music.elements.push({
-                type: 'noise',
-                rhythm: motion.rhythmPattern.map(val => val / Math.max(...motion.rhythmPattern)),
-                filter: { frequency: 200 + (motion.averageIntensity * 500), Q: 10 }
-            });
-            
-            // Glitchy elements
-            for (let i = 0; i < complexity; i++) {
-                music.elements.push({
-                    type: 'glitch',
-                    frequency: 100 + (i * 87),
-                    rhythm: Array.from({length: 16}, (_, i) => Math.random() > 0.7 ? 1 : 0),
-                    duration: 0.1
-                });
-            }
-            
-            return music;
-        }
-        
-        function createKickPattern(rhythmPattern, intensity) {
-            // Create kick pattern based on motion rhythm
-            const pattern = [1, 0, 0, 0]; // Basic four-on-the-floor
-            if (rhythmPattern.length > 0) {
-                for (let i = 0; i < Math.min(4, rhythmPattern.length); i++) {
-                    if (rhythmPattern[i] > 1) pattern[i] = 1;
-                }
-            }
-            return pattern;
-        }
-        
-        function createBassLine(motion, complexity) {
-            const notes = [55, 65, 73, 82]; // A minor pentatonic
-            const bassLine = [];
-            const noteCount = Math.min(8, 4 + complexity);
-            
-            for (let i = 0; i < noteCount; i++) {
-                const noteIndex = Math.floor(Math.random() * notes.length);
-                bassLine.push(notes[noteIndex]);
-            }
-            
-            return bassLine;
-        }
-        
-        function createMelody(motion, complexity) {
-            const scale = [220, 247, 262, 294, 330, 349, 392]; // C major
-            const melody = [];
-            const noteCount = Math.min(16, 8 + complexity);
-            
-            for (let i = 0; i < noteCount; i++) {
-                const noteIndex = Math.floor(Math.random() * scale.length);
-                melody.push(scale[noteIndex]);
-            }
-            
-            return melody;
         }
         
         function playMusic() {
@@ -950,23 +842,29 @@
             playBtn.innerHTML = '<span>⏸️</span> Pause';
             updateStatus('ready', `Playing ${currentStyle} music`);
             
-            // Start audio playback
+            // 重置播放时间
+            playbackStartTime = audioContext.currentTime;
+            
+            // 开始播放音乐
             playGeneratedAudio();
             startVisualization();
             
-            // Auto-stop after duration
+            // 更新时间显示
+            updatePlaybackTime();
+            playbackInterval = setInterval(updatePlaybackTime, 1000);
+            
+            // 设置自动停止
             setTimeout(() => {
                 if (isPlaying) {
                     updateStatus('ready', 'Music completed');
                     stopMusic();
                 }
-            }, currentMusic.duration * 1000);
+            }, totalPlaybackTime * 1000);
         }
         
         function playGeneratedAudio() {
             if (!audioContext || !currentMusic) return;
             
-            // Resume audio context if suspended
             if (audioContext.state === 'suspended') {
                 audioContext.resume();
             }
@@ -974,165 +872,101 @@
             const now = audioContext.currentTime;
             const beatDuration = 60 / currentMusic.tempo;
             
-            // Clear previous audio nodes
+            // 清除之前的音频节点
             audioNodes.forEach(node => {
-                if (node) node.stop();
+                try {
+                    if (node && typeof node.stop === 'function') {
+                        node.stop();
+                    }
+                } catch (e) {
+                    // 忽略已经停止的节点
+                }
             });
             audioNodes = [];
             
-            // Create audio elements based on music structure
+            // 创建持续的音乐循环
             currentMusic.elements.forEach(element => {
                 switch(element.type) {
                     case 'kick':
                         createKickDrum(element, now, beatDuration);
                         break;
-                    case 'snare':
-                        createSnareDrum(element, now, beatDuration);
-                        break;
                     case 'bass':
                         createBass(element, now, beatDuration);
-                        break;
-                    case 'lead':
-                        createLead(element, now, beatDuration);
                         break;
                     case 'pad':
                         createPad(element, now, beatDuration);
                         break;
-                    case 'bell':
-                        createBell(element, now, beatDuration);
-                        break;
                     case 'noise':
                         createNoise(element, now, beatDuration);
-                        break;
-                    case 'glitch':
-                        createGlitch(element, now, beatDuration);
                         break;
                 }
             });
         }
         
         function createKickDrum(element, startTime, beatDuration) {
-            for (let i = 0; i < 16; i++) {
-                if (element.rhythm[i % element.rhythm.length] > 0) {
-                    const time = startTime + i * beatDuration;
-                    
-                    // Create kick sound
-                    const oscillator = audioContext.createOscillator();
-                    const gainNode = audioContext.createGain();
-                    
-                    oscillator.connect(gainNode);
-                    gainNode.connect(audioContext.destination);
-                    
-                    oscillator.frequency.setValueAtTime(element.frequency, time);
-                    oscillator.frequency.exponentialRampToValueAtTime(0.001, time + 0.5);
-                    
-                    gainNode.gain.setValueAtTime(0, time);
-                    gainNode.gain.linearRampToValueAtTime(1, time + 0.001);
-                    gainNode.gain.exponentialRampToValueAtTime(0.001, time + 0.5);
-                    
-                    oscillator.start(time);
-                    oscillator.stop(time + 0.5);
-                    
-                    audioNodes.push(oscillator);
-                }
-            }
-        }
-        
-        function createSnareDrum(element, startTime, beatDuration) {
-            for (let i = 0; i < 16; i++) {
-                if (element.rhythm[i % element.rhythm.length] > 0) {
-                    const time = startTime + i * beatDuration;
-                    
-                    // Create snare sound (noise burst)
-                    const bufferSize = audioContext.sampleRate * 0.1;
-                    const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
-                    const data = buffer.getChannelData(0);
-                    
-                    for (let j = 0; j < bufferSize; j++) {
-                        data[j] = Math.random() * 2 - 1;
+            // 创建持续循环的鼓点
+            const bars = Math.ceil(totalPlaybackTime / (beatDuration * 4));
+            
+            for (let bar = 0; bar < bars; bar++) {
+                for (let beat = 0; beat < 4; beat++) {
+                    if (element.rhythm[beat % element.rhythm.length] > 0) {
+                        const time = startTime + (bar * 4 + beat) * beatDuration;
+                        
+                        const oscillator = audioContext.createOscillator();
+                        const gainNode = audioContext.createGain();
+                        
+                        oscillator.connect(gainNode);
+                        gainNode.connect(audioContext.destination);
+                        
+                        oscillator.frequency.setValueAtTime(element.frequency, time);
+                        oscillator.frequency.exponentialRampToValueAtTime(0.001, time + 0.3);
+                        
+                        gainNode.gain.setValueAtTime(0, time);
+                        gainNode.gain.linearRampToValueAtTime(0.8, time + 0.001);
+                        gainNode.gain.exponentialRampToValueAtTime(0.001, time + 0.3);
+                        
+                        oscillator.start(time);
+                        oscillator.stop(time + 0.3);
+                        
+                        audioNodes.push(oscillator);
                     }
-                    
-                    const source = audioContext.createBufferSource();
-                    const gainNode = audioContext.createGain();
-                    const filter = audioContext.createBiquadFilter();
-                    
-                    source.buffer = buffer;
-                    source.connect(filter);
-                    filter.connect(gainNode);
-                    gainNode.connect(audioContext.destination);
-                    
-                    filter.type = 'bandpass';
-                    filter.frequency.setValueAtTime(element.frequency, time);
-                    
-                    gainNode.gain.setValueAtTime(0, time);
-                    gainNode.gain.linearRampToValueAtTime(1, time + 0.001);
-                    gainNode.gain.exponentialRampToValueAtTime(0.001, time + 0.1);
-                    
-                    source.start(time);
-                    source.stop(time + 0.1);
-                    
-                    audioNodes.push(source);
                 }
             }
         }
         
         function createBass(element, startTime, beatDuration) {
-            for (let i = 0; i < 16; i++) {
-                if (element.rhythm[i % element.rhythm.length] > 0) {
-                    const time = startTime + i * beatDuration;
-                    const noteIndex = i % element.notes.length;
-                    const frequency = element.notes[noteIndex];
-                    
-                    const oscillator = audioContext.createOscillator();
-                    const gainNode = audioContext.createGain();
-                    const filter = audioContext.createBiquadFilter();
-                    
-                    oscillator.connect(filter);
-                    filter.connect(gainNode);
-                    gainNode.connect(audioContext.destination);
-                    
-                    oscillator.type = 'sawtooth';
-                    oscillator.frequency.setValueAtTime(frequency, time);
-                    
-                    filter.type = 'lowpass';
-                    filter.frequency.setValueAtTime(400, time);
-                    
-                    gainNode.gain.setValueAtTime(0, time);
-                    gainNode.gain.linearRampToValueAtTime(0.3, time + 0.01);
-                    gainNode.gain.exponentialRampToValueAtTime(0.001, time + beatDuration * 0.8);
-                    
-                    oscillator.start(time);
-                    oscillator.stop(time + beatDuration * 0.8);
-                    
-                    audioNodes.push(oscillator);
-                }
-            }
-        }
-        
-        function createLead(element, startTime, beatDuration) {
-            for (let i = 0; i < 16; i++) {
-                if (element.rhythm[i % element.rhythm.length] > 0) {
-                    const time = startTime + i * beatDuration;
-                    const noteIndex = i % element.notes.length;
-                    const frequency = element.notes[noteIndex];
-                    
-                    const oscillator = audioContext.createOscillator();
-                    const gainNode = audioContext.createGain();
-                    
-                    oscillator.connect(gainNode);
-                    gainNode.connect(audioContext.destination);
-                    
-                    oscillator.type = 'sine';
-                    oscillator.frequency.setValueAtTime(frequency, time);
-                    
-                    gainNode.gain.setValueAtTime(0, time);
-                    gainNode.gain.linearRampToValueAtTime(0.2, time + 0.05);
-                    gainNode.gain.exponentialRampToValueAtTime(0.001, time + beatDuration * 0.5);
-                    
-                    oscillator.start(time);
-                    oscillator.stop(time + beatDuration * 0.5);
-                    
-                    audioNodes.push(oscillator);
+            const bars = Math.ceil(totalPlaybackTime / (beatDuration * 4));
+            
+            for (let bar = 0; bar < bars; bar++) {
+                for (let beat = 0; beat < 4; beat++) {
+                    if (element.rhythm[beat % element.rhythm.length] > 0) {
+                        const time = startTime + (bar * 4 + beat) * beatDuration;
+                        const noteIndex = (bar * 4 + beat) % element.notes.length;
+                        const frequency = element.notes[noteIndex];
+                        
+                        const oscillator = audioContext.createOscillator();
+                        const gainNode = audioContext.createGain();
+                        const filter = audioContext.createBiquadFilter();
+                        
+                        oscillator.connect(filter);
+                        filter.connect(gainNode);
+                        gainNode.connect(audioContext.destination);
+                        
+                        oscillator.type = 'sawtooth';
+                        oscillator.frequency.setValueAtTime(frequency, time);
+                        
+                        filter.type = 'lowpass';
+                        filter.frequency.setValueAtTime(300, time);
+                        
+                        gainNode.gain.setValueAtTime(0, time);
+                        gainNode.gain.linearRampToValueAtTime(0.4, time + 0.01);
+                        gainNode.gain.exponentialRampToValueAtTime(0.001, time + beatDuration * 0.9);
+                        
+                        oscillator.start(time);
+                        oscillator.stop(time + beatDuration * 0.9);
+                        
+                        audioNodes.push(oscillator);
+                    }
                 }
             }
         }
@@ -1140,75 +974,112 @@
         function createPad(element, startTime, beatDuration) {
             const oscillator = audioContext.createOscillator();
             const gainNode = audioContext.createGain();
-            const filter = audioContext.createBiquadFilter();
             
-            oscillator.connect(filter);
-            filter.connect(gainNode);
+            oscillator.connect(gainNode);
             gainNode.connect(audioContext.destination);
             
             oscillator.type = 'sine';
             oscillator.frequency.setValueAtTime(element.frequency, startTime);
             
-            filter.type = 'lowpass';
-            filter.frequency.setValueAtTime(element.filter.frequency, startTime);
-            
             gainNode.gain.setValueAtTime(0, startTime);
-            gainNode.gain.linearRampToValueAtTime(0.1, startTime + element.envelope.attack);
-            gainNode.gain.linearRampToValueAtTime(0.08, startTime + element.envelope.attack + element.envelope.decay);
+            gainNode.gain.linearRampToValueAtTime(0.2, startTime + element.envelope.attack);
+            gainNode.gain.linearRampToValueAtTime(0.15, startTime + totalPlaybackTime - 2);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, startTime + totalPlaybackTime);
             
             oscillator.start(startTime);
-            oscillator.stop(startTime + currentMusic.duration);
+            oscillator.stop(startTime + totalPlaybackTime);
             
             audioNodes.push(oscillator);
         }
         
-        function createBell(element, startTime, beatDuration) {
-            for (let i = 0; i < 16; i++) {
-                if (element.rhythm[i % element.rhythm.length] > 0) {
-                    const time = startTime + i * beatDuration;
-                    
-                    const oscillator = audioContext.createOscillator();
-                    const gainNode = audioContext.createGain();
-                    
-                    oscillator.connect(gainNode);
-                    gainNode.connect(audioContext.destination);
-                    
-                    oscillator.type = 'sine';
-                    oscillator.frequency.setValueAtTime(element.frequency, time);
-                    
-                    gainNode.gain.setValueAtTime(0, time);
-                    gainNode.gain.linearRampToValueAtTime(0.3, time + element.envelope.attack);
-                    gainNode.gain.exponentialRampToValueAtTime(0.001, time + element.envelope.release);
-                    
-                    oscillator.start(time);
-                    oscillator.stop(time + element.envelope.release);
-                    
-                    audioNodes.push(oscillator);
+        function createNoise(element, startTime, beatDuration) {
+            const bars = Math.ceil(totalPlaybackTime / (beatDuration * 4));
+            
+            for (let bar = 0; bar < bars; bar++) {
+                for (let beat = 0; beat < 4; beat++) {
+                    if (element.rhythm[beat % element.rhythm.length] > 0.3) {
+                        const time = startTime + (bar * 4 + beat) * beatDuration;
+                        
+                        const bufferSize = audioContext.sampleRate * 0.2;
+                        const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+                        const data = buffer.getChannelData(0);
+                        
+                        for (let j = 0; j < bufferSize; j++) {
+                            data[j] = Math.random() * 2 - 1;
+                        }
+                        
+                        const source = audioContext.createBufferSource();
+                        const gainNode = audioContext.createGain();
+                        const filter = audioContext.createBiquadFilter();
+                        
+                        source.buffer = buffer;
+                        source.connect(filter);
+                        filter.connect(gainNode);
+                        gainNode.connect(audioContext.destination);
+                        
+                        filter.type = 'bandpass';
+                        filter.frequency.setValueAtTime(element.filter.frequency, time);
+                        filter.Q.setValueAtTime(element.filter.Q, time);
+                        
+                        gainNode.gain.setValueAtTime(0, time);
+                        gainNode.gain.linearRampToValueAtTime(0.3, time + 0.01);
+                        gainNode.gain.exponentialRampToValueAtTime(0.001, time + 0.2);
+                        
+                        source.start(time);
+                        source.stop(time + 0.2);
+                        
+                        audioNodes.push(source);
+                    }
                 }
             }
-        }
-        
-        function createNoise(element, startTime, beatDuration) {
-            // Similar to snare but with different parameters
-            createSnareDrum(element, startTime, beatDuration);
-        }
-        
-        function createGlitch(element, startTime, beatDuration) {
-            // Similar to lead but with very short duration
-            createLead(element, startTime, beatDuration);
         }
         
         function stopMusic() {
             isPlaying = false;
             playBtn.innerHTML = '<span>▶️</span> Play';
             
-            // Stop all audio nodes
+            // 停止所有音频节点
             audioNodes.forEach(node => {
-                if (node) node.stop();
+                try {
+                    if (node && typeof node.stop === 'function') {
+                        node.stop();
+                    }
+                } catch (e) {
+                    // 忽略已经停止的节点
+                }
             });
             audioNodes = [];
             
+            // 清除定时器
+            if (playbackInterval) {
+                clearInterval(playbackInterval);
+                playbackInterval = null;
+            }
+            
             updateStatus('ready', 'Music stopped');
+            updateTimeDisplay(0, totalPlaybackTime);
+        }
+        
+        function updatePlaybackTime() {
+            if (!isPlaying || !audioContext) return;
+            
+            const currentTime = audioContext.currentTime - playbackStartTime;
+            if (currentTime >= totalPlaybackTime) {
+                stopMusic();
+                return;
+            }
+            
+            updateTimeDisplay(currentTime, totalPlaybackTime);
+        }
+        
+        function updateTimeDisplay(current, total) {
+            const formatTime = (seconds) => {
+                const mins = Math.floor(seconds / 60);
+                const secs = Math.floor(seconds % 60);
+                return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            };
+            
+            timeDisplay.textContent = `${formatTime(current)} / ${formatTime(total)}`;
         }
         
         function startVisualization() {
@@ -1216,17 +1087,15 @@
                 if (!isPlaying) return;
                 
                 const bars = visualizer.querySelectorAll('.bar');
-                const now = audioContext.currentTime;
+                const now = audioContext ? audioContext.currentTime - playbackStartTime : 0;
                 
                 for (let i = 0; i < bars.length; i++) {
-                    // Create visualization based on audio context time
-                    const baseHeight = 10 + Math.sin(now * 10 + i * 0.3) * 20;
-                    const randomVariation = Math.random() * 30;
+                    const baseHeight = 10 + Math.sin(now * 8 + i * 0.5) * 15;
+                    const beatHeight = Math.sin(now * currentMusic.tempo / 60 * Math.PI * 2) * 10;
                     const intensity = parseInt(intensitySlider.value);
-                    const height = `${baseHeight + randomVariation + (intensity * 3)}%`;
+                    const height = `${Math.max(5, baseHeight + beatHeight + (intensity * 2))}%`;
                     bars[i].style.height = height;
                     
-                    // Color based on style
                     let hue;
                     switch(currentStyle) {
                         case 'ambient': hue = 200; break;
@@ -1249,7 +1118,6 @@
         function exportAudio() {
             updateStatus('ready', 'Audio export would be implemented in a full version');
             
-            // Simulate download
             setTimeout(() => {
                 const link = document.createElement('a');
                 link.download = `motion-music-${currentStyle}.wav`;
@@ -1266,7 +1134,6 @@
         
         function updateIntensity() {
             intensityValue.textContent = intensitySlider.value;
-            // Regenerate music if already generated
             if (currentMusic) {
                 generateMusic();
             }
@@ -1274,7 +1141,6 @@
         
         function updateComplexity() {
             complexityValue.textContent = complexitySlider.value;
-            // Regenerate music if already generated
             if (currentMusic) {
                 generateMusic();
             }
@@ -1300,7 +1166,6 @@
             updateIntensity();
             updateComplexity();
             
-            // Regenerate music if already generated
             if (currentMusic) {
                 generateMusic();
             }

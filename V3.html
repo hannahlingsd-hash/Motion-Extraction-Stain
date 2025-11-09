@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+\<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
@@ -922,6 +922,42 @@
     hauntExportCanvas.height = vh;
     const hauntExportCtx = hauntExportCanvas.getContext('2d');
 
+    const edgeExportCanvas = document.createElement('canvas');
+    edgeExportCanvas.width = vw;
+    edgeExportCanvas.height = vh;
+    const edgeExportCtx = edgeExportCanvas.getContext('2d');
+
+    // Store current settings for export
+    const exportSettings = {
+      grey: +el.grey.value,
+      preblur: +el.preblur.value,
+      dt: +el.dt.value,
+      thr: +el.thr.value,
+      gAlpha: +el.gAlpha.value,
+      gBlend: gBlend.value,
+      gUseColor: gUseColor.checked,
+      gColor: gColor.value,
+      stainOn: stainOn.checked,
+      decay: +el.decay.value,
+      strength: +el.strength.value,
+      expand: +el.expand.value,
+      sColor: sColor.value,
+      hauntOn: hauntOn.checked,
+      hauntPersist: +hauntPersist.value,
+      hauntStick: +hauntStick.value,
+      hauntColor: hauntColor.value,
+      edgeThr: +edgeThr.value,
+      ghostEdgeOn: ghostEdgeOn.checked,
+      ghostEdgeColor: ghostEdgeColor.value,
+      ghostEdgeAlpha: +ghostEdgeAlpha.value,
+      stainEdgeOn: stainEdgeOn.checked,
+      stainEdgeColor: stainEdgeColor.value,
+      stainEdgeAlpha: +stainEdgeAlpha.value,
+      lingerEdgeOn: lingerEdgeOn.checked,
+      lingerEdgeColor: lingerEdgeColor.value,
+      lingerEdgeAlpha: +lingerEdgeAlpha.value
+    };
+
     // High-quality stream settings
     const stream = exportCanvas.captureStream
       ? exportCanvas.captureStream(30)
@@ -940,9 +976,9 @@
       expRecorder.onstop = resolve;
     });
 
-    // Calculate exact duration
+    // Calculate exact duration - add buffer for precise timing
     const videoDuration = vid.duration;
-    const safetyMs = (isFinite(videoDuration) ? videoDuration : 60) * 1000 + 5000;
+    const safetyMs = (isFinite(videoDuration) ? videoDuration * 1000 : 60000) + 10000; // +10s buffer
     const safetyTimer = setTimeout(() => {
       console.log('Safety timeout reached');
       finalizeExport();
@@ -950,7 +986,7 @@
 
     expRecorder.start(1000); // 1-second chunks
 
-    // Reset to exact start (time=0)
+    // Reset to exact start (time=0) and wait for seek to complete
     await new Promise(resolve => {
       const onSeeked = () => {
         vid.removeEventListener('seeked', onSeeked);
@@ -958,6 +994,7 @@
         stainExportCtx.clearRect(0, 0, vw, vh);
         ghostExportCtx.clearRect(0, 0, vw, vh);
         hauntExportCtx.clearRect(0, 0, vw, vh);
+        edgeExportCtx.clearRect(0, 0, vw, vh);
         buf.length = 0; // Clear main buffer
         resolve();
       };
@@ -969,10 +1006,14 @@
     let lastFrameTime = 0;
     const frameInterval = 1000 / 30; // 30fps for smooth export
     let frameCount = 0;
+    const startTime = performance.now();
     
     // Frame rendering function with proper timing
     function renderExportFrame(timestamp) {
       if (exportFinished || vid.ended || vid.paused) {
+        if (vid.ended) {
+          finalizeExport();
+        }
         return;
       }
 
@@ -985,27 +1026,24 @@
 
       try {
         // Clear export canvas with grey background
-        const grey = +el.grey.value;
-        exportCtx.fillStyle = `rgb(${grey},${grey},${grey})`;
+        exportCtx.fillStyle = `rgb(${exportSettings.grey},${exportSettings.grey},${exportSettings.grey})`;
         exportCtx.fillRect(0, 0, vw, vh);
 
         // Draw current video frame with pre-blur
         tempCtx.clearRect(0, 0, vw, vh);
-        const blurPx = +el.preblur.value;
-        if (blurPx > 0) tempCtx.filter = `blur(${blurPx}px)`;
+        if (exportSettings.preblur > 0) tempCtx.filter = `blur(${exportSettings.preblur}px)`;
         tempCtx.drawImage(vid, 0, 0, vw, vh);
         tempCtx.filter = 'none';
 
         const curr = tempCtx.getImageData(0, 0, vw, vh);
         pushFrame(curr, vid.currentTime);
-        const past = getPastFrame(+el.dt.value);
+        const past = getPastFrame(exportSettings.dt);
 
         if (past) {
           // Process ghost effect
           const c = curr.data, p = past.data;
           const ghostImg = ghostExportCtx.createImageData(vw, vh);
           const gd = ghostImg.data;
-          const thr = +el.thr.value;
           const mask = new Uint8ClampedArray(vw * vh);
 
           for(let i = 0, j = 0; i < c.length; i += 4, j++){
@@ -1015,11 +1053,11 @@
             const lp = pr * 0.2126 + pg * 0.7152 + pb * 0.0722;
             const d = Math.abs(lc - lp);
             
-            if(d > thr){
+            if(d > exportSettings.thr){
               mask[j] = 255;
-              if(gUseColor.checked){
-                const a = Math.max(40, Math.min(255, (d - thr) * 8));
-                const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(gColor.value);
+              if(exportSettings.gUseColor){
+                const a = Math.max(40, Math.min(255, (d - exportSettings.thr) * 8));
+                const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(exportSettings.gColor);
                 const cr = m ? parseInt(m[1], 16) : 255,
                       cg = m ? parseInt(m[2], 16) : 255,
                       cb = m ? parseInt(m[3], 16) : 255;
@@ -1038,8 +1076,8 @@
           ghostExportCtx.putImageData(ghostImg, 0, 0);
 
           // Process stain effect if enabled
-          if(stainOn.checked){
-            const decay = +el.decay.value;
+          if(exportSettings.stainOn){
+            const decay = exportSettings.decay;
             stainExportCtx.globalCompositeOperation = 'destination-out';
             stainExportCtx.fillStyle = `rgba(0,0,0,${1 - decay})`;
             stainExportCtx.fillRect(0, 0, vw, vh);
@@ -1055,20 +1093,26 @@
             }
             stainExportCtx.putImageData(mImg, 0, 0);
 
+            // Apply expand blur if needed
+            if(exportSettings.expand > 0) {
+              stainExportCtx.filter = `blur(${exportSettings.expand}px)`;
+              stainExportCtx.drawImage(stainExportCanvas, 0, 0);
+              stainExportCtx.filter = 'none';
+            }
+
             // Apply color and strength
             stainExportCtx.globalCompositeOperation = 'source-in';
-            stainExportCtx.fillStyle = sColor.value;
-            stainExportCtx.globalAlpha = +el.strength.value;
+            stainExportCtx.fillStyle = exportSettings.sColor;
+            stainExportCtx.globalAlpha = exportSettings.strength;
             stainExportCtx.fillRect(0, 0, vw, vh);
             stainExportCtx.globalCompositeOperation = 'source-over';
             stainExportCtx.globalAlpha = 1;
           }
 
           // Process linger effect if enabled
-          if(hauntOn && hauntOn.checked && stainOn.checked){
-            const p = Math.max(0, Math.min(1, +hauntPersist.value || 0.85));
-            const stick = +hauntStick.value || 1.3;
-            const tint = (hauntColor && hauntColor.value) ? hauntColor.value : '#4a5e8a';
+          if(exportSettings.hauntOn && exportSettings.stainOn){
+            const p = exportSettings.hauntPersist;
+            const stick = exportSettings.hauntStick;
 
             // Decay existing linger
             const decayOut = Math.max(0.001, 0.1 * (1 - p));
@@ -1084,11 +1128,11 @@
 
             // Apply color tint
             hauntExportCtx.globalCompositeOperation = 'source-atop';
-            hauntExportCtx.fillStyle = tint;
+            hauntExportCtx.fillStyle = exportSettings.hauntColor;
             hauntExportCtx.fillRect(0, 0, vw, vh);
             hauntExportCtx.globalCompositeOperation = 'source-over';
 
-            // Draw linger to export canvas
+            // Draw linger to export canvas (UNDERNEATH other layers)
             exportCtx.globalCompositeOperation = 'normal';
             exportCtx.globalAlpha = 0.8;
             exportCtx.drawImage(hauntExportCanvas, 0, 0);
@@ -1097,18 +1141,103 @@
           }
 
           // Draw stain to export canvas
-          if(stainOn.checked){
+          if(exportSettings.stainOn){
             exportCtx.globalCompositeOperation = 'multiply';
             exportCtx.drawImage(stainExportCanvas, 0, 0);
             exportCtx.globalCompositeOperation = 'source-over';
           }
 
           // Draw ghost to export canvas
-          exportCtx.globalAlpha = +el.gAlpha.value;
-          exportCtx.globalCompositeOperation = gBlend.value;
+          exportCtx.globalAlpha = exportSettings.gAlpha;
+          exportCtx.globalCompositeOperation = exportSettings.gBlend;
           exportCtx.drawImage(ghostExportCanvas, 0, 0);
           exportCtx.globalAlpha = 1;
           exportCtx.globalCompositeOperation = 'source-over';
+
+          // Process and draw outlines if enabled
+          edgeExportCtx.clearRect(0, 0, vw, vh);
+          
+          if (exportSettings.ghostEdgeOn || exportSettings.stainEdgeOn || exportSettings.lingerEdgeOn) {
+            const TH = exportSettings.edgeThr;
+            const TL = Math.max(0, Math.floor(TH * 0.5));
+
+            function rgbaFrom(hex, a01){
+              const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex||'#000000');
+              return [
+                parseInt(m[1],16),
+                parseInt(m[2],16),
+                parseInt(m[3],16),
+                Math.max(0,Math.min(1,a01||1))
+              ];
+            }
+
+            function drawOutlineFrom(srcCanvas, colorHex, alpha01){
+              const sctx2 = srcCanvas.getContext('2d');
+              const img  = sctx2.getImageData(0,0,vw,vh);
+              const d    = img.data;
+
+              const L = new Uint8ClampedArray(vw*vh);
+              for (let i=0,j=0;i<d.length;i+=4,++j){
+                const lum = d[i]*0.2126 + d[i+1]*0.7152 + d[i+2]*0.0722;
+                const a   = d[i+3];
+                L[j] = Math.max(lum, a);
+              }
+
+              const E = new Uint8ClampedArray(vw*vh);
+              for (let y=1;y<vh-1;y++){
+                let idx=y*vw+1;
+                for (let x=1;x<vw-1;x++,idx++){
+                  const a=L[idx-vw-1], b=L[idx-vw],   c=L[idx-vw+1];
+                  const d0=L[idx-1],              f=L[idx+1];
+                  const g=L[idx+vw-1], h=L[idx+vw], i=L[idx+vw+1];
+                  const gx = -a -2*b -c + g +2*h + i;
+                  const gy = -a -2*d0 -g + c +2*f + i;
+                  const mag = Math.abs(gx) + Math.abs(gy);
+                  let aa;
+                  if (mag >= TH) aa = 255;
+                  else if (mag <= TL) aa = 0;
+                  else aa = Math.round((mag - TL)/(TH - TL)*255);
+                  E[idx] = aa;
+                }
+              }
+              for (let k=0,j=0;k<d.length;k+=4,++j){
+                E[j] = Math.round(E[j] * (d[k+3]/255));
+              }
+
+              const edgeLayer = document.createElement('canvas');
+              edgeLayer.width = vw;
+              edgeLayer.height = vh;
+              const edgeLayerCtx = edgeLayer.getContext('2d');
+              
+              const [r,g,b,a01Out] = rgbaFrom(colorHex, alpha01);
+              const mask = edgeLayerCtx.createImageData(vw,vh);
+              const md = mask.data;
+              for (let j=0,p=0;j<E.length;j++,p+=4){
+                const a = E[j];
+                if (!a){
+                  md[p]=md[p+1]=md[p+2]=md[p+3]=0;
+                  continue;
+                }
+                md[p]=r; md[p+1]=g; md[p+2]=b;
+                md[p+3]=Math.min(255, Math.round(a*a01Out));
+              }
+              edgeLayerCtx.putImageData(mask,0,0);
+
+              edgeExportCtx.globalCompositeOperation='source-over';
+              edgeExportCtx.drawImage(edgeLayer,0,0);
+            }
+
+            if (exportSettings.ghostEdgeOn)
+              drawOutlineFrom(ghostExportCanvas, exportSettings.ghostEdgeColor, exportSettings.ghostEdgeAlpha);
+            if (exportSettings.stainEdgeOn)
+              drawOutlineFrom(stainExportCanvas, exportSettings.stainEdgeColor, exportSettings.stainEdgeAlpha);
+            if (exportSettings.lingerEdgeOn)
+              drawOutlineFrom(hauntExportCanvas, exportSettings.lingerEdgeColor, exportSettings.lingerEdgeAlpha);
+          }
+
+          // Draw outlines to export canvas
+          exportCtx.globalCompositeOperation='source-over';
+          exportCtx.drawImage(edgeExportCanvas,0,0);
         }
 
         frameCount++;
@@ -1132,7 +1261,7 @@
       clearTimeout(safetyTimer);
       vid.pause();
       
-      // Small delay to ensure final frames are processed
+      // Wait a bit to ensure all frames are processed
       setTimeout(() => {
         if (expRecorder.state === 'recording') {
           expRecorder.stop();
@@ -1160,17 +1289,20 @@
             
             setTimeout(() => URL.revokeObjectURL(a.href), 1000);
             
-            console.log(`Export completed: ${vw}x${vh}, ${(blob.size / 1024 / 1024).toFixed(1)}MB, ${frameCount} frames`);
+            const exportDuration = (performance.now() - startTime) / 1000;
+            console.log(`Export completed: ${vw}x${vh}, ${(blob.size / 1024 / 1024).toFixed(1)}MB, ${frameCount} frames, ${exportDuration.toFixed(1)}s`);
           } else {
             alert('Export failed: No video data recorded');
           }
         });
-      }, 1000);
+      }, 2000); // Increased delay to ensure final frames are captured
     }
 
     vid.addEventListener('ended', finalizeExport, {once: true});
 
     try {
+      // Small delay to ensure everything is ready
+      await new Promise(resolve => setTimeout(resolve, 100));
       await vid.play();
       // Start the frame rendering loop with proper timing
       requestAnimationFrame(renderExportFrame);

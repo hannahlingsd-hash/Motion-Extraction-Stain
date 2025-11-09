@@ -895,18 +895,42 @@
 
     const expChunks = [];
     
+    // High-quality export canvas at source resolution
     const exportCanvas = document.createElement('canvas');
     exportCanvas.width = vw;
     exportCanvas.height = vh;
     const exportCtx = exportCanvas.getContext('2d');
 
+    // Create temporary processing canvases at source resolution
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = vw;
+    tempCanvas.height = vh;
+    const tempCtx = tempCanvas.getContext('2d', {willReadFrequently: true});
+
+    const stainExportCanvas = document.createElement('canvas');
+    stainExportCanvas.width = vw;
+    stainExportCanvas.height = vh;
+    const stainExportCtx = stainExportCanvas.getContext('2d');
+
+    const ghostExportCanvas = document.createElement('canvas');
+    ghostExportCanvas.width = vw;
+    ghostExportCanvas.height = vh;
+    const ghostExportCtx = ghostExportCanvas.getContext('2d');
+
+    const hauntExportCanvas = document.createElement('canvas');
+    hauntExportCanvas.width = vw;
+    hauntExportCanvas.height = vh;
+    const hauntExportCtx = hauntExportCanvas.getContext('2d');
+
+    // High-quality stream settings
     const stream = exportCanvas.captureStream
       ? exportCanvas.captureStream(30)
       : exportCanvas.mozCaptureStream(30);
 
     const expRecorder = new MediaRecorder(stream, {
       mimeType: mime,
-      videoBitsPerSecond: 8000000
+      videoBitsPerSecond: 15000000, // High bitrate for quality
+      framerate: 30
     });
 
     const recDone = new Promise(resolve => {
@@ -916,40 +940,206 @@
       expRecorder.onstop = resolve;
     });
 
-    const safetyMs = (isFinite(vid.duration) ? vid.duration : 60) * 1000 + 10000;
+    // Calculate exact duration
+    const videoDuration = vid.duration;
+    const safetyMs = (isFinite(videoDuration) ? videoDuration : 60) * 1000 + 5000;
     const safetyTimer = setTimeout(() => {
       console.log('Safety timeout reached');
       finalizeExport();
     }, safetyMs);
 
-    expRecorder.start(1000);
+    expRecorder.start(1000); // 1-second chunks
 
+    // Reset to exact start (time=0)
     await new Promise(resolve => {
       const onSeeked = () => {
         vid.removeEventListener('seeked', onSeeked);
-        resetState();
+        // Reset all export buffers
+        stainExportCtx.clearRect(0, 0, vw, vh);
+        ghostExportCtx.clearRect(0, 0, vw, vh);
+        hauntExportCtx.clearRect(0, 0, vw, vh);
+        buf.length = 0; // Clear main buffer
         resolve();
       };
       vid.addEventListener('seeked', onSeeked, {once: true});
-      vid.currentTime = 0;
+      vid.currentTime = 0; // Exact start
     });
 
     let exportFinished = false;
+    let lastFrameTime = 0;
+    const frameInterval = 1000 / 30; // 30fps for smooth export
+    let frameCount = 0;
+    
+    // Frame rendering function with proper timing
+    function renderExportFrame(timestamp) {
+      if (exportFinished || vid.ended || vid.paused) {
+        return;
+      }
+
+      // Throttle to 30fps to prevent lag
+      if (timestamp - lastFrameTime < frameInterval) {
+        requestAnimationFrame(renderExportFrame);
+        return;
+      }
+      lastFrameTime = timestamp;
+
+      try {
+        // Clear export canvas with grey background
+        const grey = +el.grey.value;
+        exportCtx.fillStyle = `rgb(${grey},${grey},${grey})`;
+        exportCtx.fillRect(0, 0, vw, vh);
+
+        // Draw current video frame with pre-blur
+        tempCtx.clearRect(0, 0, vw, vh);
+        const blurPx = +el.preblur.value;
+        if (blurPx > 0) tempCtx.filter = `blur(${blurPx}px)`;
+        tempCtx.drawImage(vid, 0, 0, vw, vh);
+        tempCtx.filter = 'none';
+
+        const curr = tempCtx.getImageData(0, 0, vw, vh);
+        pushFrame(curr, vid.currentTime);
+        const past = getPastFrame(+el.dt.value);
+
+        if (past) {
+          // Process ghost effect
+          const c = curr.data, p = past.data;
+          const ghostImg = ghostExportCtx.createImageData(vw, vh);
+          const gd = ghostImg.data;
+          const thr = +el.thr.value;
+          const mask = new Uint8ClampedArray(vw * vh);
+
+          for(let i = 0, j = 0; i < c.length; i += 4, j++){
+            const r = c[i], g = c[i+1], b = c[i+2];
+            const pr = p[i], pg = p[i+1], pb = p[i+2];
+            const lc = r * 0.2126 + g * 0.7152 + b * 0.0722;
+            const lp = pr * 0.2126 + pg * 0.7152 + pb * 0.0722;
+            const d = Math.abs(lc - lp);
+            
+            if(d > thr){
+              mask[j] = 255;
+              if(gUseColor.checked){
+                const a = Math.max(40, Math.min(255, (d - thr) * 8));
+                const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(gColor.value);
+                const cr = m ? parseInt(m[1], 16) : 255,
+                      cg = m ? parseInt(m[2], 16) : 255,
+                      cb = m ? parseInt(m[3], 16) : 255;
+                gd[i] = cr; gd[i+1] = cg; gd[i+2] = cb; gd[i+3] = a;
+              } else {
+                gd[i] = (r + (255 - pr)) * 0.5;
+                gd[i+1] = (g + (255 - pg)) * 0.5;
+                gd[i+2] = (b + (255 - pb)) * 0.5;
+                gd[i+3] = 255;
+              }
+            } else {
+              gd[i] = gd[i+1] = gd[i+2] = 0;
+              gd[i+3] = 0;
+            }
+          }
+          ghostExportCtx.putImageData(ghostImg, 0, 0);
+
+          // Process stain effect if enabled
+          if(stainOn.checked){
+            const decay = +el.decay.value;
+            stainExportCtx.globalCompositeOperation = 'destination-out';
+            stainExportCtx.fillStyle = `rgba(0,0,0,${1 - decay})`;
+            stainExportCtx.fillRect(0, 0, vw, vh);
+            stainExportCtx.globalCompositeOperation = 'source-over';
+
+            // Create mask and apply stain
+            const mImg = stainExportCtx.createImageData(vw, vh);
+            const mdat = mImg.data;
+            for(let j = 0, k = 0; j < mask.length; j++, k += 4){
+              const v = mask[j];
+              mdat[k] = mdat[k+1] = mdat[k+2] = v;
+              mdat[k+3] = v;
+            }
+            stainExportCtx.putImageData(mImg, 0, 0);
+
+            // Apply color and strength
+            stainExportCtx.globalCompositeOperation = 'source-in';
+            stainExportCtx.fillStyle = sColor.value;
+            stainExportCtx.globalAlpha = +el.strength.value;
+            stainExportCtx.fillRect(0, 0, vw, vh);
+            stainExportCtx.globalCompositeOperation = 'source-over';
+            stainExportCtx.globalAlpha = 1;
+          }
+
+          // Process linger effect if enabled
+          if(hauntOn && hauntOn.checked && stainOn.checked){
+            const p = Math.max(0, Math.min(1, +hauntPersist.value || 0.85));
+            const stick = +hauntStick.value || 1.3;
+            const tint = (hauntColor && hauntColor.value) ? hauntColor.value : '#4a5e8a';
+
+            // Decay existing linger
+            const decayOut = Math.max(0.001, 0.1 * (1 - p));
+            hauntExportCtx.globalCompositeOperation = 'destination-out';
+            hauntExportCtx.fillStyle = `rgba(0,0,0,${decayOut})`;
+            hauntExportCtx.fillRect(0, 0, vw, vh);
+            hauntExportCtx.globalCompositeOperation = 'source-over';
+
+            // Add new stain content
+            hauntExportCtx.globalAlpha = Math.min(0.5, 0.2 * stick);
+            hauntExportCtx.drawImage(stainExportCanvas, 0, 0);
+            hauntExportCtx.globalAlpha = 1;
+
+            // Apply color tint
+            hauntExportCtx.globalCompositeOperation = 'source-atop';
+            hauntExportCtx.fillStyle = tint;
+            hauntExportCtx.fillRect(0, 0, vw, vh);
+            hauntExportCtx.globalCompositeOperation = 'source-over';
+
+            // Draw linger to export canvas
+            exportCtx.globalCompositeOperation = 'normal';
+            exportCtx.globalAlpha = 0.8;
+            exportCtx.drawImage(hauntExportCanvas, 0, 0);
+            exportCtx.globalAlpha = 1;
+            exportCtx.globalCompositeOperation = 'source-over';
+          }
+
+          // Draw stain to export canvas
+          if(stainOn.checked){
+            exportCtx.globalCompositeOperation = 'multiply';
+            exportCtx.drawImage(stainExportCanvas, 0, 0);
+            exportCtx.globalCompositeOperation = 'source-over';
+          }
+
+          // Draw ghost to export canvas
+          exportCtx.globalAlpha = +el.gAlpha.value;
+          exportCtx.globalCompositeOperation = gBlend.value;
+          exportCtx.drawImage(ghostExportCanvas, 0, 0);
+          exportCtx.globalAlpha = 1;
+          exportCtx.globalCompositeOperation = 'source-over';
+        }
+
+        frameCount++;
+
+        // Continue rendering until video ends exactly
+        if (!vid.ended && !exportFinished) {
+          requestAnimationFrame(renderExportFrame);
+        } else {
+          finalizeExport();
+        }
+      } catch (error) {
+        console.error('Error rendering export frame:', error);
+        finalizeExport();
+      }
+    }
     
     function finalizeExport() {
       if (exportFinished) return;
       exportFinished = true;
       
       clearTimeout(safetyTimer);
-      
       vid.pause();
       
+      // Small delay to ensure final frames are processed
       setTimeout(() => {
         if (expRecorder.state === 'recording') {
           expRecorder.stop();
         }
         
         recDone.then(() => {
+          // Restore previous state exactly
           vid.loop = prev.loop;
           vid.playbackRate = prev.rate;
           try { vid.currentTime = prev.t; } catch(_) {}
@@ -958,7 +1148,7 @@
           }
 
           exportOneBtn.disabled = false;
-          recStartBtn.disabled  = false;
+          recStartBtn.disabled = false;
           suspendLive = false;
 
           if (expChunks.length > 0) {
@@ -969,17 +1159,21 @@
             a.click();
             
             setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+            
+            console.log(`Export completed: ${vw}x${vh}, ${(blob.size / 1024 / 1024).toFixed(1)}MB, ${frameCount} frames`);
           } else {
             alert('Export failed: No video data recorded');
           }
         });
-      }, 500);
+      }, 1000);
     }
 
     vid.addEventListener('ended', finalizeExport, {once: true});
 
     try {
       await vid.play();
+      // Start the frame rendering loop with proper timing
+      requestAnimationFrame(renderExportFrame);
     } catch (error) {
       console.error('Playback failed:', error);
       finalizeExport();

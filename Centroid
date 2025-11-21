@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Frame Centroid Extractor</title>
+<style>
+  body {
+    margin: 0;
+    padding: 16px;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #ffffff;
+  }
+  h1 {
+    font-size: 18px;
+    margin: 0 0 8px 0;
+  }
+  #fileInput {
+    margin-bottom: 12px;
+  }
+  #results {
+    margin-top: 16px;
+    font-size: 12px;
+    white-space: pre;
+    background: #f5f5f5;
+    padding: 8px;
+    border-radius: 4px;
+    max-height: 40vh;
+    overflow: auto;
+  }
+  #framesContainer {
+    margin-top: 16px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .frameItem {
+    border: 1px solid #ddd;
+    padding: 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    background: #fafafa;
+  }
+  .frameItem canvas {
+    display: block;
+    max-width: 220px;
+    max-height: 220px;
+  }
+  #downloadBtn {
+    margin-top: 8px;
+    padding: 4px 8px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<h1>Frame Centroid Extractor</h1>
+<input type="file" id="fileInput" accept="image/*" multiple>
+<button id="downloadBtn" disabled>Download CSV</button>
+
+<div id="results"></div>
+<div id="framesContainer"></div>
+
+<script>
+const fileInput = document.getElementById('fileInput');
+const resultsEl = document.getElementById('results');
+const framesContainer = document.getElementById('framesContainer');
+const downloadBtn = document.getElementById('downloadBtn');
+
+let centroidData = []; // {name, width, height, cx, cy}
+
+fileInput.addEventListener('change', async (e) => {
+  const files = Array.from(e.target.files);
+  if (files.length === 0) return;
+
+  // Sort by filename so time order is consistent
+  files.sort((a, b) => a.name.localeCompare(b.name, undefined, {numeric: true}));
+
+  centroidData = [];
+  resultsEl.textContent = 'Processing...\n';
+  framesContainer.innerHTML = '';
+
+  for (const file of files) {
+    await processFile(file);
+  }
+
+  renderResults();
+  downloadBtn.disabled = centroidData.length === 0;
+});
+
+// -------- PROCESS SINGLE FILE (IMAGE → CENTROID) ----------
+function processFile(file) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const w = img.width;
+      const h = img.height;
+
+      // Offscreen canvas for computation
+      const offCanvas = document.createElement('canvas');
+      offCanvas.width = w;
+      offCanvas.height = h;
+      const offCtx = offCanvas.getContext('2d');
+      offCtx.drawImage(img, 0, 0, w, h);
+      const imageData = offCtx.getImageData(0, 0, w, h);
+      const {cx, cy} = computeCentroid(imageData, w, h);
+
+      centroidData.push({
+        name: file.name,
+        width: w,
+        height: h,
+        cx,
+        cy
+      });
+
+      // Create a small visible canvas with centroid overlay
+      const item = document.createElement('div');
+      item.className = 'frameItem';
+
+      const label = document.createElement('div');
+      label.textContent = `${file.name}\n(${w}×${h})  centroid: (${cx.toFixed(1)}, ${cy.toFixed(1)})`;
+
+      const viewCanvas = document.createElement('canvas');
+      const scale = Math.min(220 / w, 220 / h, 1);
+      viewCanvas.width = w * scale;
+      viewCanvas.height = h * scale;
+      const viewCtx = viewCanvas.getContext('2d');
+
+      viewCtx.drawImage(img, 0, 0, viewCanvas.width, viewCanvas.height);
+
+      // Draw centroid in red
+      viewCtx.beginPath();
+      viewCtx.arc(cx * scale, cy * scale, 3, 0, Math.PI * 2);
+      viewCtx.fillStyle = 'red';
+      viewCtx.fill();
+
+      item.appendChild(label);
+      item.appendChild(viewCanvas);
+      framesContainer.appendChild(item);
+
+      resolve();
+    };
+    img.onerror = () => {
+      console.error('Error loading image:', file.name);
+      resolve();
+    };
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+// -------- COMPUTE GLOBAL CENTROID ----------
+function computeCentroid(imageData, width, height) {
+  const d = imageData.data;
+  let sumI = 0;
+  let sumX = 0;
+  let sumY = 0;
+
+  // You can set step=2 or 4 if images are huge and this is slow
+  const step = 1;
+
+  for (let y = 0; y < height; y += step) {
+    for (let x = 0; x < width; x += step) {
+      const idx = (y * width + x) * 4;
+      const r = d[idx];
+      const g = d[idx + 1];
+      const b = d[idx + 2];
+
+      // Standard luminance
+      const intensity = 0.299 * r + 0.587 * g + 0.114 * b;
+
+      if (intensity > 0) { // ignore pure black
+        sumI += intensity;
+        sumX += x * intensity;
+        sumY += y * intensity;
+      }
+    }
+  }
+
+  if (sumI === 0) {
+    // no motion / no brightness; default to center
+    return {cx: width / 2, cy: height / 2};
+  }
+
+  const cx = sumX / sumI;
+  const cy = sumY / sumI;
+  return {cx, cy};
+}
+
+// -------- RENDER TEXT + ENABLE CSV DOWNLOAD ----------
+function renderResults() {
+  let text = 'filename, width, height, centroid_x, centroid_y\n';
+  for (const c of centroidData) {
+    text += `${c.name}, ${c.width}, ${c.height}, ${c.cx.toFixed(3)}, ${c.cy.toFixed(3)}\n`;
+  }
+  resultsEl.textContent = text;
+}
+
+downloadBtn.addEventListener('click', () => {
+  if (centroidData.length === 0) return;
+
+  let csv = 'filename,width,height,centroid_x,centroid_y\n';
+  for (const c of centroidData) {
+    csv += `${c.name},${c.width},${c.height},${c.cx.toFixed(6)},${c.cy.toFixed(6)}\n`;
+  }
+
+  const blob = new Blob([csv], {type: 'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'centroids.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+</script>
+
+</body>
+</html>

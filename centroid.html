@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Frame Centroid Extractor</title>
+<title>Centroid Extractor (Dark Pixel Weighting)</title>
 <style>
   body {
     margin: 0;
@@ -55,7 +55,7 @@
 </head>
 <body>
 
-<h1>Frame Centroid Extractor</h1>
+<h1>Centroid Extractor (Dark Region Weighted)</h1>
 <input type="file" id="fileInput" accept="image/*" multiple>
 <button id="downloadBtn" disabled>Download CSV</button>
 
@@ -68,13 +68,13 @@ const resultsEl = document.getElementById('results');
 const framesContainer = document.getElementById('framesContainer');
 const downloadBtn = document.getElementById('downloadBtn');
 
-let centroidData = []; // {name, width, height, cx, cy}
+let centroidData = [];
 
 fileInput.addEventListener('change', async (e) => {
   const files = Array.from(e.target.files);
   if (files.length === 0) return;
 
-  // Sort by filename so time order is consistent
+  // sort frames by filename for correct temporal order
   files.sort((a, b) => a.name.localeCompare(b.name, undefined, {numeric: true}));
 
   centroidData = [];
@@ -89,7 +89,10 @@ fileInput.addEventListener('change', async (e) => {
   downloadBtn.disabled = centroidData.length === 0;
 });
 
-// -------- PROCESS SINGLE FILE (IMAGE → CENTROID) ----------
+
+// ---------------------------------------------------------
+// PROCESS A SINGLE FRAME
+// ---------------------------------------------------------
 function processFile(file) {
   return new Promise((resolve) => {
     const img = new Image();
@@ -97,13 +100,14 @@ function processFile(file) {
       const w = img.width;
       const h = img.height;
 
-      // Offscreen canvas for computation
+      // canvas for raw data
       const offCanvas = document.createElement('canvas');
       offCanvas.width = w;
       offCanvas.height = h;
       const offCtx = offCanvas.getContext('2d');
       offCtx.drawImage(img, 0, 0, w, h);
       const imageData = offCtx.getImageData(0, 0, w, h);
+
       const {cx, cy} = computeCentroid(imageData, w, h);
 
       centroidData.push({
@@ -114,12 +118,12 @@ function processFile(file) {
         cy
       });
 
-      // Create a small visible canvas with centroid overlay
+      // preview canvas (scaled)
       const item = document.createElement('div');
       item.className = 'frameItem';
 
       const label = document.createElement('div');
-      label.textContent = `${file.name}\n(${w}×${h})  centroid: (${cx.toFixed(1)}, ${cy.toFixed(1)})`;
+      label.textContent = `${file.name}\n(${w}×${h}) centroid = (${cx.toFixed(1)}, ${cy.toFixed(1)})`;
 
       const viewCanvas = document.createElement('canvas');
       const scale = Math.min(220 / w, 220 / h, 1);
@@ -129,7 +133,7 @@ function processFile(file) {
 
       viewCtx.drawImage(img, 0, 0, viewCanvas.width, viewCanvas.height);
 
-      // Draw centroid in red
+      // draw centroid dot
       viewCtx.beginPath();
       viewCtx.arc(cx * scale, cy * scale, 3, 0, Math.PI * 2);
       viewCtx.fillStyle = 'red';
@@ -149,49 +153,62 @@ function processFile(file) {
   });
 }
 
-// -------- COMPUTE GLOBAL CENTROID ----------
+
+// ---------------------------------------------------------
+// DARK-PIXEL-WEIGHTED CENTROID
+// ---------------------------------------------------------
 function computeCentroid(imageData, width, height) {
   const d = imageData.data;
   let sumI = 0;
   let sumX = 0;
   let sumY = 0;
 
-  // You can set step=2 or 4 if images are huge and this is slow
-  const step = 1;
+  const threshold = 10;   // anything lighter than this = ignored
 
-  for (let y = 0; y < height; y += step) {
-    for (let x = 0; x < width; x += step) {
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
       const idx = (y * width + x) * 4;
       const r = d[idx];
       const g = d[idx + 1];
       const b = d[idx + 2];
 
-      // Standard luminance
-      const intensity = 0.299 * r + 0.587 * g + 0.114 * b;
+      // compute brightness
+      const L = 0.299 * r + 0.587 * g + 0.114 * b;
 
-      if (intensity > 0) { // ignore pure black
-        sumI += intensity;
-        sumX += x * intensity;
-        sumY += y * intensity;
-      }
+      // invert so dark = high weight
+      let intensity = 255 - L;
+
+      // remove bright pixels entirely
+      if (intensity < threshold) continue;
+
+      // quadratic boost for stronger centroid shifts
+      intensity = intensity * intensity;
+
+      sumI += intensity;
+      sumX += x * intensity;
+      sumY += y * intensity;
     }
   }
 
   if (sumI === 0) {
-    // no motion / no brightness; default to center
+    // fallback: center
     return {cx: width / 2, cy: height / 2};
   }
 
-  const cx = sumX / sumI;
-  const cy = sumY / sumI;
-  return {cx, cy};
+  return {
+    cx: sumX / sumI,
+    cy: sumY / sumI
+  };
 }
 
-// -------- RENDER TEXT + ENABLE CSV DOWNLOAD ----------
+
+// ---------------------------------------------------------
+// RENDER RESULTS & CSV EXPORT
+// ---------------------------------------------------------
 function renderResults() {
-  let text = 'filename, width, height, centroid_x, centroid_y\n';
+  let text = 'filename,width,height,cx,cy\n';
   for (const c of centroidData) {
-    text += `${c.name}, ${c.width}, ${c.height}, ${c.cx.toFixed(3)}, ${c.cy.toFixed(3)}\n`;
+    text += `${c.name},${c.width},${c.height},${c.cx.toFixed(2)},${c.cy.toFixed(2)}\n`;
   }
   resultsEl.textContent = text;
 }
@@ -199,7 +216,7 @@ function renderResults() {
 downloadBtn.addEventListener('click', () => {
   if (centroidData.length === 0) return;
 
-  let csv = 'filename,width,height,centroid_x,centroid_y\n';
+  let csv = 'filename,width,height,cx,cy\n';
   for (const c of centroidData) {
     csv += `${c.name},${c.width},${c.height},${c.cx.toFixed(6)},${c.cy.toFixed(6)}\n`;
   }

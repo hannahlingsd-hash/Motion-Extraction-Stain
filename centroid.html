@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Centroid Extractor (Dark Pixel Weighting)</title>
+<title>Centroid Extractor (Dark Weighted + PNG Export)</title>
 <style>
   body {
     margin: 0;
@@ -39,23 +39,25 @@
     border-radius: 4px;
     font-size: 10px;
     background: #fafafa;
+    width: 240px;
   }
   .frameItem canvas {
     display: block;
     max-width: 220px;
     max-height: 220px;
+    margin-bottom: 6px;
   }
-  #downloadBtn {
-    margin-top: 8px;
-    padding: 4px 8px;
-    font-size: 12px;
+  .downloadFrameBtn {
+    padding: 4px 6px;
+    font-size: 10px;
     cursor: pointer;
+    margin-top: 4px;
   }
 </style>
 </head>
 <body>
 
-<h1>Centroid Extractor (Dark Region Weighted)</h1>
+<h1>Centroid Extractor (PNG Export Enabled)</h1>
 <input type="file" id="fileInput" accept="image/*" multiple>
 <button id="downloadBtn" disabled>Download CSV</button>
 
@@ -74,7 +76,6 @@ fileInput.addEventListener('change', async (e) => {
   const files = Array.from(e.target.files);
   if (files.length === 0) return;
 
-  // sort frames by filename for correct temporal order
   files.sort((a, b) => a.name.localeCompare(b.name, undefined, {numeric: true}));
 
   centroidData = [];
@@ -91,16 +92,15 @@ fileInput.addEventListener('change', async (e) => {
 
 
 // ---------------------------------------------------------
-// PROCESS A SINGLE FRAME
+// PROCESS A SINGLE IMAGE FILE
 // ---------------------------------------------------------
-function processFile(file) {
+async function processFile(file) {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
       const w = img.width;
       const h = img.height;
 
-      // canvas for raw data
       const offCanvas = document.createElement('canvas');
       offCanvas.width = w;
       offCanvas.height = h;
@@ -118,44 +118,65 @@ function processFile(file) {
         cy
       });
 
-      // preview canvas (scaled)
+      // ------- PREVIEW (scaled) -------
       const item = document.createElement('div');
       item.className = 'frameItem';
 
       const label = document.createElement('div');
-      label.textContent = `${file.name}\n(${w}×${h}) centroid = (${cx.toFixed(1)}, ${cy.toFixed(1)})`;
+      label.textContent = `${file.name}\n(${w}×${h})\ncx=${cx.toFixed(1)}, cy=${cy.toFixed(1)}`;
 
-      const viewCanvas = document.createElement('canvas');
       const scale = Math.min(220 / w, 220 / h, 1);
+      const viewCanvas = document.createElement('canvas');
       viewCanvas.width = w * scale;
       viewCanvas.height = h * scale;
       const viewCtx = viewCanvas.getContext('2d');
 
       viewCtx.drawImage(img, 0, 0, viewCanvas.width, viewCanvas.height);
 
-      // draw centroid dot
       viewCtx.beginPath();
       viewCtx.arc(cx * scale, cy * scale, 3, 0, Math.PI * 2);
       viewCtx.fillStyle = 'red';
       viewCtx.fill();
 
+      // ------- DOWNLOAD FULL-RES PNG WITH DOT -------
+      const downloadBtn = document.createElement('button');
+      downloadBtn.className = 'downloadFrameBtn';
+      downloadBtn.textContent = "Download PNG w/ dot";
+
+      downloadBtn.onclick = () => {
+        const fullCanvas = document.createElement('canvas');
+        fullCanvas.width = w;
+        fullCanvas.height = h;
+        const fullCtx = fullCanvas.getContext('2d');
+
+        fullCtx.drawImage(img, 0, 0, w, h);
+
+        fullCtx.beginPath();
+        fullCtx.arc(cx, cy, 8, 0, Math.PI * 2);  // 8px dot
+        fullCtx.fillStyle = 'red';
+        fullCtx.fill();
+
+        const link = document.createElement('a');
+        link.download = file.name.replace(/\.[^.]+$/, '') + "_centroid.png";
+        link.href = fullCanvas.toDataURL("image/png");
+        link.click();
+      };
+
       item.appendChild(label);
       item.appendChild(viewCanvas);
+      item.appendChild(downloadBtn);
       framesContainer.appendChild(item);
 
       resolve();
     };
-    img.onerror = () => {
-      console.error('Error loading image:', file.name);
-      resolve();
-    };
+
     img.src = URL.createObjectURL(file);
   });
 }
 
 
 // ---------------------------------------------------------
-// DARK-PIXEL-WEIGHTED CENTROID
+// DARK-PIXEL WEIGHTED CENTROID
 // ---------------------------------------------------------
 function computeCentroid(imageData, width, height) {
   const d = imageData.data;
@@ -163,7 +184,7 @@ function computeCentroid(imageData, width, height) {
   let sumX = 0;
   let sumY = 0;
 
-  const threshold = 10;   // anything lighter than this = ignored
+  const threshold = 25;  // ignore bright pixels
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -172,17 +193,12 @@ function computeCentroid(imageData, width, height) {
       const g = d[idx + 1];
       const b = d[idx + 2];
 
-      // compute brightness
       const L = 0.299 * r + 0.587 * g + 0.114 * b;
-
-      // invert so dark = high weight
       let intensity = 255 - L;
 
-      // remove bright pixels entirely
       if (intensity < threshold) continue;
 
-      // quadratic boost for stronger centroid shifts
-      intensity = intensity * intensity;
+      intensity = intensity * intensity;  // quadratic boost
 
       sumI += intensity;
       sumX += x * intensity;
@@ -190,10 +206,7 @@ function computeCentroid(imageData, width, height) {
     }
   }
 
-  if (sumI === 0) {
-    // fallback: center
-    return {cx: width / 2, cy: height / 2};
-  }
+  if (sumI === 0) return {cx: width / 2, cy: height / 2};
 
   return {
     cx: sumX / sumI,
@@ -203,7 +216,7 @@ function computeCentroid(imageData, width, height) {
 
 
 // ---------------------------------------------------------
-// RENDER RESULTS & CSV EXPORT
+// CSV EXPORT
 // ---------------------------------------------------------
 function renderResults() {
   let text = 'filename,width,height,cx,cy\n';
@@ -226,9 +239,7 @@ downloadBtn.addEventListener('click', () => {
   const a = document.createElement('a');
   a.href = url;
   a.download = 'centroids.csv';
-  document.body.appendChild(a);
   a.click();
-  document.body.removeChild(a);
   URL.revokeObjectURL(url);
 });
 </script>
